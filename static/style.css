@@ -822,3 +822,35 @@ body.vf-mask .sub-en,.body-vf .sub-en{display:none!important}
 body.vf-mask #btn-star{display:none!important}
 body.vf-mask .sub-ko{font-size:13px}
 .actions{display:flex;flex-direction:column;gap:7px;margin-top:6px}
+
+
+/* ================= v4.0 : 홈 간소화 · 전체화면 · 파형 다시듣기 ================= */
+/* 학습 중 전체화면: 앱바·탭바 숨김 */
+body.play-focus .appbar,body.play-focus .tabbar{display:none}
+body.play-focus .phone{height:100dvh;border-radius:0}
+body.play-focus .screens{height:100%}
+body.play-focus #s-play,body.play-focus #s-sync{height:100%}
+
+/* 오늘 검증 상태 */
+.today-state{display:inline-block;margin:2px 0 10px;font-size:10.5px;font-weight:850;
+  color:#7A97AC;background:#F1F7FC;border:1px solid var(--line);border-radius:8px;padding:4px 9px}
+.today-state.ok{color:#22B884;background:#F2FBF7;border-color:#C8EBDD}
+
+/* 취소 버튼 */
+.wv-cancel{border:1px solid rgba(255,138,128,.5);background:rgba(226,86,79,.22);color:#FFC9C3;
+  border-radius:6px;font:inherit;font-size:8.5px;font-weight:900;padding:2px 8px;cursor:pointer}
+.wv-cancel:active{background:rgba(226,86,79,.4)}
+.vsub{bottom:150px}
+#btn-shadow{z-index:12}
+
+/* 파형 다시 듣기 */
+.mix-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.mix-play{flex:0 0 30px;height:30px;border:0;border-radius:9px;cursor:pointer;
+  background:var(--sky-l);color:var(--sky-d);display:grid;place-items:center;padding:0}
+.mix-play.on{background:var(--sky-d);color:#fff}
+.mix-main{flex:1 1 auto;min-width:0}
+.mix-lab{font-size:8.5px;font-weight:850;color:var(--ink-3);margin-bottom:3px}
+.mix-cv{display:block;width:100%;height:38px;border-radius:6px;background:#0B1524}
+.mix-t{flex:0 0 34px;text-align:right;font-size:8.5px;font-weight:800;color:#8AA5BC;
+  font-variant-numeric:tabular-nums}
+.listen-card .card-row{margin-bottom:2px}

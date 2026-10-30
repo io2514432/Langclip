@@ -87,9 +87,26 @@ def _day_of(ts: str) -> str:
         return ""
 
 
+def _verifies() -> dict:
+    d = _load(VERIFY, {})
+    return d if isinstance(d, dict) else {}
+
+
+def _done_days() -> set[str]:
+    """학습 완료(검증 통과)한 날짜 집합. 연속 학습의 유일한 기준."""
+    days: set[str] = set()
+    for r in _verifies().values():
+        if not r.get("ok"):
+            continue
+        ts = r.get("done_at") or r.get("at") or ""
+        d = _day_of(ts)
+        if d:
+            days.add(d)
+    return days
+
+
 def streak() -> dict:
-    days = sorted({_day_of(r["ts"]) for r in attempts() if r.get("ts")})
-    done = set(days)
+    done = _done_days()
     today = _today()
     cur = today if today.isoformat() in done else today - timedelta(days=1)
     n = 0
@@ -144,11 +161,6 @@ def level_info() -> dict:
 VERIFY = DATA / "verify.json"
 
 
-def _verifies() -> dict:
-    d = _load(VERIFY, {})
-    return d if isinstance(d, dict) else {}
-
-
 def record_verify(vid: str, result: dict) -> dict:
     """3단계 검증 결과 저장. 한 번 통과하면 유지된다."""
     d = _verifies()
@@ -156,6 +168,7 @@ def record_verify(vid: str, result: dict) -> dict:
     passed = bool(result.get("passed"))
     rec = {
         "ok": passed or bool(prev.get("ok")),
+        "done_at": (prev.get("done_at") or _now()) if (passed or prev.get("ok")) else "",
         "score": round(max(float(result.get("score", 0)), float(prev.get("score", 0))), 1),
         "at": _now(),
         "tries": int(prev.get("tries", 0)) + 1,

@@ -1,4 +1,4 @@
-"""Langclip — 유튜브 문장별 셰도잉 (FastAPI) v3.8
+"""Langclip — 유튜브 문장별 셰도잉 (FastAPI) v4.0
 
 구조
   영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
@@ -57,7 +57,7 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Langclip Shadowing API", version="3.8")
+app = FastAPI(title="Langclip Shadowing API", version="4.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -986,7 +986,7 @@ def yt_meta(url: str = ""):
             "thumb": f"https://i.ytimg.com/vi/{yt}/mqdefault.jpg"}
     try:
         req = urllib.request.Request(target, headers={
-            "User-Agent": "Mozilla/5.0 (Langclip/3.8)", "Accept": "application/json"})
+            "User-Agent": "Mozilla/5.0 (Langclip/4.0)", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=6) as r:
             j = json.loads(r.read().decode("utf-8"))
         data.update({"ok": bool(j.get("title")), "title": j.get("title", "")[:120],

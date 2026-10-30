@@ -48,10 +48,6 @@
 <div class="stage">
   <div class="phone" id="phone">
 
-    <div class="statusbar">
-      <span id="clock">9:41</span>
-      <span class="sb-right"><i class="sig"></i><i class="wif"></i><i class="bat"></i></span>
-    </div>
 
     <header class="appbar">
       <div class="brand"><svg class="logo"><use href="#i-logo"/></svg>Langclip</div>
@@ -63,25 +59,6 @@
       <!-- ================= HOME ================= -->
       <section class="screen is-active" id="s-home">
         <div class="scroll">
-          <div class="home-top">
-            <button class="daily" id="daily">
-              <span class="daily-main">
-                <span class="daily-t" id="daily-t">오늘의 쇼츠 <b>0%</b> 암기</span>
-                <span class="daily-s" id="daily-s">학습할 쇼츠를 불러오는 중…</span>
-              </span>
-              <svg class="ic daily-chev"><use href="#i-right"/></svg>
-            </button>
-          </div>
-
-          <div class="xpbar" id="xpcard">
-            <div class="xp-top">
-              <span class="xp-lv" id="xp-lv">Lv.1</span>
-              <span class="xp-t" id="xp-t">0 XP · 다음까지 120</span>
-              <span class="xp-b" id="xp-done">완료 0편</span>
-            </div>
-            <div class="xp-track"><i id="xp-fill"></i></div>
-          </div>
-
           <div class="streak-box">
             <div class="streak-h"><b id="streak-days">연속 학습 0일</b><span id="streak-sub">오늘도 이어가요</span></div>
             <div class="week" id="week"></div>
@@ -90,17 +67,12 @@
           <div class="focus" id="focus-card">
             <div class="focus-fan" id="fan"></div>
             <div class="focus-head">
-              <span class="focus-t">Shorts 학습</span>
+              <span class="focus-t" id="focus-t">오늘의 쇼츠</span>
               <span class="focus-pill" id="focus-pill">MY</span>
             </div>
-            <p class="focus-s" id="focus-s">오늘 학습할 쇼츠를 준비하고 있어요.</p>
-            <div class="focus-bar"><i id="focus-bar"></i></div>
-            <div class="focus-meta">
-              <span id="focus-meta-l">문장 0개</span>
-              <span id="focus-meta-r">0%</span>
-            </div>
+            <p class="focus-s" id="focus-s">학습할 쇼츠를 준비하고 있어요.</p>
+            <div class="today-state" id="today-state">아직 오늘 검증 전</div>
             <button class="cta" id="btn-start">시작하기</button>
-            <button class="cta ghost" id="btn-final-home" hidden><svg class="ic"><use href="#i-flag"/></svg> 학습 완료 검증</button>
           </div>
 
           <div class="sec-title">
@@ -171,6 +143,7 @@
               <span class="wv-sp"></span>
               <button class="wv-skip" id="wv-skip" hidden><svg class="ic xs"><use href="#i-skip"/></svg>건너뛰기</button>
               <span class="wv-score" id="wv-score"></span>
+              <button class="wv-cancel" id="wv-cancel">취소</button>
             </div>
           </div>
 
@@ -226,20 +199,42 @@
           </div>
 
           <div class="card listen-card" id="listen-card">
-            <div class="card-row"><span class="card-label">다시 듣기</span></div>
-            <div class="mix">
-              <button class="mix-b" id="mix-ref"><svg class="ic"><use href="#i-head"/></svg><span>원본</span></button>
-              <button class="mix-b" id="mix-me"><svg class="ic"><use href="#i-mic"/></svg><span>내 목소리</span></button>
-              <button class="mix-b" id="mix-both"><svg class="ic"><use href="#i-wave"/></svg><span>겹쳐 듣기</span></button>
+            <div class="card-row"><span class="card-label">다시 듣기</span>
+              <span class="dur" id="mix-hint"></span></div>
+
+            <div class="mix-row" data-k="ref">
+              <button class="mix-play" data-k="ref"><svg class="ic xs"><use href="#i-play"/></svg></button>
+              <div class="mix-main">
+                <div class="mix-lab">원본 음성</div>
+                <canvas class="mix-cv" data-k="ref"></canvas>
+              </div>
+              <span class="mix-t" data-k="ref">0.0s</span>
             </div>
-            <div class="mix-hint" id="mix-hint"></div>
+
+            <div class="mix-row" data-k="me">
+              <button class="mix-play" data-k="me"><svg class="ic xs"><use href="#i-play"/></svg></button>
+              <div class="mix-main">
+                <div class="mix-lab">내 목소리</div>
+                <canvas class="mix-cv" data-k="me"></canvas>
+              </div>
+              <span class="mix-t" data-k="me">0.0s</span>
+            </div>
+
+            <div class="mix-row" data-k="both">
+              <button class="mix-play" data-k="both"><svg class="ic xs"><use href="#i-play"/></svg></button>
+              <div class="mix-main">
+                <div class="mix-lab">겹쳐 듣기</div>
+                <canvas class="mix-cv" data-k="both"></canvas>
+              </div>
+              <span class="mix-t" data-k="both">0.0s</span>
+            </div>
           </div>
 
           <div class="coach" id="coach"></div>
 
           <div class="actions">
             <button class="btn primary" id="btn-retry">같은 문장 다시 하기</button>
-            <button class="btn ghost" id="btn-final-again" hidden>검증 다시 하기</button>
+            <button class="btn ghost" id="btn-result-close">닫기</button>
           </div>
         </div>
       </section>
