@@ -60,6 +60,14 @@ const jsonPost = (url, body) => api(url, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
 });
 
+/* 화면 요소를 안전하게 갱신 — 요소가 없어도 앱이 멈추지 않게 */
+function setTx(id, v) { const el = $("#" + id); if (el) el.textContent = v; }
+function setHtml(id, v) { const el = $("#" + id); if (el) el.innerHTML = v; }
+function shadowLabel(main, sub) {
+  setTx("sb-tx", main);
+  if (sub !== undefined) setTx("sb-sub", sub);
+}
+
 /* ---------------- YouTube ---------------- */
 let ytPromise = null;
 function loadYT() {
@@ -607,8 +615,10 @@ function closeWave() {
   const vsub = $("#vsub");
   if (vsub) vsub.classList.remove("hidden-sub");
   const b = $("#btn-shadow");
-  if (b) { b.classList.remove("rec", "armed"); $("#sb-tx").textContent = "따라 말하기"; }
-  $("#wv-dot").classList.remove("on");
+  if (b) b.classList.remove("rec", "armed");
+  shadowLabel("따라 말하기");
+  const dot = $("#wv-dot");
+  if (dot) dot.classList.remove("on");
 }
 
 function countdown(n, onDone) {
@@ -635,6 +645,7 @@ async function startShadow() {
   if (!S.cur || !S.seg) return;
   if (SH.phase === "count" || SH.phase === "rec") return;
   if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
+  if (!$("#wave") || !$("#countdown")) return toast("화면을 새로고침해주세요 (Ctrl+Shift+R)", 4200);
 
   const seg = S.seg;
   SH.dur = Math.max(0.5, seg.end - seg.start);
@@ -645,8 +656,7 @@ async function startShadow() {
   openWave(seg.en || seg.text || "");
 
   $("#btn-shadow").classList.add("armed");
-  $("#sb-tx").textContent = "준비";
-  $("#sb-sub").textContent = "2초 뒤 문장이 재생됩니다";
+  shadowLabel("준비", "2초 뒤 문장이 재생됩니다");
 
   try {
     SH.stream = await navigator.mediaDevices.getUserMedia({
@@ -692,8 +702,7 @@ function beginTake() {
 
   $("#btn-shadow").classList.add("rec");
   $("#btn-shadow").classList.remove("armed");
-  $("#sb-tx").textContent = "녹음 중";
-  $("#sb-sub").textContent = "지금 말하세요!";
+  shadowLabel("녹음 중", "지금 말하세요!");
   $("#wv-dot").classList.add("on");
   setHint("<b>지금 말하세요!</b> 원본 파형을 따라 말해보세요");
 
@@ -729,8 +738,7 @@ function stopTake() {
   pausePlayer();
   try { if (SH.rec && SH.rec.state === "recording") SH.rec.stop(); } catch {}
   $("#btn-shadow").classList.remove("rec");
-  $("#sb-tx").textContent = "채점 중…";
-  $("#sb-sub").textContent = "잠시만 기다려주세요";
+  shadowLabel("채점 중…", "잠시만 기다려주세요");
   setHint("채점 중…");
   drawWave();
 }
@@ -742,8 +750,7 @@ function onTakeStop() {
   SH.stream = null;
   if (!S.takeBlob || S.takeBlob.size < 1000) {
     SH.phase = "review";
-    $("#sb-tx").textContent = "따라 말하기";
-    $("#sb-sub").textContent = "녹음이 너무 짧았습니다";
+    shadowLabel("따라 말하기", "녹음이 너무 짧았습니다");
     setHint("녹음이 너무 짧습니다. 다시 시도해주세요");
     return;
   }
@@ -761,16 +768,14 @@ async function submitScore() {
     $("#wv-score").textContent = `${SH.score}점`;
     $("#wv-score").className = "wv-score " + (r.total >= 70 ? "good" : "low");
     $("#wv-dot").classList.remove("on");
-    $("#sb-tx").textContent = "따라 말하기";
-    $("#sb-sub").textContent = `${SH.score}점 · 다시 눌러 재도전`;
+    shadowLabel("따라 말하기", `${SH.score}점 · 다시 눌러 재도전`);
     drawWave();
     renderResult(r);
     show("s-result");
     loadHome();
   } catch (e) {
     SH.phase = "review";
-    $("#sb-tx").textContent = "따라 말하기";
-    $("#sb-sub").textContent = "채점 실패";
+    shadowLabel("따라 말하기", "채점 실패");
     setHint("채점 실패");
     toast("채점에 실패했습니다: " + e.message, 4200);
   }
