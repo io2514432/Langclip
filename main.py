@@ -66,7 +66,15 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # ADMIN_TOKEN 을 설정하면 쓰기 API 는 토큰이 있어야만 동작한다.
 #   설정 없음            → 혼자 쓰는 로컬 모드(모두 허용)
 #   ADMIN_TOKEN=****      → 배포 모드(추가/싱크/음원/삭제는 관리자만)
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
+def _token_from_file() -> str:
+    """data/admin_token.txt 가 있으면 그것을 관리자 토큰으로 쓴다."""
+    try:
+        return (DATA / "admin_token.txt").read_text("utf-8").strip()
+    except Exception:
+        return ""
+
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip() or _token_from_file()
 
 
 def is_admin(request: Request | None) -> bool:
@@ -699,7 +707,8 @@ async def add_audio(
 
 
 @app.patch("/api/audios/{aid}")
-def patch_audio(aid: str, payload: dict):
+def patch_audio(aid: str, payload: dict, request: Request):
+    require_admin(request)
     d = db()
     a = d["audios"].get(aid) or get_audio(aid)
     if payload.get("offset") is not None:
@@ -750,7 +759,8 @@ def link_audio(vid: str, payload: dict, request: Request):
 
 # ---- offset 자동 캘리브레이션
 @app.post("/api/videos/{vid}/calibrate")
-def calibrate(vid: str, payload: dict | None = Body(default=None)):
+def calibrate(vid: str, payload: dict | None = Body(default=None), request: Request = None):
+    require_admin(request)
     """자막 타임스탬프와 원본 음원 엔벨로프의 상호상관으로 offset 을 추정."""
     p = dict(payload or {})
     d = db()
