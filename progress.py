@@ -3,12 +3,13 @@
 파일
   data/attempts.json  : [{ts, vid, idx, total, mode}, ...]
   data/notes.json     : {"sentences": {...}, "words": {...}}
+  data/final.json     : {vid: {ok, score, low, at, tries, scores}} 최종 검증 기록
   data/wordcache.json : 사전 조회 캐시
 
 암기율(memorized)
   문장별 '최고 점수'의 평균(%). 한 번 잘 본 문장은 계속 반영된다.
 통과(pass)       문장 점수 70점 이상.
-완료(complete)   등록된 문장을 전부 70점 이상으로 통과한 상태.
+완료(complete)   최종 검증(모든 문장 연속 따라말하기)을 통과해야 인정.
 XP / 레벨 / 배지  채점 1회 = 점수/10 XP(최대 10) · 레벨 = 1 + XP // 120
 """
 from __future__ import annotations
@@ -109,24 +110,20 @@ def streak() -> dict:
 
 
 def memorized(vid: str, n_segs: int) -> dict:
+    """진행률 표시용. 문장별 '통과 개수'는 더 이상 쓰지 않는다."""
     if n_segs <= 0:
         return {"pct": 0.0, "done": 0, "total": 0, "tried": 0}
     best = best_scores(vid)
     tried = len([k for k in best if 0 <= k < n_segs])
     s = sum(best.get(i, 0.0) for i in range(n_segs))
-    done = len([i for i in range(n_segs) if best.get(i, 0.0) >= PASS_SCORE])
-    return {"pct": round(s / n_segs, 1), "done": done, "total": n_segs, "tried": tried}
-
-
-def is_complete(vid: str, n_segs: int) -> bool:
-    """문장을 전부 70점 이상으로 통과했는가."""
-    m = memorized(vid, n_segs)
-    return bool(n_segs > 0 and m["done"] >= n_segs)
+    return {"pct": round(s / n_segs, 1), "done": 0, "total": n_segs, "tried": tried}
 
 
 # ---------------------------------------------------------------- XP / level
 def xp_total() -> int:
-    return int(sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts()))
+    xp = sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts())
+    xp += 120 * completed_count()          # 최종 검증 통과 = 120 XP
+    return int(xp)
 
 
 def level_of(xp: int | None = None) -> int:
@@ -143,37 +140,52 @@ def level_info() -> dict:
             "next": (lv + 1) * XP_PER_LEVEL - xp}
 
 
-# ---------------------------------------------------------------- badges
-# (id, 아이콘 심볼, 이름, 설명) — 이모지 대신 선 도형 아이콘을 쓴다
-BADGES = [
-    ("first_try", "i-mic", "첫 채점", "처음으로 문장을 녹음해 채점받았어요"),
-    ("first_pass", "i-check", "첫 통과", "문장 하나를 70점 이상으로 통과했어요"),
-    ("perfect_one", "i-diamond", "완벽한 문장", "한 문장에서 90점 이상을 받았어요"),
-    ("streak3", "i-flame", "3일 연속", "3일 연속으로 학습했어요"),
-    ("streak7", "i-flame", "7일 연속", "일주일 내내 학습했어요"),
-    ("words10", "i-book", "단어 10개", "단어장에 10개를 모았어요"),
-]
+# ---------------------------------------------------------------- 최종 검증
+FINAL = DATA / "final.json"
+FINAL_MIN = 60      # 문장별 최저
+FINAL_AVG = 78      # 전체 평균
 
 
-def badge_state() -> dict:
-    rows = attempts()
-    best = best_scores()
-    st = streak()
-    words = len(_notes()["words"])
-    return {
-        "first_try": len(rows) >= 1,
-        "first_pass": any(v >= PASS_SCORE for v in best.values()),
-        "perfect_one": any(float(r.get("total", 0)) >= 90 for r in rows),
-        "streak3": st["days"] >= 3,
-        "streak7": st["days"] >= 7,
-        "words10": words >= 10,
+def _finals() -> dict:
+    d = _load(FINAL, {})
+    return d if isinstance(d, dict) else {}
+
+
+def record_final(vid: str, scores: list[int]) -> dict:
+    """전체 문장을 연속으로 따라 말한 점수 묶음 → 통과 판정 후 저장."""
+    sc = [int(round(float(x))) for x in (scores or [])]
+    if not sc:
+        return {"ok": False, "error": "점수가 없습니다"}
+    avg = round(sum(sc) / len(sc), 1)
+    low = min(sc)
+    passed = low >= FINAL_MIN and avg >= FINAL_AVG
+    prev = _finals().get(vid) or {}
+    rec = {
+        "ok": bool(passed) or bool(prev.get("ok")),
+        "score": round(max(avg, float(prev.get("score", 0))), 1),
+        "low": min(low, int(prev.get("low", 100))) if prev.get("low") is not None else low,
+        "at": _now(),
+        "tries": int(prev.get("tries", 0)) + 1,
+        "scores": sc,
     }
+    d = _finals()
+    d[vid] = rec
+    _save(FINAL, d)
+    return {"ok": True, "passed": bool(passed), "avg": avg, "low": low,
+            "need_avg": FINAL_AVG, "need_low": FINAL_MIN, "record": rec,
+            "first_clear": bool(passed) and not prev.get("ok")}
 
 
-def badges() -> list[dict]:
-    got = badge_state()
-    return [{"id": i, "icon": e, "label": n, "desc": d, "got": bool(got.get(i))}
-            for i, e, n, d in BADGES]
+def final_of(vid: str) -> dict:
+    return _finals().get(vid, {})
+
+
+def is_complete(vid: str) -> bool:
+    return bool((_finals().get(vid) or {}).get("ok"))
+
+
+def completed_count() -> int:
+    return len([1 for r in _finals().values() if r.get("ok")])
 
 
 # ---------------------------------------------------------------- 현황
@@ -186,20 +198,20 @@ def today_focus(videos: dict) -> dict | None:
     if last_today:
         picked = videos.get(last_today[-1].get("vid"))
     if picked is None:
-        open_v = [v for v in videos.values()
-                  if not is_complete(v["id"], len(v.get("segs", [])))]
+        open_v = [v for v in videos.values() if not is_complete(v["id"])]
         picked = (open_v or list(videos.values()))[0]
     n = len(picked.get("segs", []))
     m = memorized(picked["id"], n)
     n_today = len({r.get("idx") for r in last_today if r.get("vid") == picked["id"]})
     return {"id": picked["id"], "title": picked.get("title", ""),
             "yt": picked.get("yt", ""), "segs": n, "memorized": m,
-            "tried_today": n_today, "complete": is_complete(picked["id"], n)}
+            "tried_today": n_today, "complete": is_complete(picked["id"]),
+            "final": final_of(picked["id"])}
 
 
 def progress(videos: dict) -> dict:
     return {"focus": today_focus(videos), "streak": streak(),
-            "xp": level_info(), "badges": badges(),
+            "xp": level_info(), "completed": completed_count(),
             "total_attempts": len(attempts())}
 
 

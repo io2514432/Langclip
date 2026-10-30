@@ -639,9 +639,9 @@ body{
 
 /* 자막 + 별표: 별표는 자막 우상단, 레일과 겹치지 않음 */
 .vsub{position:absolute;left:12px;right:66px;bottom:118px;z-index:6}
-.star{position:absolute;top:-13px;right:0;width:26px;height:26px;border:0;border-radius:9px;cursor:pointer;
-  background:rgba(10,22,34,.5);color:#EAF7FF;display:grid;place-items:center;
-  backdrop-filter:blur(6px);opacity:.9;padding:0}
+.star{position:absolute;top:-14px;right:0;width:28px;height:28px;border:0;border-radius:9px;cursor:pointer;
+  background:rgba(10,22,34,.55);color:#EAF7FF;display:grid;place-items:center;
+  backdrop-filter:blur(6px);opacity:.95;padding:0;pointer-events:auto;z-index:3}
 .star[hidden]{display:none}
 
 /* 파형 패널 */
@@ -692,13 +692,11 @@ body{
 @keyframes cdPop{0%{transform:scale(.86);opacity:.35}28%{transform:scale(1.05);opacity:1}100%{transform:scale(1);opacity:1}}
 
 /* 다시 듣기 */
-.listen-card .mix{display:flex;gap:6px;margin-top:2px}
-.mix-b{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:4px;
-  border:1px solid var(--line);border-radius:11px;background:#FBFEFF;padding:9px 4px;
-  font:inherit;font-size:9.5px;font-weight:800;color:var(--ink-3);cursor:pointer}
-.mix-b .ic{width:18px;height:18px;color:var(--sky-d)}
-.mix-b.on{border-color:var(--sky);background:#EAF7FF;color:var(--sky-d)}
-.mix-hint{font-size:9.5px;color:var(--ink-3);margin-top:7px;line-height:1.5}
+
+
+
+
+
 
 /* 스크립트 시트 · 원본 음성 */
 .sc-audio{margin:10px 0 12px;padding:10px 11px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
@@ -712,3 +710,52 @@ body{
 .field-row{display:flex;gap:8px}
 .field-row .field{flex:1 1 0}
 .tag.ok{color:#22B884;border-color:#C8EBDD;background:#F2FBF7}
+
+
+/* ================= v3.7 : 탭바 · 아이콘 · 최종 검증 ================= */
+.tabbar .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  flex:1 1 0;border:0;background:none;font:inherit;font-size:9.5px;font-weight:800;
+  color:var(--ink-3);cursor:pointer;padding:6px 0 4px}
+.tabbar .tab .ic{width:21px;height:21px;stroke-width:1.8;color:#9FB8CB;transition:color .15s,transform .15s}
+.tabbar .tab.is-on{color:var(--sky-d)}
+.tabbar .tab.is-on .ic{color:var(--sky-d);transform:translateY(-1px)}
+.tabbar .tab:active .ic{transform:scale(.94)}
+.tabbar{display:flex;align-items:stretch;border-top:1px solid var(--line);background:#fff}
+.tab[hidden]{display:none}
+
+/* 연속 학습 불꽃 아이콘 보정 */
+.streak .ic{width:15px;height:15px;stroke-width:1.7;fill:none;stroke:#F59E0B}
+.brand .logo{vertical-align:middle}
+
+/* 쉐도잉 중 배경 조작 차단 */
+.vstage.lock #vframe,.vstage.lock .vtop,.vstage.lock .vbottom{pointer-events:none}
+.vstage.lock .vshade{background:rgba(4,10,18,.28)}
+.vstage.lock .rail:not(#btn-shadow){opacity:.38;pointer-events:none}
+.vstage.lock #btn-shadow .ic{color:#FF8A80}
+.vstage.lock #btn-shadow .rail-lab{color:#FF8A80}
+
+/* 카운트다운 숫자: 세리프 제거 */
+.cd-num{font-family:inherit;font-weight:800;font-size:58px;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;color:#1B1B1B}
+.cd-box{opacity:.86}
+
+/* 건너뛰기 */
+.wv-skip{border:1px solid rgba(255,255,255,.26);background:rgba(255,255,255,.1);color:#DCEFFB;
+  border-radius:6px;font:inherit;font-size:8.5px;font-weight:800;padding:2px 7px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:3px}
+.wv-skip .ic{width:11px;height:11px}
+.wv-skip[hidden]{display:none}
+
+/* 최종 검증 · 원본 음성 블록 */
+.sc-final,.sc-audio{margin:10px 0 4px;padding:10px 11px;border:1px solid var(--line);
+  border-radius:12px;background:#F7FCFF}
+.sc-final{border-color:#BFE6FB;background:linear-gradient(180deg,#F4FBFF,#EAF7FF)}
+.sc-final-h{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink)}
+.sc-final-h .ic{color:var(--sky-d)}
+.sc-final-h span{margin-left:auto;font-size:9px;font-weight:850;color:#A6BCCC}
+.sc-final-h span.on{color:#22B884}
+#sc-final-sub,#sc-audio-sub{font-size:9.5px;line-height:1.55;color:var(--ink-3);margin:5px 0 8px}
+.btn.sm{height:34px;font-size:11px;border-radius:10px;padding:0 12px}
+.cta.ghost{background:none;border:1px solid var(--line);color:var(--ink-3);margin-top:7px;
+  box-shadow:none;display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.cta.ghost .ic{width:14px;height:14px}

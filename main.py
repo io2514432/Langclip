@@ -1,4 +1,4 @@
-"""Echo — 유튜브 문장별 셰도잉 (FastAPI) v3.5
+"""Langel — 유튜브 문장별 셰도잉 (FastAPI) v3.7
 
 구조
   영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
@@ -56,8 +56,32 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Echo Shadowing API", version="3.6")
+app = FastAPI(title="Langel Shadowing API", version="3.7")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+
+# --------------------------------------------------------------- 접근 모드
+# ADMIN_TOKEN 을 설정하면 쓰기 API 는 토큰이 있어야만 동작한다.
+#   설정 없음            → 혼자 쓰는 로컬 모드(모두 허용)
+#   ADMIN_TOKEN=****      → 배포 모드(추가/싱크/음원/삭제는 관리자만)
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
+
+
+def is_admin(request: Request | None) -> bool:
+    if not ADMIN_TOKEN:
+        return True
+    if request is None:
+        return False
+    tok = (request.headers.get("x-admin-token") or "").strip()
+    if not tok:
+        tok = (request.cookies.get("langel_admin") or "").strip()
+    return tok == ADMIN_TOKEN
+
+
+def require_admin(request: Request) -> None:
+    if not is_admin(request):
+        raise HTTPException(403, "관리자만 사용할 수 있는 기능입니다")
 
 
 # --------------------------------------------------------------- store
@@ -424,7 +448,8 @@ def video_public(v: dict, d: dict) -> dict:
     return {"id": v["id"], "yt": v["yt"], "title": v["title"],
             "segs": v["segs"], "n": len(v["segs"]),
             "audio": au, "has_audio": au is not None,
-            "complete": prog.is_complete(v["id"], len(v["segs"]))}
+            "complete": prog.is_complete(v["id"]),
+            "final": prog.final_of(v["id"])}
 
 
 DEMO_VIDEO_IDS = ("vdemo0001", "vdemo0002")
@@ -464,7 +489,8 @@ drop_demo()
 def health():
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
-            "script_md": True, "version": app.version}
+            "script_md": True, "version": app.version,
+            "locked": bool(ADMIN_TOKEN), "name": "Langel"}
 
 
 # ---- 영상
@@ -488,7 +514,8 @@ def one_video(vid: str):
 
 
 @app.post("/api/videos")
-def add_video(payload: dict):
+def add_video(payload: dict, request: Request):
+    require_admin(request)
     """마크다운 대본(script) 또는 구형 자막(transcript)으로 영상을 등록한다."""
     md = (payload.get("script") or "").strip()
     title = (payload.get("title") or "").strip()
@@ -529,7 +556,8 @@ def add_video(payload: dict):
 
 
 @app.delete("/api/videos/{vid}")
-def del_video(vid: str):
+def del_video(vid: str, request: Request):
+    require_admin(request)
     d = db()
     d["videos"].pop(vid, None)
     save_db(d)
@@ -537,7 +565,8 @@ def del_video(vid: str):
 
 
 @app.patch("/api/videos/{vid}/segments/{idx}")
-def patch_segment(vid: str, idx: int, payload: dict):
+def patch_segment(vid: str, idx: int, payload: dict, request: Request):
+    require_admin(request)
     """문장 start/end/text 수정 — ±0.1s 미세조정 UI가 이 엔드포인트를 쓴다."""
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
@@ -575,7 +604,8 @@ def get_script(vid: str):
 
 
 @app.put("/api/videos/{vid}/script")
-def put_script(vid: str, payload: dict):
+def put_script(vid: str, payload: dict, request: Request):
+    require_admin(request)
     """대본을 통째로 교체한다. 저장 전에 파싱 오류를 그대로 돌려준다."""
     md = (payload.get("markdown") or "").strip()
     if not md:
@@ -638,7 +668,9 @@ async def add_audio(
     offset: float = Form(0.0),
     source: str = Form("owned"),
     license: str = Form(""),
+    request: Request = None,
 ):
+    require_admin(request)
     """소유·라이선스가 확보된 음원만 등록한다. (제3자 영상 오디오 추출 금지)"""
     ext = os.path.splitext(file.filename or ".m4a")[1].lower()
     if ext not in AUDIO_EXT:
@@ -680,7 +712,8 @@ def patch_audio(aid: str, payload: dict):
 
 
 @app.delete("/api/audios/{aid}")
-def del_audio(aid: str):
+def del_audio(aid: str, request: Request):
+    require_admin(request)
     d = db()
     a = d["audios"].pop(aid, None)
     if a:
@@ -693,7 +726,8 @@ def del_audio(aid: str):
 
 
 @app.post("/api/videos/{vid}/link-audio")
-def link_audio(vid: str, payload: dict):
+def link_audio(vid: str, payload: dict, request: Request):
+    require_admin(request)
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     aid = payload.get("audio_id")
@@ -893,11 +927,6 @@ def get_progress():
     return prog.progress(d["videos"])
 
 
-@app.get("/api/badges")
-def get_badges():
-    return {"badges": prog.badges(), "xp": prog.level_info()}
-
-
 # ---- 북마크 / 오답노트 / 단어장
 @app.get("/api/notes")
 def get_notes():
@@ -956,7 +985,7 @@ def yt_meta(url: str = ""):
             "thumb": f"https://i.ytimg.com/vi/{yt}/mqdefault.jpg"}
     try:
         req = urllib.request.Request(target, headers={
-            "User-Agent": "Mozilla/5.0 (Echo/3.5)", "Accept": "application/json"})
+            "User-Agent": "Mozilla/5.0 (Langel/3.7)", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=6) as r:
             j = json.loads(r.read().decode("utf-8"))
         data.update({"ok": bool(j.get("title")), "title": j.get("title", "")[:120],
@@ -982,7 +1011,8 @@ def sync_split(payload: dict):
 
 
 @app.post("/api/sync/apply")
-def sync_apply(payload: dict):
+def sync_apply(payload: dict, request: Request):
+    require_admin(request)
     """재생하며 찍은 타이밍을 저장한다.
 
     {url, title, vid?, sentences:[{start,end,en,ko}], markdown?, duration?}
@@ -1056,5 +1086,39 @@ def sync_apply(payload: dict):
 
 
 
+# ---- 최종 검증 (완료 판정의 유일한 기준)
+@app.post("/api/videos/{vid}/final/check")
+def check_final(vid: str, payload: dict):
+    """문장별 셰도잉 점수 묶음을 받아 통과 판정을 내린다."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    scores = payload.get("scores") or []
+    n = len(v["segs"])
+    if len(scores) != n:
+        raise HTTPException(422, f"문장 수({n})와 점수 개수({len(scores)})가 다릅니다")
+    res = prog.record_final(vid, scores)
+    return {**res, "complete": prog.is_complete(vid),
+            "xp": prog.level_info(), "completed": prog.completed_count()}
+
+
+@app.delete("/api/videos/{vid}/final")
+def reset_final(vid: str):
+    d = prog._finals()
+    d.pop(vid, None)
+    prog._save(prog.FINAL, d)
+    return {"ok": True, "complete": False}
+
+
 # ---- 정적
+@app.get("/admin")
+def admin_login(request: Request):
+    """관리자 링크: /admin?token=*** → 쿠키 저장 후 앱으로 이동"""
+    tok = (request.query_params.get("token") or "").strip()
+    resp = RedirectResponse("/", status_code=302)
+    if ADMIN_TOKEN and tok == ADMIN_TOKEN:
+        resp.set_cookie("langel_admin", tok, max_age=60 * 60 * 24 * 30,
+                        httponly=True, samesite="lax")
+    return resp
+
+
 app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
