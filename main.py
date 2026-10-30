@@ -56,7 +56,7 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Echo Shadowing API", version="3.5")
+app = FastAPI(title="Echo Shadowing API", version="3.6")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 

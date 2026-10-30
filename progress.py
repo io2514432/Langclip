@@ -144,13 +144,14 @@ def level_info() -> dict:
 
 
 # ---------------------------------------------------------------- badges
+# (id, 아이콘 심볼, 이름, 설명) — 이모지 대신 선 도형 아이콘을 쓴다
 BADGES = [
-    ("first_try", "🎤", "첫 채점", "처음으로 문장을 녹음해 채점받았어요"),
-    ("first_pass", "✅", "첫 통과", "문장 하나를 70점 이상으로 통과했어요"),
-    ("perfect_one", "💎", "완벽한 문장", "한 문장에서 90점 이상을 받았어요"),
-    ("streak3", "🔥", "3일 연속", "3일 연속으로 학습했어요"),
-    ("streak7", "🌟", "7일 연속", "일주일 내내 학습했어요"),
-    ("words10", "📚", "단어 10개", "단어장에 10개를 모았어요"),
+    ("first_try", "i-mic", "첫 채점", "처음으로 문장을 녹음해 채점받았어요"),
+    ("first_pass", "i-check", "첫 통과", "문장 하나를 70점 이상으로 통과했어요"),
+    ("perfect_one", "i-diamond", "완벽한 문장", "한 문장에서 90점 이상을 받았어요"),
+    ("streak3", "i-flame", "3일 연속", "3일 연속으로 학습했어요"),
+    ("streak7", "i-flame", "7일 연속", "일주일 내내 학습했어요"),
+    ("words10", "i-book", "단어 10개", "단어장에 10개를 모았어요"),
 ]
 
 
@@ -171,7 +172,7 @@ def badge_state() -> dict:
 
 def badges() -> list[dict]:
     got = badge_state()
-    return [{"id": i, "emoji": e, "label": n, "desc": d, "got": bool(got.get(i))}
+    return [{"id": i, "icon": e, "label": n, "desc": d, "got": bool(got.get(i))}
             for i, e, n, d in BADGES]
 
 

@@ -8,6 +8,28 @@
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+
+<!-- ===== 아이콘 (선 도형 · 이모지 대체) ===== -->
+<svg class="spr" aria-hidden="true" focusable="false">
+  <symbol id="i-script" viewBox="0 0 24 24"><path d="M7 3.5h7.5L19 8v12.5H7z"/><path d="M14.2 3.7V8H18.6"/><path d="M9.8 12h6.2M9.8 15.4h6.2M9.8 18.8h3.6"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 10.2a2.4 2.4 0 1 0 0 3.6M17 10.2a2.4 2.4 0 1 0 0 3.6"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24"><path d="M4 9.5A5 5 0 0 1 9 5h7"/><path d="M13.6 2.4 16.6 5l-3 2.6"/><path d="M20 14.5a5 5 0 0 1-5 4.5H8"/><path d="M10.4 21.6 7.4 19l3-2.6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.6" width="6" height="11" rx="3"/><path d="M5.6 11.4a6.4 6.4 0 0 0 12.8 0"/><path d="M12 17.8v3.6M8.8 21.4h6.4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.8l5.9-.8z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 6.4l11.2 11.2M17.6 6.4 6.4 17.6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.5 4.8 19 12 7.5 19.2z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.4 5v14M15.6 5v14"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M14.6 5.4 8 12l6.6 6.6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M9.4 5.4 16 12l-6.6 6.6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16.4V4.6"/><path d="M8.2 8.2 12 4.4l3.8 3.8"/><path d="M4.6 15.4v3.2a1.8 1.8 0 0 0 1.8 1.8h11.2a1.8 1.8 0 0 0 1.8-1.8v-3.2"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.2M8 7.4v9.2M12 4.6v14.8M16 8.6v6.8M20.8 10.8v2.4"/></symbol>
+  <symbol id="i-head" viewBox="0 0 24 24"><path d="M4.4 14.6v-2.2a7.6 7.6 0 0 1 15.2 0v2.2"/><rect x="2.8" y="13.4" width="4" height="6.2" rx="2"/><rect x="17.2" y="13.4" width="4" height="6.2" rx="2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.8 10 17.6 19.4 6.6"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c3.6 0 6-2.3 6-5.4 0-4.2-4.4-6.3-4.4-10.4C10.4 6.4 8 7.9 8 10.6c0 1 .4 1.9 1 2.6-1.6.4-2.6 1.6-2.6 3.1C6.4 19 8.9 21 12 21z"/></symbol>
+  <symbol id="i-diamond" viewBox="0 0 24 24"><path d="M12 3.4 20.6 12 12 20.6 3.4 12z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.2 5.2A2 2 0 0 1 6.2 3.2H19v17.6H6.2a2 2 0 0 1-2-2z"/><path d="M4.2 17.6h14.8"/></symbol>
+</svg>
+
 <div class="stage">
   <div class="phone" id="phone">
 
@@ -18,7 +40,7 @@
 
     <header class="appbar">
       <div class="brand"><span class="logo"></span>Echo</div>
-      <div class="streak" id="head-streak">🔥 0일</div>
+      <div class="streak" id="head-streak"><svg class="ic"><use href="#i-flame"/></svg><span id="head-streak-n">0일</span></div>
     </header>
 
     <main class="screens">
@@ -28,12 +50,11 @@
         <div class="scroll">
           <div class="home-top">
             <button class="daily" id="daily">
-              <span class="daily-ico">🏋️</span>
               <span class="daily-main">
                 <span class="daily-t" id="daily-t">오늘의 쇼츠 <b>0%</b> 암기</span>
                 <span class="daily-s" id="daily-s">학습할 쇼츠를 불러오는 중…</span>
               </span>
-              <span class="daily-chev">›</span>
+              <svg class="ic daily-chev"><use href="#i-right"/></svg>
             </button>
           </div>
 
@@ -41,7 +62,7 @@
             <div class="xp-top">
               <span class="xp-lv" id="xp-lv">Lv.1</span>
               <span class="xp-t" id="xp-t">0 XP · 다음까지 120</span>
-              <span class="xp-b" id="xp-badges">🏅 0</span>
+              <span class="xp-b" id="xp-badges">0 / 0</span>
             </div>
             <div class="xp-track"><i id="xp-fill"></i></div>
           </div>
@@ -81,7 +102,7 @@
           <div id="vlist"></div>
           <div class="tip">
             <b>영상 추가</b>
-            <p>아래 <b>+ 추가</b> 탭에 쇼츠 주소와 대본을 넣으면, 재생하며 <b>싱크</b>를 맞춰 바로 등록됩니다.</p>
+            <p>아래 <b>추가</b> 탭에 쇼츠 주소와 대본을 넣으면, 재생하며 <b>싱크</b>를 맞춰 바로 등록됩니다.</p>
           </div>
         </div>
       </section>
@@ -93,26 +114,28 @@
           <div class="vshade"></div>
 
           <div class="vtop">
-            <button class="vback" id="btn-back">‹</button>
+            <button class="vback" id="btn-back"><svg class="ic"><use href="#i-left"/></svg></button>
             <div class="vtitle" id="p-title">—</div>
             <div class="vcount" id="p-count">1 / 1</div>
           </div>
 
           <div class="vrail">
             <button class="rail" id="btn-script" title="전체 스크립트">
-              <span class="rail-ic">📜</span><span class="rail-lab">대본</span>
+              <svg class="ic"><use href="#i-script"/></svg><span class="rail-lab">대본</span>
             </button>
             <button class="rail" id="btn-sub" title="자막 표시">
-              <span class="rail-ic">文A</span><span class="rail-lab" id="sub-lab">둘 다</span>
+              <svg class="ic"><use href="#i-cc"/></svg><span class="rail-lab" id="sub-lab">둘 다</span>
             </button>
             <button class="rail" id="btn-repeat" title="현재 문장 반복">
-              <span class="rail-ic">🔁</span><span class="rail-lab" id="loop-lab">반복 끔</span>
+              <svg class="ic"><use href="#i-loop"/></svg><span class="rail-lab" id="loop-lab">반복</span>
+            </button>
+            <button class="rail" id="btn-shadow" title="쉐도잉">
+              <svg class="ic"><use href="#i-mic"/></svg><span class="rail-lab">쉐도잉</span>
             </button>
           </div>
 
-          <button class="star" id="btn-star" title="이 문장 북마크" hidden>☆</button>
-
           <div class="vsub" id="vsub">
+            <button class="star" id="btn-star" title="이 문장 북마크" hidden><svg class="ic"><use href="#i-star"/></svg></button>
             <div class="sub-en" id="sub-en"></div>
             <div class="sub-ko" id="sub-ko"></div>
           </div>
@@ -120,8 +143,8 @@
           <!-- 쉐도잉 파형 -->
           <div class="wave" id="wave" hidden>
             <div class="wv-head">
-              <span class="wv-dot" id="wv-dot"></span>
-              <span class="wv-lab" id="wv-lab">원본 문장</span>
+              <span class="wv-state" id="wv-state">듣기</span>
+              <span class="wv-lab" id="wv-lab"></span>
               <span class="wv-sp"></span>
               <span class="wv-time" id="wv-time">0.0s</span>
             </div>
@@ -131,7 +154,6 @@
               <span class="wv-lg"><i class="lg-me"></i>내 목소리</span>
               <span class="wv-sp"></span>
               <span class="wv-score" id="wv-score"></span>
-              <button class="wv-x" id="wv-close">닫기</button>
             </div>
           </div>
 
@@ -145,22 +167,16 @@
               <span class="cd-wedge"></span>
               <b class="cd-num" id="cd-num">2</b>
             </div>
-            <div class="cd-tip" id="cd-tip">곧 문장이 재생됩니다 · 준비하세요</div>
           </div>
 
           <div class="vbottom">
             <div class="vprog"><i id="vprog"></i></div>
             <div class="vrow">
-              <button class="vbtn" id="btn-prev">‹ 이전</button>
-              <button class="vbtn grow" id="btn-play">▶ 재생</button>
-              <button class="vbtn" id="btn-next-seg">다음 ›</button>
+              <button class="vbtn" id="btn-prev"><svg class="ic"><use href="#i-left"/></svg> 이전</button>
+              <button class="vbtn grow" id="btn-play"><svg class="ic"><use href="#i-play"/></svg> 재생</button>
+              <button class="vbtn" id="btn-next-seg">다음 <svg class="ic"><use href="#i-right"/></svg></button>
             </div>
-            <button class="shadow-btn" id="btn-shadow">
-              <span class="sb-ic">🎤</span>
-              <span class="sb-tx" id="sb-tx">따라 말하기</span>
-              <span class="sb-sub" id="sb-sub">듣고 그대로 말하면 점수를 매겨요</span>
-            </button>
-            <div class="vhint" id="rec-hint">문장을 고르고 🎤 따라 말하기를 누르세요</div>
+            <div class="vhint" id="rec-hint">문장을 고르고 오른쪽 <b>쉐도잉</b>을 눌러보세요</div>
           </div>
         </div>
       </section>
@@ -181,7 +197,6 @@
             <div class="axis" data-k="rhythm"><span class="ax-label">리듬</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
             <div class="axis" data-k="timbre"><span class="ax-label">음색</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
             <div class="axis" data-k="attack"><span class="ax-label">어택</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
-            <div class="axis" data-k="timing"><span class="ax-label">길이</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
             <div class="note" id="mode-note"></div>
           </div>
 
@@ -194,11 +209,20 @@
             <div class="seg-t" id="res-ko" style="font-size:11px;line-height:1.6;color:#4E708C;margin-top:4px"></div>
           </div>
 
+          <div class="card listen-card">
+            <div class="card-row"><span class="card-label">다시 듣기</span></div>
+            <div class="mix">
+              <button class="mix-b" id="mix-ref"><svg class="ic"><use href="#i-head"/></svg><span>원본</span></button>
+              <button class="mix-b" id="mix-me"><svg class="ic"><use href="#i-mic"/></svg><span>내 목소리</span></button>
+              <button class="mix-b" id="mix-both"><svg class="ic"><use href="#i-wave"/></svg><span>겹쳐 듣기</span></button>
+            </div>
+            <div class="mix-hint" id="mix-hint"></div>
+          </div>
+
           <div class="coach" id="coach"></div>
 
           <div class="actions">
             <button class="btn primary" id="btn-retry">같은 문장 다시 하기</button>
-            <button class="btn ghost" id="btn-next">다음 문장으로</button>
           </div>
         </div>
       </section>
@@ -224,7 +248,7 @@
           <div class="vshade"></div>
 
           <div class="vtop">
-            <button class="vback" id="btn-sync-back">‹</button>
+            <button class="vback" id="btn-sync-back"><svg class="ic"><use href="#i-left"/></svg></button>
             <div class="vtitle" id="sync-title">싱크 맞추기</div>
             <div class="vcount" id="sync-count">0 / 0</div>
           </div>
@@ -239,9 +263,9 @@
           <div class="sync-bottom">
             <div class="sync-clock"><b id="sync-clock">0:00.0</b><span>현재 영상 시각</span></div>
             <div class="sync-row">
-              <button class="vbtn" id="sync-undo" title="마지막 경계 지우기 (Backspace)">↶ 되돌리기</button>
+              <button class="vbtn" id="sync-undo" title="마지막 지점 지우기 (Backspace)">되돌리기</button>
               <button class="sync-tap" id="sync-tap"><span>첫 문장 끝</span><em>SPACE</em></button>
-              <button class="vbtn" id="sync-play" title="재생/일시정지 (→)">▶ 재생</button>
+              <button class="vbtn" id="sync-play" title="재생/일시정지 (→)"><svg class="ic"><use href="#i-play"/></svg></button>
             </div>
             <div class="sync-opts">
               <button class="vbtn sm" id="sync-speed">1.0x</button>
@@ -260,7 +284,7 @@
       <button class="tab" id="tab-add"><span class="ti ti-plus"></span>추가</button>
     </nav>
 
-    <!-- ===== 추가(+) · 싱크 시작 ===== -->
+    <!-- ===== 추가(+) ===== -->
     <div class="sheet-wrap" id="sheet-add" hidden>
       <div class="sheet-bg" data-close></div>
       <div class="sheet">
@@ -308,6 +332,50 @@ Sure. What size would you like?
         <h3 id="sc-title">전체 스크립트</h3>
         <p class="sheet-desc">지금 재생 중인 문장이 표시됩니다 · 문장을 누르면 그 구간으로 이동합니다.</p>
         <div class="sc-list" id="sc-list"></div>
+
+        <div class="sc-audio">
+          <div class="sc-audio-h"><svg class="ic"><use href="#i-wave"/></svg><b>원본 음성</b><span id="sc-audio-state"></span></div>
+          <p id="sc-audio-sub">연결하면 실제 파형으로 그리고 음향 채점을 합니다.</p>
+          <div class="sc-audio-row">
+            <button class="btn sm primary" id="sc-audio-btn">음성 파일 넣기</button>
+            <button class="btn sm ghost" id="sc-audio-unlink" hidden>연결 해제</button>
+          </div>
+        </div>
+
+        <button class="btn text" data-close>닫기</button>
+      </div>
+    </div>
+
+    <!-- ===== 원본 음성 등록 ===== -->
+    <div class="sheet-wrap" id="sheet-audio" hidden>
+      <div class="sheet-bg" data-close></div>
+      <div class="sheet">
+        <div class="sheet-grip"></div>
+        <h3>원본 음성 넣기</h3>
+        <p class="sheet-desc"><b>본인 소유이거나 사용 허락을 받은 음원</b>만 넣어주세요. 유튜브 영상의 소리를 따로 추출해 넣는 것은 지원하지 않습니다.</p>
+
+        <label class="field"><span>음성 파일</span>
+          <input type="file" id="au-file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.opus,.flac,.aac" /></label>
+        <label class="field"><span>이름</span>
+          <input id="au-title" placeholder="예: 카페 주문 대화 (내 녹음)" maxlength="80" /></label>
+
+        <div class="field-row">
+          <label class="field"><span>권리</span>
+            <select id="au-source">
+              <option value="owned">직접 녹음·제작</option>
+              <option value="licensed">사용 허락 받음</option>
+            </select></label>
+          <label class="field"><span>오프셋 (초)</span>
+            <input id="au-offset" type="number" step="0.1" value="0" /></label>
+        </div>
+
+        <label class="field"><span>라이선스 메모</span>
+          <input id="au-license" placeholder="예: 내가 직접 녹음 / 출처 표기" maxlength="120" /></label>
+
+        <label class="check"><input type="checkbox" id="au-ok" />
+          위 음원의 권리를 보유했거나 사용 허락을 받았습니다</label>
+
+        <button class="btn primary" id="au-save">올리고 연결하기</button>
         <button class="btn text" data-close>닫기</button>
       </div>
     </div>
@@ -324,7 +392,7 @@ Sure. What size would you like?
           <input id="w-meaning" placeholder="내 뜻을 적어두세요" maxlength="200" />
           <button id="w-save">저장</button>
         </div>
-        <button class="btn ghost sm" id="w-book">🔖 단어장에 담기</button>
+        <button class="btn ghost sm" id="w-book">단어장에 담기</button>
         <button class="btn text" data-close>닫기</button>
       </div>
     </div>
