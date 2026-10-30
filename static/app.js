@@ -1,102 +1,21 @@
 /* =========================================================
-   Echo · 문장별 셰도잉 (YouTube IFrame segment player)
+   Echo · 문장별 셰도잉  v3.4
+   - 홈 대시보드(XP·레벨·배지·연속일)
+   - 연속 재생 플레이어 / 반복 on-off / 별표 북마크
    ========================================================= */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const S = {
   videos: [], cur: null, idx: 0,
-  player: null, ready: false, loop: 1,
-  seg: null, tick: 0,
-  stream: null, rec: null, chunks: [], levels: [],
-  actx: null, an: null, raf: 0, t0: 0, lastLoud: 0, timer: 0,
-  takeBlob: null, scores: {},
-  nudgeT: 0, nudgeBase: null, nudgeBusy: false,
+  player: null, ready: false,
+  sub: "both", repeat: false,
+  seg: null, tick: null, playedOnce: false,
+  stream: null, rec: null, chunks: [], actx: null, an: null,
+  raf: 0, t0: 0, lastLoud: 0, timer: 0,
+  takeBlob: null, notes: { sentences: [], words: [] },
+  progress: null, word: null, lastResult: null,
 };
-let AUDIOS = [];
-
-/* =======================================================
-   SegmentController — 시험 가능한 재생 제어기
-   YouTube IFrame API에는 "여기서 멈춰라"가 없다.
-   따라서 80ms 폴링으로 현재 시간을 감시하고 end에 닿으면
-   pauseVideo() + seekTo(start) 한다.
-   ======================================================= */
-class SegmentController {
-  constructor(getPlayer, opts = {}) {
-    this.get = getPlayer;
-    this.poll = opts.poll ?? 80;
-    this.eps = opts.eps ?? 0.06;
-    this.seg = null;
-    this.loopLeft = 0;
-    this.timer = null;
-    this.onStop = opts.onStop || (() => {});
-    this.onTick = opts.onTick || (() => {});
-  }
-  play(seg, repeats = 1) {
-    const p = this.get();
-    if (!p) return false;
-    this.seg = { start: +seg.start, end: +seg.end };
-    this.loopLeft = Math.max(0, repeats - 1);
-    p.seekTo(this.seg.start, true);
-    p.playVideo();
-    this._start();
-    return true;
-  }
-  _start() {
-    this._clear();
-    this.timer = setInterval(() => this._check(), this.poll);
-  }
-  _check() {
-    const p = this.get();
-    if (!p || !this.seg) return this._clear();
-    const t = p.getCurrentTime();
-    this.onTick(t, this.seg);
-    if (t >= this.seg.end - this.eps) {
-      if (this.loopLeft > 0) {
-        this.loopLeft -= 1;
-        p.seekTo(this.seg.start, true);
-        p.playVideo();
-      } else {
-        p.pauseVideo();
-        const done = this.seg;
-        this.holdAt = { start: done.start, end: done.end };
-        this.seg = null;
-        this._clear();
-        this.onStop(done);
-      }
-    }
-  }
-  stop({ hold = false } = {}) {
-    const p = this.get();
-    if (p && !hold) p.pauseVideo();
-    this.seg = null;
-    this._clear();
-  }
-  _clear() {
-    if (this.timer) { clearInterval(this.timer); this.timer = null; }
-  }
-  get active() { return !!this.seg; }
-}
-
-const setNow = (txt) => { const el = $("#now-seg"); if (el) el.textContent = txt; };
-const setPlayingBtn = (on) => {
-  const b = $("#btn-play-seg"); if (!b) return;
-  b.classList.toggle("playing", !!on);
-};
-
-const ctrl = new SegmentController(() => S.player, {
-  onStop: () => {
-    setNow("—");
-    setPlayingBtn(false);
-    const b = $("#btn-play-seg");
-    if (b && b.dataset.wasPlaying) {
-      delete b.dataset.wasPlaying;
-      setHint("문장 재생 완료 · 이제 따라 말해보세요");
-    }
-  },
-  onTick: (t, seg) => setNow(`${t.toFixed(1)}s / ${seg.end.toFixed(1)}s`),
-});
-window.Echo = { SegmentController, ctrl, S };
 
 /* ---------------- utils ---------------- */
 function toast(msg, ms = 2600) {
@@ -105,13 +24,18 @@ function toast(msg, ms = 2600) {
   clearTimeout(t._h);
   t._h = setTimeout(() => (t.hidden = true), ms);
 }
-const fmt = (n) => (isFinite(n) ? n.toFixed(1) : "0.0");
+const fmt = (n) => (isFinite(n) ? Number(n).toFixed(1) : "0.0");
 const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
 function show(id) {
   $$(".screen").forEach((el) => el.classList.toggle("is-active", el.id === id));
+  $$(".tab").forEach((t) => t.classList.toggle("is-on", t.dataset.tab === id));
   const sc = $("#" + id + " .scroll");
   if (sc) sc.scrollTop = 0;
+  if (id !== "s-play" && id !== "s-test") stopTick();
 }
+
 async function api(url, opts) {
   const r = await fetch(url, opts);
   if (!r.ok) {
@@ -121,9 +45,14 @@ async function api(url, opts) {
   }
   return r.json();
 }
-const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const jsonPost = (url, body) => api(url, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+const jsonPatch = (url, body) => api(url, {
+  method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
 
-/* ---------------- YouTube player ---------------- */
+/* ---------------- YouTube ---------------- */
 let ytPromise = null;
 function loadYT() {
   if (ytPromise) return ytPromise;
@@ -140,6 +69,24 @@ function loadYT() {
   });
   return ytPromise;
 }
+
+/* 쇼츠를 화면에 꽉 채우기: 16:9를 확대해 중앙 정렬(cover) */
+function sizeVideo() {
+  const host = $("#vframe");
+  if (!host) return;
+  const iw = host.clientWidth, ih = host.clientHeight;
+  if (!iw || !ih) return;
+  const scale = Math.max(iw / 16, ih / 9);
+  const w = Math.round(16 * scale), h = Math.round(9 * scale);
+  const f = host.querySelector("iframe");
+  if (!f) return;
+  f.style.width = w + "px";
+  f.style.height = h + "px";
+  f.style.left = Math.round((iw - w) / 2) + "px";
+  f.style.top = Math.round((ih - h) / 2) + "px";
+}
+window.addEventListener("resize", () => { if (S.cur) sizeVideo(); });
+
 async function mountPlayer(videoId) {
   const YT = await loadYT();
   const host = $("#yt");
@@ -147,323 +94,358 @@ async function mountPlayer(videoId) {
   const box = document.createElement("div");
   host.appendChild(box);
   if (!YT) {
-    box.innerHTML = `<div style="display:grid;place-items:center;height:100%;color:#8AA5BC;font-size:11px;text-align:center;padding:14px;line-height:1.6">YouTube 플레이어를 불러오지 못했습니다.<br/>네트워크 차단 환경에서는 문장 구간 정보만 확인할 수 있습니다.</div>`;
+    box.innerHTML = `<div style="display:grid;place-items:center;width:100vw;height:100vh;color:#8AA5BC;font-size:12px;text-align:center;padding:24px;line-height:1.7">YouTube 플레이어를 불러오지 못했습니다.<br/>네트워크 차단 환경에서는 대본만 볼 수 있습니다.</div>`;
     S.player = null; S.ready = false;
     return;
   }
   await new Promise((resolve) => {
     S.player = new YT.Player(box, {
       videoId,
-      playerVars: {
-        enablejsapi: 1, playsinline: 1, rel: 0, modestbranding: 1,
-        controls: 1, origin: location.origin,
-      },
+      playerVars: { enablejsapi: 1, playsinline: 1, rel: 0, modestbranding: 1, controls: 0, origin: location.origin },
       events: {
-        onReady: () => { S.ready = true; resolve(); },
+        onReady: () => { S.ready = true; sizeVideo(); resolve(); },
         onError: () => { S.ready = false; resolve(); },
       },
     });
   });
+  setTimeout(sizeVideo, 200);
 }
 
-/* ---------------- 홈 ---------------- */
+/* ================= 홈 ================= */
+async function loadHome() {
+  try { S.progress = await api("/api/progress"); } catch { S.progress = null; }
+  try { S.notes = await api("/api/notes"); } catch { S.notes = { sentences: [], words: [] }; }
+  renderHome();
+}
+
+function renderHome() {
+  const p = S.progress || {};
+  const f = p.focus;
+  const st = p.streak || { days: 0, week: [] };
+  const xp = p.xp || { xp: 0, level: 1, pct: 0, next: 120, need: 120 };
+  const bg = p.badges || [];
+  const got = bg.filter((b) => b.got).length;
+
+  $("#head-streak").textContent = `🔥 ${st.days}일`;
+  $("#streak-days").textContent = `연속 학습 ${st.days}일`;
+  $("#streak-sub").textContent = st.today_done ? "오늘도 완료!" : (st.days ? "오늘 하면 이어져요" : "첫 학습을 시작해보세요");
+
+  $("#xp-lv").textContent = `Lv.${xp.level}`;
+  $("#xp-t").textContent = `${xp.xp} XP · 다음까지 ${xp.next}`;
+  $("#xp-badges").textContent = `🏅 ${got}/${bg.length}`;
+  $("#xp-fill").style.width = Math.max(3, xp.pct) + "%";
+
+  $("#week").innerHTML = (st.week || []).map((d) => `
+    <div class="wday ${d.done ? "done" : ""} ${d.is_today ? "today" : ""} ${d.is_future ? "future" : ""}">
+      <span class="wd-lab">${esc(d.label)}</span>
+      <span class="wd-dot">${d.is_today ? "🔥" : (d.done ? "•" : "")}</span>
+    </div>`).join("");
+
+  if (f) {
+    const m = f.memorized || { pct: 0, done: 0, total: f.segs };
+    const doneTxt = f.complete ? "암기 완료 ✅" : `문장 ${m.total}개 중 ${m.done}개 통과`;
+    $("#daily-t").innerHTML = f.complete
+      ? `오늘의 쇼츠 <b>암기 완료</b>`
+      : `오늘의 쇼츠 <b>${Math.round(m.pct)}%</b> 암기`;
+    $("#daily-s").textContent = f.title || "학습할 쇼츠";
+    $("#focus-s").textContent = `「${f.title}」 · ${doneTxt}`;
+    $("#focus-bar").style.width = Math.max(2, Math.min(100, m.pct)) + "%";
+    $("#focus-meta-l").textContent = `문장 ${m.total}개 · 오늘 ${f.tried_today}회 시도`;
+    $("#focus-meta-r").textContent = f.complete ? "완료" : `${Math.round(m.pct)}%`;
+    $("#btn-start").disabled = false;
+    $("#btn-start").textContent = f.complete ? "다시 복습하기" : (m.tried ? "이어서 학습하기" : "시작하기");
+    $("#fan").innerHTML = [0, 1, 2].map((i) => `
+      <div class="fan-item">
+        <img src="https://i.ytimg.com/vi/${esc(f.yt)}/mqdefault.jpg" alt="" />
+        ${i === 1 ? `<span class="fan-badge">${f.complete ? "완료" : Math.round(m.pct) + "%"}</span>` : ""}
+      </div>`).join("");
+  } else {
+    $("#daily-t").innerHTML = "오늘의 쇼츠 <b>0%</b> 암기";
+    $("#daily-s").textContent = "등록된 영상이 없습니다";
+    $("#focus-s").textContent = "+ 추가 탭에서 첫 쇼츠를 등록해주세요.";
+    $("#btn-start").disabled = true;
+    $("#fan").innerHTML = `<div class="fan-item"></div><div class="fan-item"></div><div class="fan-item"></div>`;
+  }
+
+  const ns = S.notes.sentences || [];
+  $("#note-count").textContent = ns.length;
+  const box = $("#note-preview");
+  if (!ns.length) {
+    box.innerHTML = `<div class="note-empty"><b>아직 저장한 문장이 없습니다</b><br />학습 중 자막 위 ☆ 를 누르면 어려운 문장이 여기에 모입니다.</div>`;
+  } else {
+    box.innerHTML = ns.slice(0, 4).map(noteCard).join("");
+    $$("#note-preview .note-card").forEach((el) => {
+      el.onclick = () => jumpTo(el.dataset.vid, +el.dataset.idx);
+    });
+  }
+  renderNotesScreen(bg);
+}
+
+const noteCard = (n) => `
+  <button class="note-card" data-vid="${esc(n.vid)}" data-idx="${n.idx}">
+    <div class="nc-en">${esc(n.en)}</div>
+    ${n.ko ? `<div class="nc-ko">${esc(n.ko)}</div>` : ""}
+    <div class="nc-meta">
+      <span class="tag">${fmt(n.start)}–${fmt(n.end)}s</span>
+      <span>${esc(n.title || "")}</span>
+      <span class="nc-go">›</span>
+    </div>
+  </button>`;
+
+function renderNotesScreen(bg) {
+  const ns = S.notes.sentences || [];
+  const nw = S.notes.words || [];
+  const badges = bg || (S.progress && S.progress.badges) || [];
+  $("#n-count-s").textContent = ns.length;
+  $("#n-count-w").textContent = nw.length;
+  $("#n-count-b").textContent = badges.filter((b) => b.got).length;
+
+  $("#notes-list").innerHTML = ns.length
+    ? ns.map(noteCard).join("")
+    : `<div class="note-empty"><b>오답 노트가 비어 있어요</b><br />학습 화면 자막 위 ☆ 를 누르면 이곳에 쌓입니다.</div>`;
+  $$("#notes-list .note-card").forEach((el) => {
+    el.onclick = () => jumpTo(el.dataset.vid, +el.dataset.idx);
+  });
+
+  $("#words-list").innerHTML = nw.length
+    ? nw.map((w) => `
+      <div class="note-card" style="cursor:default">
+        <div class="nc-en">${esc(w.word)}</div>
+        <div class="nc-ko">${esc(w.meaning || "뜻을 적어두세요")}</div>
+        <div class="nc-meta"><span class="tag">단어</span><span>${esc((w.ctx || "").slice(0, 40))}</span></div>
+      </div>`).join("")
+    : `<div class="note-empty"><b>단어장이 비어 있어요</b><br />자막의 단어를 탭하면 뜻을 확인하고 담을 수 있습니다.</div>`;
+
+  $("#badge-list").innerHTML = badges.length
+    ? `<div class="badges">${badges.map((b) => `
+        <div class="badge ${b.got ? "got" : ""}">
+          <span class="bd-e">${b.emoji}</span>
+          <span class="bd-n">${esc(b.label)}</span>
+        </div>`).join("")}</div>`
+    : "";
+}
+
+async function jumpTo(vid, idx) {
+  let v = S.videos.find((x) => x.id === vid);
+  if (!v) { try { v = await api("/api/videos/" + vid); } catch { return toast("영상을 찾을 수 없습니다"); } }
+  await openVideo(v, idx);
+}
+
+/* ================= 영상 목록 ================= */
 async function loadVideos() {
   try { S.videos = await api("/api/videos"); }
   catch (e) { S.videos = []; toast("목록을 불러오지 못했습니다: " + e.message, 4000); }
   renderVideos();
 }
+
 function renderVideos() {
   const box = $("#vlist");
-  box.innerHTML = "";
   $("#v-count").textContent = S.videos.length;
   if (!S.videos.length) {
-    box.innerHTML = `<div class="tip"><b>아직 영상이 없습니다</b><p>아래 <b>영상 추가</b> 버튼을 눌러 유튜브 링크와 자막을 넣어주세요.</p></div>`;
+    box.innerHTML = `<div class="note-empty"><b>아직 영상이 없습니다</b><br />아래 <b>+ 추가</b>에서 쇼츠 주소와 대본을 넣어주세요.</div>`;
     return;
   }
+  box.innerHTML = "";
   S.videos.forEach((v) => {
-    const el = document.createElement("button");
-    el.className = "vcard";
+    const pct = v.complete ? 100 : Math.round((v.memorized && v.memorized.pct) || 0);
+    const el = document.createElement("div");
+    el.className = "note-card vrowcard";
     el.innerHTML = `
-      <div class="thumb">
-        <img src="https://i.ytimg.com/vi/${esc(v.yt)}/mqdefault.jpg" alt="" loading="lazy" />
-        <span class="pl"></span>
-      </div>
-      <div class="vbody">
-        <div class="vt">${esc(v.title)}</div>
-        <div class="vs">
-          <span class="chip">문장 ${v.n}개</span>
-          ${v.has_audio ? `<span class="chip">음향 채점</span>` : `<span class="chip gray">타이밍 채점</span>`}
+      <button class="vdel" title="삭제" data-del="${esc(v.id)}">✕</button>
+      <div class="vc-body">
+        <div class="vc-thumb">
+          <img src="https://i.ytimg.com/vi/${esc(v.yt)}/mqdefault.jpg" alt="" />
         </div>
+        <div class="vc-main">
+          <div class="nc-en" style="font-size:13px">${esc(v.title)} ${v.complete ? '<span class="okchip">완료</span>' : ""}</div>
+          <div class="nc-meta" style="margin-top:5px">
+            <span class="tag">문장 ${v.n}개</span>
+            <span>${v.memorized ? v.memorized.done : 0}/${v.n} 통과</span>
+          </div>
+          <div class="focus-bar" style="margin-top:8px;height:5px"><i style="width:${pct}%"></i></div>
+        </div>
+        <div class="vc-pct">${pct}%</div>
       </div>`;
-    el.querySelector("img").onerror = (ev) => {
-      ev.target.style.display = "none";
-      ev.target.parentElement.style.background =
-        "linear-gradient(135deg,#EAF7FF,#D6EEFC)";
-    };
-    el.onclick = () => openVideo(v);
+    el.querySelector(".vc-body").onclick = () => openVideo(v, 0);
+    el.querySelector(".vdel").onclick = (e) => { e.stopPropagation(); deleteVideo(v); };
     box.appendChild(el);
   });
 }
 
-/* ---------------- 플레이어 화면 ---------------- */
-async function openVideo(v) {
-  S.cur = v; S.idx = 0; S.seg = null;
+async function deleteVideo(v) {
+  if (!confirm(`「${v.title}」을(를) 삭제할까요?\n\n대본과 학습 기록이 함께 사라집니다.`)) return;
+  try {
+    await api("/api/videos/" + v.id, { method: "DELETE" });
+    if (S.cur && S.cur.id === v.id) { S.cur = null; show("s-list"); }
+    await loadVideos();
+    await loadHome();
+    toast("삭제했습니다");
+  } catch (e) { toast("삭제 실패: " + e.message, 4000); }
+}
+
+/* ================= 플레이어 ================= */
+async function openVideo(v, idx = 0) {
+  S.cur = v;
+  S.idx = Math.max(0, Math.min(idx, (v.segs || []).length - 1));
+  S.repeat = false;
   $("#p-title").textContent = v.title;
-  $("#p-sub").textContent = `문장 ${v.n}개 · ${v.has_audio ? "원본 음원 비교 채점" : "타이밍 채점"}`;
-  $("#seg-count").textContent = v.n;
-  $("#alert").hidden = true;
-  $("#now-seg").textContent = "—";
-  $("#btn-loop").textContent = "🔁 반복 1회";
-  S.loop = 1;
-  const au = $("#au"); if (au) { au.pause(); au.removeAttribute("src"); delete au.dataset.src; }
-  renderAudioCard();
+  $("#loop-lab").textContent = "반복 끔";
+  $("#btn-repeat").classList.remove("on");
+  setSubClass();
   show("s-play");
-  renderSegList();
-  selectSeg(0);
+  selectSeg(S.idx, true);
   await mountPlayer(v.yt);
+  setTimeout(() => { sizeVideo(); playFrom(S.idx); }, 350);
+  startTick();
 }
-function renderSegList() {
-  const box = $("#seg-list");
-  box.innerHTML = "";
-  S.cur.segs.forEach((s, i) => {
-    const el = document.createElement("button");
-    el.className = "seg" + (i === S.idx ? " on" : "");
-    el.dataset.i = i;
-    const sc = S.scores[`${S.cur.id}:${i}`];
-    el.innerHTML = `
-      <span class="seg-no">${i + 1}</span>
-      <span class="seg-b">
-        <span class="seg-t">${esc(s.text)}</span>
-        <span class="seg-m"><span>${fmt(s.start)}s – ${fmt(s.end)}s</span>${sc ? `<span class="seg-score">${Math.round(sc)}점</span>` : ""}</span>
-      </span>`;
-    el.onclick = () => { selectSeg(i); playSeg(true); };
-    box.appendChild(el);
-  });
+
+function startTick() { stopTick(); S.tick = setInterval(onTick, 100); }
+function stopTick() { if (S.tick) { clearInterval(S.tick); S.tick = null; } }
+
+function onTick() {
+  if (!S.player || !S.ready || !S.cur) return;
+  let t = 0;
+  try { t = S.player.getCurrentTime() || 0; } catch { return; }
+  const playing = (() => { try { return S.player.getPlayerState() === 1; } catch { return false; } })();
+
+  if (S.repeat && S.seg) {
+    // 반복 켜짐: 현재 문장 구간만 계속 돈다
+    if (t >= S.seg.end - 0.06 || t < S.seg.start - 0.35) {
+      try { S.player.seekTo(S.seg.start, true); } catch {}
+    }
+  } else {
+    // 반복 꺼짐: 영상은 계속 재생, 자막만 따라간다
+    const i = S.cur.segs.findIndex((x) => t >= x.start - 0.06 && t < x.end);
+    if (i >= 0 && i !== S.idx) selectSeg(i, true);
+  }
+
+  if (S.seg) {
+    const d = Math.max(0.1, S.seg.end - S.seg.start);
+    const p = Math.min(100, Math.max(0, ((t - S.seg.start) / d) * 100));
+    $("#vprog").style.width = p + "%";
+  }
+  setPlayBtn(playing);
 }
+
+function setPlayBtn(on) {
+  const b = $("#btn-play");
+  if (!b) return;
+  b.classList.toggle("on", !!on);
+  b.textContent = on ? "❙❙ 일시정지" : "▶ 재생";
+}
+
+function renderSeg() {
+  const v = S.cur; if (!v) return;
+  $("#p-count").textContent = `${S.idx + 1} / ${v.n}`;
+  const s = v.segs[S.idx];
+  const en = $("#sub-en"), ko = $("#sub-ko");
+  en.innerHTML = wordsHTML(s.en || s.text || "");
+  en.dataset.plain = s.en || s.text || "";
+  ko.textContent = s.ko || "";
+  ko.style.display = s.ko ? "" : "none";
+  $$("#sub-en .w").forEach((w) => { w.onclick = () => openWord(w.dataset.w, w.dataset.ctx); });
+
+  const marked = (S.notes.sentences || []).some((n) => n.vid === v.id && n.idx === S.idx);
+  const star = $("#btn-star");
+  star.textContent = marked ? "★" : "☆";
+  star.classList.toggle("on", marked);
+  star.hidden = S.sub === "off";
+}
+
+function wordsHTML(text) {
+  const plain = String(text || "");
+  return plain.split(/(\s+)/).map((tok) => {
+    if (!tok.trim()) return tok;
+    const m = tok.match(/^([^\w']*)([\w'’-]+)([^\w']*)$/);
+    if (!m) return esc(tok);
+    const [, pre, core, post] = m;
+    return `${esc(pre)}<span class="w" data-w="${esc(core.replace(/’/g, "'"))}" data-ctx="${esc(plain)}">${esc(core)}</span>${esc(post)}`;
+  }).join("");
+}
+
 function selectSeg(i, quiet) {
+  if (!S.cur) return;
   S.idx = i;
-  const s = S.cur.segs[i];
-  S.seg = s;
-  $("#seg-text").textContent = s.text;
-  $$(".seg").forEach((el) => el.classList.toggle("on", +el.dataset.i === i));
-  paintTimes();
+  S.seg = S.cur.segs[i];
+  renderSeg();
   if (!quiet) setHint("마이크를 눌러 따라 말하기");
 }
-function playSeg(withLabel) {
-  if (!S.seg) return;
-  const p = S.player;
-  if (!p || !S.ready) {
-    return warn("YouTube 플레이어가 준비되지 않았습니다. 잠시 후 다시 시도해주세요.");
-  }
-  $("#alert").hidden = true;
-  if (withLabel) { $("#btn-play-seg").dataset.wasPlaying = "1"; $("#btn-play-seg").classList.add("playing"); }
-  ctrl.play(S.seg, S.loop);
-}
+
 function setHint(h) { const el = $("#rec-hint"); if (el) el.innerHTML = h; }
-function warn(m) { const a = $("#alert"); if (!a) return; a.textContent = m; a.hidden = false; }
 
-/* ============ v3.1 · 문장 타임스탬프 ±0.1s 미세조정 ============ */
-function paintTimes() {
-  const s = S.cur && S.cur.segs[S.idx];
+function playFrom(i) {
+  if (!S.cur) return;
+  const s = S.cur.segs[i];
   if (!s) return;
-  const dur = $("#seg-time"), st = $("#seg-start"), en = $("#seg-end");
-  if (dur) dur.textContent = `${fmt(s.start)}–${fmt(s.end)}s`;
-  if (st) st.textContent = `${Number(s.start).toFixed(1)}s`;
-  if (en) en.textContent = `${Number(s.end).toFixed(1)}s`;
+  selectSeg(i, true);
+  if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
+  try { S.player.seekTo(s.start, true); S.player.playVideo(); } catch {}
+  setPlayBtn(true);
 }
 
-function nudgeSeg(kind, delta) {
-  const s = S.cur && S.cur.segs[S.idx];
-  if (!s) return;
-  if (!S.nudgeBase) S.nudgeBase = { start: +s.start, end: +s.end };
-
-  const st = Math.max(0, +(kind === "start" ? +s.start + delta : +s.start).toFixed(2));
-  const en = Math.max(0, +(kind === "end" ? +s.end + delta : +s.end).toFixed(2));
-  if (en - st < 0.2) return toast("구간은 최소 0.2초 이상이어야 합니다");
-
-  if (ctrl.active) ctrl.stop();           // 재생 중 경계가 바뀌면 즉시 멈춘다
-  s.start = st; s.end = en;
-  S.seg = s;
-  paintTimes();
-  renderSegList();
-  selectSeg(S.idx, true);
-
-  clearTimeout(S.nudgeT);
-  S.nudgeT = setTimeout(() => saveSeg(s), 260);   // 연타는 0.26초 모아 한 번만 저장
+function togglePlay() {
+  if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
+  let st = 0;
+  try { st = S.player.getPlayerState(); } catch {}
+  if (st === 1) { try { S.player.pauseVideo(); } catch {} setPlayBtn(false); }
+  else { playFrom(S.idx); }
 }
 
-async function saveSeg(s) {
-  if (S.nudgeBusy) { clearTimeout(S.nudgeT); S.nudgeT = setTimeout(() => saveSeg(s), 200); return; }
-  const base = S.nudgeBase || { start: +s.start, end: +s.end };
-  S.nudgeBusy = true;
-  try {
-    const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ start: +s.start, end: +s.end }),
-    });
-    s.start = r.seg.start; s.end = r.seg.end;
-    S.nudgeBase = null;
-    paintTimes(); renderSegList(); selectSeg(S.idx, true);
-  } catch (e) {
-    s.start = base.start; s.end = base.end;
-    S.nudgeBase = null;
-    paintTimes(); renderSegList(); selectSeg(S.idx, true);
-    toast("구간 저장 실패: " + e.message, 3800);
-  } finally {
-    S.nudgeBusy = false;
-  }
+function step(delta) {
+  if (!S.cur) return;
+  const n = S.cur.segs.length;
+  playFrom((S.idx + delta + n) % n);
 }
 
-/* ============ v3.1 · offset 자동 캘리브레이션 ============ */
-async function calibrateOffset() {
-  const v = S.cur;
-  if (!v) return;
-  if (!v.audio || !v.audio.url) return toast("먼저 원본 음원을 연결해주세요");
-  const b = $("#btn-calib");
-  if (b) { b.disabled = true; b.textContent = "계산 중…"; }
-  try {
-    const r = await api(`/api/videos/${v.id}/calibrate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apply: true }),
-    });
-    const conf = Math.round((r.confidence || 0) * 100);
-    toast(`offset ${Number(r.offset).toFixed(2)}s 로 맞췄습니다 · 신뢰도 ${conf}%` +
-      (r.note ? ` · ${r.note}` : ""), 5200);
-    const au = $("#au");
-    if (au) { au.pause(); au.removeAttribute("src"); delete au.dataset.src; }
-    await reloadCur();
-  } catch (e) {
-    toast("자동 맞춤 실패: " + e.message, 4200);
-  } finally {
-    if (b) { b.disabled = false; b.textContent = "자동 맞춤"; }
-  }
+/* 자막 모드: 둘 다 → 한국어 → 영어 → 끔 */
+function setSubClass() {
+  const v = $("#vsub");
+  v.className = "vsub" + (S.sub === "both" ? "" : S.sub === "ko" ? " hide-en" : S.sub === "en" ? " hide-ko" : " hide-en hide-ko");
+  $("#sub-lab").textContent = { both: "둘 다", ko: "한글만", en: "영어만", off: "끔" }[S.sub];
+  $("#btn-sub").classList.toggle("on", S.sub !== "both");
+  const star = $("#btn-star");
+  if (star) star.hidden = S.sub === "off";
 }
 
-/* ============ 원본 음원(서버 저장) — 연결 / 구간 재생 ============ */
-function renderAudioCard() {
-  const v = S.cur; if (!v) return;
-  const a = v.audio;
-  const sub = $("#acard-s"), btn = $("#btn-link-audio"), play = $("#btn-ref"), cal = $("#btn-calib");
-  if (a && a.url) {
-    sub.textContent = `${a.title} · ${mmss(a.dur)} · offset ${Number(a.offset).toFixed(2)}s`;
-    sub.classList.add("on"); btn.textContent = "변경"; if (play) play.hidden = false;
-    if (cal) { cal.hidden = false; cal.disabled = false; }
+function cycleSub() {
+  S.sub = S.sub === "both" ? "ko" : S.sub === "ko" ? "en" : S.sub === "en" ? "off" : "both";
+  setSubClass();
+  toast("자막 " + $("#sub-lab").textContent);
+}
+
+function toggleRepeat() {
+  S.repeat = !S.repeat;
+  $("#loop-lab").textContent = S.repeat ? "반복 켬" : "반복 끔";
+  $("#btn-repeat").classList.toggle("on", S.repeat);
+  if (S.repeat && S.seg) {
+    try { S.player.seekTo(S.seg.start, true); S.player.playVideo(); } catch {}
+    toast("현재 문장을 계속 반복합니다");
   } else {
-    sub.textContent = "연결 안 됨 · 지금은 길이만 채점";
-    sub.classList.remove("on"); btn.textContent = "오디오 연결"; if (play) play.hidden = true;
-    if (cal) cal.hidden = true;
+    toast("반복을 껐습니다 · 영상이 계속 재생됩니다");
   }
 }
 
-function refSrc() {
-  const a = S.cur && S.cur.audio;
-  if (!a || !a.url || !S.seg) return null;
-  return { url: a.url, off: Number(a.offset) || 0,
-           s: Math.max(0, S.seg.start - (Number(a.offset) || 0)),
-           e: Math.max(0.2, S.seg.end - (Number(a.offset) || 0)) };
-}
-
-let refTimer = null;
-function playRefAudio() {
-  const r = refSrc();
-  if (!r) return toast("이 영상에 연결된 원본 음원이 없습니다");
-  const au = $("#au");
-  if (refTimer) { clearTimeout(refTimer); refTimer = null; }
-  au.pause();
-  const go = () => {
-    try { au.currentTime = r.s; } catch {}
-    au.play().catch(() => {});
-    refTimer = setTimeout(() => au.pause(), Math.max(200, (r.e - r.s) * 1000));
-  };
-  if (au.dataset.src !== r.url) {
-    au.dataset.src = r.url;
-    au.src = r.url;
-    au.onloadedmetadata = go;
-    au.load();
-  } else go();
-  toast(`서버 음원 ${r.s.toFixed(2)}–${r.e.toFixed(2)}s 재생 (Range 요청)`);
-}
-
-function openAudioSheet() {
-  const a = S.cur && S.cur.audio;
-  $("#af-title").value = a ? a.title : "";
-  $("#af-offset").value = a ? a.offset : "0";
-  $("#af-license").value = a ? (a.license || "") : "";
-  $("#ff-audio").value = "";
-  const lib = $("#audio-lib");
-  lib.innerHTML = "";
-  AUDIOS.forEach((x) => {
-    const el = document.createElement("button");
-    el.className = "librow";
-    el.innerHTML = `<b>${esc(x.title)}</b><span>${mmss(x.dur)} · offset ${x.offset}s · ${esc(x.source)}</span>`;
-    el.onclick = () => linkAudio(x.id, x.offset);
-    lib.appendChild(el);
-  });
-  $("#audio-lib-wrap").hidden = AUDIOS.length === 0;
-  $("#sheet-audio").hidden = false;
-}
-
-async function reloadCur() {
-  const id = S.cur.id, idx = S.idx;
-  S.videos = await api("/api/videos");
-  const v = S.videos.find((x) => x.id === id);
-  if (!v) return;
-  S.cur = v;
-  $("#p-sub").textContent = `문장 ${v.n}개 · ${v.has_audio ? "원본 음원 비교 채점" : "타이밍 채점"}`;
-  renderAudioCard(); renderSegList(); selectSeg(idx, true);
-}
-
-async function linkAudio(aid, offset) {
+async function toggleStar() {
+  if (!S.cur) return;
   try {
-    await api(`/api/videos/${S.cur.id}/link-audio`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ audio_id: aid, offset: Number(offset) || 0 }),
-    });
-    $("#sheet-audio").hidden = true;
-    const au = $("#au"); au.removeAttribute("src"); delete au.dataset.src;
-    await reloadCur();
-    toast("원본 음원 연결 완료 · 4축 음향 채점이 켜졌습니다");
-  } catch (e) { toast("연결 실패: " + e.message, 4200); }
+    const r = await jsonPost("/api/notes/sentence", { vid: S.cur.id, idx: S.idx });
+    await reloadNotes();
+    const star = $("#btn-star");
+    star.textContent = r.bookmarked ? "★" : "☆";
+    star.classList.toggle("on", r.bookmarked);
+    toast(r.bookmarked ? "오답 노트에 저장했습니다" : "오답 노트에서 삭제했습니다");
+  } catch (e) { toast("저장 실패: " + e.message, 3800); }
 }
 
-async function uploadAudio() {
-  const f = $("#ff-audio").files[0];
-  if (!f) return toast("오디오 파일을 선택해주세요");
-  if (!$("#af-ok").checked)
-    return toast("본인 소유 또는 라이선스 보유 음원임을 확인해주세요");
-  const fd = new FormData();
-  fd.append("file", f);
-  fd.append("title", $("#af-title").value.trim() || f.name.replace(/\.[^.]+$/, ""));
-  fd.append("offset", String(parseFloat($("#af-offset").value) || 0));
-  fd.append("source", $("#af-source").value);
-  fd.append("license", $("#af-license").value.trim());
-  const b = $("#btn-audio-up");
-  b.disabled = true; b.textContent = "업로드 중…";
-  try {
-    const r = await api("/api/audios", { method: "POST", body: fd });
-    await loadAudios();
-    await linkAudio(r.id, r.offset);
-  } catch (e) { toast("업로드 실패: " + e.message, 4200); }
-  finally { b.disabled = false; b.textContent = "업로드하고 연결"; }
-}
-
-async function loadAudios() {
-  try { AUDIOS = await api("/api/audios"); } catch { AUDIOS = []; }
-}
-
-/* ---------------- 녹음 ---------------- */
+/* ================= 녹음 / 채점 ================= */
 async function startRec() {
-  if (!navigator.mediaDevices?.getUserMedia)
-    return warn("이 브라우저는 녹음을 지원하지 않습니다.");
+  if (!navigator.mediaDevices?.getUserMedia) return toast("이 브라우저는 녹음을 지원하지 않습니다");
   try {
     S.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-  } catch (e) {
-    return warn("마이크를 사용할 수 없습니다. 브라우저 권한을 확인해주세요. (" + e.name + ")");
-  }
+  } catch (e) { return toast("마이크를 사용할 수 없습니다 (" + e.name + ")", 4000); }
+
   const mimes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
   const mime = mimes.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
   S.chunks = [];
@@ -477,29 +459,25 @@ async function startRec() {
   S.an.fftSize = 1024;
   ctx.createMediaStreamSource(S.stream).connect(S.an);
   const buf = new Float32Array(S.an.fftSize);
-  S.levels = []; S.t0 = performance.now(); S.lastLoud = S.t0;
+  S.t0 = performance.now(); S.lastLoud = S.t0;
 
   const loop = () => {
     S.an.getFloatTimeDomainData(buf);
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-    const rms = Math.sqrt(sum / buf.length);
-    if (rms > 0.015) S.lastLoud = performance.now();
+    if (Math.sqrt(sum / buf.length) > 0.015) S.lastLoud = performance.now();
     const el = (performance.now() - S.t0) / 1000;
     setHint(`녹음 중 <b>${el.toFixed(1)}s</b> · 조용해지면 자동 종료`);
     if (el > 15) stopRec();
     S.raf = requestAnimationFrame(loop);
   };
   loop();
-
   S.timer = setInterval(() => {
-    const el = performance.now() - S.t0;
-    if (el > 900 && performance.now() - S.lastLoud > 1600) stopRec();
+    if (performance.now() - S.t0 > 900 && performance.now() - S.lastLoud > 1600) stopRec();
   }, 120);
 
   S.rec.start();
   $("#btn-rec").classList.add("rec");
-  $("#alert").hidden = true;
 }
 function stopRec() {
   if (!S.rec || S.rec.state !== "recording") return;
@@ -509,46 +487,45 @@ function stopRec() {
   $("#btn-rec").classList.remove("rec");
   setHint("채점 중…");
 }
-async function onRecStop() {
+function onRecStop() {
   const mime = S.chunks[0]?.type || "audio/webm";
   S.takeBlob = new Blob(S.chunks, { type: mime });
   const dur = (performance.now() - S.t0) / 1000;
   try { S.stream.getTracks().forEach((t) => t.stop()); } catch {}
-  if (S.takeBlob.size < 1000 || dur < 0.3) { setHint("너무 짧습니다. 다시 시도해주세요"); return; }
-  await submitScore(dur);
+  if (S.takeBlob.size < 1000 || dur < 0.3) return setHint("너무 짧습니다. 다시 시도해주세요");
+  submitScore();
 }
 
-/* ---------------- 채점 ---------------- */
-async function submitScore(dur) {
+async function submitScore() {
   const fd = new FormData();
   fd.append("take", S.takeBlob, "take.webm");
   try {
     const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}/score`, { method: "POST", body: fd });
-    S.scores[`${S.cur.id}:${S.idx}`] = r.total;
-    renderSegList();
-    renderResult(r, dur);
+    S.lastResult = r;
+    renderResult(r);
     show("s-result");
+    loadHome();
   } catch (e) {
     setHint("채점 실패");
-    warn("채점에 실패했습니다: " + e.message);
+    toast("채점에 실패했습니다: " + e.message, 4200);
   }
 }
 
-function renderResult(r, dur) {
+function renderResult(r) {
   const total = Math.round(r.total);
   $("#total").textContent = total;
   $("#ring").style.setProperty("--p", Math.max(0, Math.min(100, r.total)));
-  $("#res-text").textContent = r.text || (S.seg ? S.seg.text : "");
-  $("#res-time").textContent = S.seg ? `${fmt(S.seg.start)}–${fmt(S.seg.end)}s` : "";
+  $("#res-text").textContent = r.text || "";
+  $("#res-ko").textContent = r.ko || "";
+  const s = S.cur ? S.cur.segs[S.idx] : null;
+  $("#res-time").textContent = s ? `${fmt(s.start)}–${fmt(s.end)}s` : "";
 
   const acoustic = r.mode === "acoustic";
   const vals = acoustic
     ? { pitch: r.pitch ?? 0, rhythm: r.rhythm ?? 0, timbre: r.timbre ?? 0, attack: r.attack ?? 0, timing: null }
     : { pitch: null, rhythm: null, timbre: null, attack: null, timing: r.timing ?? r.total };
-
   $$(".axis").forEach((el) => {
-    const k = el.dataset.k;
-    const v = vals[k];
+    const v = vals[el.dataset.k];
     el.style.display = v === null ? "none" : "flex";
     if (v === null) return;
     el.querySelector("i").style.width = Math.max(0, Math.min(100, v)) + "%";
@@ -558,11 +535,9 @@ function renderResult(r, dur) {
 
   const note = $("#mode-note");
   note.classList.add("show");
-  if (acoustic) {
-    note.innerHTML = `원본 음원과 <b>직접 비교</b>한 4축 채점입니다.${r.has_pitch ? "" : " 피치가 없는 소리라 리듬·음색·어택으로 채점했습니다."}`;
-  } else {
-    note.innerHTML = `아직 이 영상의 <b>원본 음원이 없어</b> 발화 길이만 비교했습니다. 영상 화면에서 <b>오디오 올리기</b>를 하면 피치·리듬·음색·어택 4축 채점이 켜집니다.`;
-  }
+  note.innerHTML = acoustic
+    ? `원본 음원과 <b>직접 비교</b>한 4축 채점입니다.`
+    : `이 문장의 <b>발화 길이</b>를 기준 구간과 비교했습니다. 문장별 암기 테스트로 내용까지 확인하세요.`;
 
   const g = gradeOf(total);
   $("#grade").textContent = g.label;
@@ -570,6 +545,7 @@ function renderResult(r, dur) {
   $("#verdict").textContent = g.verdict;
   $("#coach").innerHTML = coaching(r, acoustic);
 }
+
 function gradeOf(t) {
   if (t >= 90) return { label: "PERFECT", color: "#0EA5E9", verdict: "복제 수준입니다. 원본과 거의 구별되지 않아요." };
   if (t >= 78) return { label: "GREAT", color: "#0EA5E9", verdict: "아주 좋아요. 억양의 흐름을 잘 잡았습니다." };
@@ -585,113 +561,145 @@ function coaching(r, acoustic) {
       ["pitch", r.pitch ?? 0, "높낮이가 어긋났습니다. 원본의 멜로디를 손으로 그리듯 따라 해보세요."],
       ["rhythm", r.rhythm ?? 0, "속도가 다릅니다. 원본 문장 길이에 맞춰 끝을 맞추는 연습을 해보세요."],
       ["timbre", r.timbre ?? 0, "음색이 다릅니다. 입 모양과 공명 위치를 원본 화자와 같게 만들어보세요."],
-      ["attack", r.attack ?? 0, "소리의 시작(어택)이 다릅니다. 첫 음을 조금 더 또렷하게 터뜨려보세요."],
+      ["attack", r.attack ?? 0, "소리의 시작(어택)이 다릅니다. 첫 음을 더 또렷하게 터뜨려보세요."],
     ];
     p.sort((a, b) => a[1] - b[1]).slice(0, 2).forEach(([k, v, m]) => { if (v < 85) tips.push([k, m]); });
   } else {
     const raw = r.raw || {};
     if ((raw.ratio ?? 1) > 1.25) tips.push(["길이", "원본보다 길게 말했습니다. 문장을 끊지 말고 한 호흡에 이어 말해보세요."]);
     else if ((raw.ratio ?? 1) < 0.8) tips.push(["길이", "원본보다 짧습니다. 문장 끝까지 소리를 유지해보세요."]);
-    else tips.push(["길이", "속도는 잘 맞았습니다. 원본 음원을 올리면 억양까지 채점할 수 있어요."]);
+    else tips.push(["길이", "속도는 잘 맞았습니다. 다음은 '⋯ 테스트'에서 전체 암송에 도전해보세요."]);
   }
   if (!tips.length) tips.push(["완료", "모든 항목이 훌륭합니다. 반복 횟수를 늘려 완전히 익혀보세요."]);
   return `<h4>코칭</h4><ul>${tips.map(([k, m]) => `<li><b>${k}</b> · ${m}</li>`).join("")}</ul>`;
 }
 
-/* ---------------- 시트 / 업로드 ---------------- */
-function openSheet() { $("#sheet").hidden = false; }
-function closeSheet() { $("#sheet").hidden = true; }
-async function addVideo() {
-  const url = $("#f-url").value.trim();
-  if (!url) return toast("유튜브 링크를 입력해주세요");
-  const body = {
-    url,
-    title: $("#f-title").value.trim(),
-    transcript: $("#f-tr").value,
-    duration: parseFloat($("#f-dur").value) || 0,
-  };
-  $("#btn-add").disabled = true;
-  $("#btn-add").textContent = "추가 중…";
+/* ================= 단어 ================= */
+async function openWord(word, ctx) {
+  if (!word) return;
+  S.word = { word, ctx };
+  $("#w-word").textContent = word;
+  $("#w-phon").textContent = "";
+  $("#w-ctx").textContent = ctx || "";
+  $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.6">뜻을 불러오는 중…</div>`;
+  $("#w-meaning").value = "";
+  $("#sheet-word").hidden = false;
   try {
-    const rec = await api("/api/videos", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
-    closeSheet();
-    $("#f-url").value = ""; $("#f-title").value = ""; $("#f-tr").value = ""; $("#f-dur").value = "";
-    toast(`영상 추가 완료 · 문장 ${rec.segs.length}개`);
-    await loadVideos();
-    const v = S.videos.find((x) => x.id === rec.id);
-    if (v) openVideo(v);
-  } catch (e) {
-    toast("추가 실패: " + e.message, 4200);
-  } finally {
-    $("#btn-add").disabled = false;
-    $("#btn-add").textContent = "영상 추가";
+    const r = await api("/api/words/" + encodeURIComponent(word));
+    $("#w-phon").textContent = r.phonetic || "";
+    if (r.saved && r.saved.meaning) $("#w-meaning").value = r.saved.meaning;
+    const defs = (r.definitions || []).map((d) => `
+      <div class="word-def"><i>${esc(d.pos || "")}</i>${esc(d.def)}
+        ${d.example ? `<em>${esc(d.example)}</em>` : ""}</div>`).join("");
+    $("#w-defs").innerHTML = defs || `<div class="word-def" style="opacity:.75">영영 사전 결과가 없습니다. 내 뜻을 직접 적어 저장해보세요.</div>`;
+    $("#w-book").textContent = r.saved ? "🔖 단어장에서 빼기" : "🔖 단어장에 담기";
+  } catch {
+    $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.75">뜻을 불러오지 못했습니다. 직접 적어 저장할 수 있어요.</div>`;
   }
 }
 
-/* ---------------- 이벤트 ---------------- */
+async function saveWordMeaning() {
+  if (!S.word) return;
+  const meaning = $("#w-meaning").value.trim();
+  if (!meaning) return toast("뜻을 입력해주세요");
+  try {
+    await jsonPost("/api/notes/word", { word: S.word.word, meaning, ctx: S.word.ctx, vid: S.cur?.id || "", idx: S.idx });
+    await reloadNotes();
+    $("#sheet-word").hidden = true;
+    toast("단어장에 저장했습니다");
+  } catch (e) { toast("저장 실패: " + e.message, 3800); }
+}
+
+async function toggleWordBook() {
+  if (!S.word) return;
+  try {
+    const r = await jsonPost("/api/notes/word", {
+      word: S.word.word, meaning: $("#w-meaning").value.trim(),
+      ctx: S.word.ctx, vid: S.cur?.id || "", idx: S.idx,
+    });
+    await reloadNotes();
+    $("#w-book").textContent = r.bookmarked ? "🔖 단어장에서 빼기" : "🔖 단어장에 담기";
+    toast(r.bookmarked ? "단어장에 담았습니다" : "단어장에서 뺐습니다");
+  } catch (e) { toast("실패: " + e.message, 3800); }
+}
+
+async function reloadNotes() {
+  try { S.notes = await api("/api/notes"); } catch {}
+  renderNotesScreen();
+  $("#note-count").textContent = (S.notes.sentences || []).length;
+}
+
+/* ================= 추가(+) ================= */
+function openAdd() {
+  $("#sheet-add").hidden = false;
+}
+
+async function startSyncFromAdd() {
+  const url = $("#sy-url").value.trim();
+  const title = $("#sy-title").value.trim();
+  const text = $("#sy-text").value;
+  if (!url) return toast("쇼츠 주소를 입력해주세요");
+  if (!text.trim()) return toast("대본을 붙여넣어 주세요");
+  $("#sheet-add").hidden = true;
+  if (!window.EchoSync) return toast("싱크 모듈을 불러오지 못했습니다");
+  await window.EchoSync.start({ url, title, text, split: $("#sy-split").checked });
+}
+
+/* ================= 이벤트 ================= */
 function bind() {
-  $("#btn-back").onclick = () => { ctrl.stop(); show("s-home"); };
-  $("#tab-add").onclick = openSheet;
-  $$("[data-close]").forEach((el) => (el.onclick = closeSheet));
-  $("#btn-add").onclick = addVideo;
-  $("#btn-link-audio").onclick = openAudioSheet;
-  $("#btn-ref").onclick = playRefAudio;
-  $("#btn-audio-up").onclick = uploadAudio;
-  $("#ff-audio").onchange = () => {
-    const f = $("#ff-audio").files[0];
-    if (f && !$("#af-title").value) $("#af-title").value = f.name.replace(/\.[^.]+$/, "");
+  $$(".tab[data-tab]").forEach((t) => { t.onclick = () => show(t.dataset.tab); });
+  $("#tab-add").onclick = openAdd;
+  $$("[data-close]").forEach((el) => (el.onclick = () => { el.closest(".sheet-wrap").hidden = true; }));
+
+  $("#btn-sync-start").onclick = startSyncFromAdd;
+
+  $("#daily").onclick = () => {
+    const f = S.progress && S.progress.focus;
+    if (!f) return show("s-list");
+    jumpTo(f.id, 0);
   };
-
-  /* v3.1 — 타임스탬프 미세조정 / offset 자동 맞춤 */
-  $$("[data-nudge]").forEach((el) => {
-    el.onclick = () => {
-      const [kind, d] = el.dataset.nudge.split(":");
-      nudgeSeg(kind, Number(d));
-    };
-  });
-  const cal = $("#btn-calib");
-  if (cal) cal.onclick = calibrateOffset;
-
-  $("#btn-play-seg").onclick = () => playSeg(true);
-  $("#btn-stop").onclick = () => { ctrl.stop(); $("#now-seg").textContent = "—"; $("#btn-play-seg").classList.remove("playing"); };
-
-  $("#btn-slow").onclick = () => {
-    if (!S.player || !S.ready) return warn("플레이어 준비 중입니다");
-    const on = S.player.getPlaybackRate && S.player.getPlaybackRate() < 0.95;
-    S.player.setPlaybackRate(on ? 1 : 0.75);
-    $("#btn-slow").classList.toggle("on", !on);
-    toast(on ? "정상 속도" : "0.75배속 (억양 파악용)");
+  $("#btn-start").onclick = () => {
+    const f = S.progress && S.progress.focus;
+    if (!f) return;
+    jumpTo(f.id, 0);
   };
+  $("#note-more").onclick = () => show("s-notes");
 
-  $("#btn-loop").onclick = () => {
-    S.loop = S.loop === 1 ? 3 : S.loop === 3 ? 5 : 1;
-    $("#btn-loop").textContent = `🔁 반복 ${S.loop}회`;
-    $("#btn-loop").classList.toggle("on", S.loop > 1);
-    if (S.seg) playSeg(true);
-  };
+  $("#btn-back").onclick = () => { try { S.player && S.player.pauseVideo(); } catch {} stopTick(); show("s-home"); };
+  $("#btn-play").onclick = togglePlay;
+  $("#btn-prev").onclick = () => step(-1);
+  $("#btn-next-seg").onclick = () => step(1);
+  $("#btn-sub").onclick = cycleSub;
+  $("#btn-repeat").onclick = toggleRepeat;
+  $("#btn-star").onclick = toggleStar;
+  $("#btn-more").onclick = () => window.EchoTests && window.EchoTests.openMenu();
 
   $("#btn-rec").onclick = () => {
     if (S.rec && S.rec.state === "recording") stopRec();
     else startRec();
   };
+  $("#btn-retry").onclick = () => { show("s-play"); setHint("마이크를 눌러 다시 시도"); startTick(); };
+  $("#btn-next").onclick = () => { step(1); show("s-play"); startTick(); };
 
-  $("#btn-retry").onclick = () => { show("s-play"); setHint("마이크를 눌러 다시 시도"); };
-  $("#btn-next").onclick = () => {
-    if (!S.cur) return show("s-home");
-    const nxt = Math.min(S.idx + 1, S.cur.segs.length - 1);
-    selectSeg(nxt);
-    show("s-play");
-    setTimeout(() => playSeg(true), 220);
-  };
+  $("#w-save").onclick = saveWordMeaning;
+  $("#w-book").onclick = toggleWordBook;
+
+  document.addEventListener("keydown", (e) => {
+    if (!$("#s-play").classList.contains("is-active")) return;
+    if (e.target.matches("input,textarea")) return;
+    if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+    if (e.key === " ") { e.preventDefault(); togglePlay(); }
+  });
 }
 
-(function clock() {
+/* ================= 시작 ================= */
+(async function boot() {
   const d = new Date();
   $("#clock").textContent = `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  bind();
+  await loadVideos();
+  await loadHome();
 })();
 
-bind();
-loadVideos();
-loadAudios();
+window.EchoApp = { S, show, toast, esc, fmt, jsonPost, api, loadHome, loadVideos, openVideo, startTick, stopTick, sizeVideo, reloadNotes, mmss };

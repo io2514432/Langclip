@@ -1,15 +1,18 @@
-"""Echo — 유튜브 문장별 셰도잉 (FastAPI)
+"""Echo — 유튜브 문장별 셰도잉 (FastAPI) v3.3
 
 구조
   영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
   오디오(audio) : 서버 보관. 소유·라이선스가 확보된 음원만 등록.
-  링크         : video.audio_id -> audio.id  (+ offset 초)
+  대본(script) : 마크다운 한 장으로 문장/구간/영어/한국어를 관리 (script_md.py)
+  기록(records): 채점 이력·연속 학습·북마크 (progress.py)
 
 offset 정의
   audio_time = video_time - offset
-  즉 offset 은 "영상 0초에 해당하는 오디오 파일의 재생 위치".
-  영상 전체를 그대로 받은 파일이면 0.0, 일부만 잘라낸 파일이면 그 시작 시각.
-  값이 애매하면 POST /api/videos/{vid}/calibrate 로 자동 추정할 수 있다.
+
+v3.2 핵심
+  · 자막이 없는 영상도 "마크다운 대본"만 있으면 문장별 학습이 된다.
+  · GET/PUT /api/videos/{vid}/script 로 앱 안에서 바로 편집·저장.
+  · 홈 화면용 진척도(오늘 암기율 / 연속일)와 오답노트·단어장 API 추가.
 """
 from __future__ import annotations
 
@@ -30,7 +33,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import drills
 import engine
+import progress as prog
+import script_md
+import synclib
 from store import DATA, storage
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -43,18 +50,16 @@ MIME = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
         ".aac": "audio/aac", ".ogg": "audio/ogg", ".opus": "audio/ogg",
         ".webm": "audio/webm", ".flac": "audio/flac"}
 
-# ---- offset 자동 캘리브레이션 기본값
-CAL_HOP = 0.02          # 20ms 프레임 (상호상관 해상도, 포물선 보간으로 ~5ms)
-CAL_SMOOTH = 0.12       # 엔벨로프/문장활동 평활화 (초)
-CAL_MIN_OVERLAP = 2.0   # 최소 겹침 길이 (초)
+CAL_HOP = 0.02
+CAL_SMOOTH = 0.12
+CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Echo Shadowing API", version="3.1")
+app = FastAPI(title="Echo Shadowing API", version="3.4")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 # --------------------------------------------------------------- store
 def db() -> dict:
-    """{"videos": {...}, "audios": {...}} — 구버전(평면 video dict)도 자동 승격."""
     raw = {}
     if DB.exists():
         try:
@@ -69,6 +74,7 @@ def db() -> dict:
 
 
 def save_db(d: dict) -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
     DB.write_text(json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
 
 
@@ -140,14 +146,7 @@ def _to_mono(y) -> np.ndarray:
 
 
 def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
-    """저장소(로컬/원격)에서 [t0, t1) 구간만 16kHz 모노로 디코드.
-
-    ★ 원격(S3/R2) 스트리밍 경로
-      1) storage.open(key) 로 seek 가능한 파일 객체를 받아 soundfile 이
-         필요한 구간만 읽는다(HTTP Range). 원격이어도 전체를 받지 않는다.
-      2) libsndfile 이 못 읽는 형식(m4a/aac 등)은 storage.uri(key) 를 ffmpeg 에
-         넘긴다. ffmpeg 는 HTTP 입력에서 Range 로 필요한 구간만 당겨온다.
-    """
+    """저장소(로컬/원격)에서 [t0, t1) 구간만 16kHz 모노로 디코드."""
     t0 = max(0.0, float(t0))
     t1 = max(t0 + 0.05, float(t1))
     dur = t1 - t0
@@ -184,7 +183,6 @@ def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
 
 # ------------------------------------------------ offset 캘리브레이션 util
 def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
-    """저장소 오디오 전체의 log-RMS 엔벨로프. 원격이면 Range 스트리밍으로 훑는다."""
     parts: list[np.ndarray] = []
     with storage.open(key) as f:
         with sf.SoundFile(f) as snd:
@@ -205,7 +203,6 @@ def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
 
 
 def segment_activity(segs: list[dict], t_end: float, hop: float = CAL_HOP) -> np.ndarray:
-    """자막 타임스탬프를 '발화 중 = 1' 인 영상 타임라인 신호로 만든다."""
     n = max(2, int(math.ceil(max(t_end, hop) / hop)) + 1)
     a = np.zeros(n, np.float32)
     for s in segs:
@@ -229,11 +226,6 @@ def _prefix(x: np.ndarray):
 
 def _xcorr_scan(a: np.ndarray, e: np.ndarray, L0: int, L1: int,
                 min_frames: int) -> list[tuple[int, float]]:
-    """a(영상 타임라인) ↔ e(오디오 타임라인) 정규화 상호상관 스캔.
-
-    lag L 은 "영상 i ↔ 오디오 i-L" 대응이므로 offset = L * hop.
-    겹침 구간의 평균·분산은 누적합으로 O(1)에 구한다.
-    """
     a1, a2 = _prefix(a)
     e1, e2 = _prefix(e)
     Na, Ne = len(a), len(e)
@@ -255,7 +247,6 @@ def _xcorr_scan(a: np.ndarray, e: np.ndarray, L0: int, L1: int,
 
 
 def _parabolic(rows: list[tuple[int, float]], L: int, hop: float) -> float:
-    """최고점 주변 3점 포물선 보간 → 프레임 이하 정밀도."""
     m = dict(rows)
     rm, r0, rp = m.get(L - 1), m.get(L), m.get(L + 1)
     if rm is None or rp is None or r0 is None:
@@ -273,11 +264,6 @@ def best_offset(env: np.ndarray, act: np.ndarray, hop: float,
 
     offset = "영상 0초에 대응하는 오디오 시각" 이므로
     영상 인덱스 i 는 오디오 인덱스 (i - L) 과 짝이 된다(L = offset / hop).
-
-    1) 굵은 탐색: 두 신호를 0.12초 평활화해 비교.
-       겹침이 짧은 lag 은 상관이 우연히 높아지므로 최소 겹침을 강제한다.
-    2) 미세 보정: 발화 시작(어택) 성분만 남긴 신호로 ±0.3초 재탐색.
-       자막 끝이 실제 발화보다 길면 1)이 뒤로 밀리는데 그 편향을 없앤다.
     """
     raw_e = np.asarray(env, float)
     raw_a = np.asarray(act, float)
@@ -307,7 +293,6 @@ def best_offset(env: np.ndarray, act: np.ndarray, hop: float,
     far = [r for L, r in rows if abs(L - L_best) > 0.5 / hop]
     second = max(far) if far else -1.0
     contrast = r_best - second
-    # 신뢰도: (a) 상관 자체가 충분한가 (b) 0.5초 밖 후보와 얼마나 벌어졌는가
     conf = (max(0.0, min(1.0, (r_best - 0.10) / 0.35))
             * max(0.0, min(1.0, contrast / 0.08)))
 
@@ -350,6 +335,7 @@ def _split_tc(tc: str):
 
 
 def parse_transcript(text: str, total: float = 0.0) -> list[dict]:
+    """구형 자막 파서(SRT 등). 남겨두는 이유: 기존 DB·테스트 호환."""
     lines = [l.rstrip() for l in (text or "").splitlines()]
     segs: list[dict] = []
     i = 0
@@ -405,6 +391,8 @@ def parse_transcript(text: str, total: float = 0.0) -> list[dict]:
     for k, s in enumerate(segs):
         s["i"] = k
         s["start"], s["end"] = round(float(s["start"]), 2), round(float(s["end"]), 2)
+        s.setdefault("en", s["text"])
+        s.setdefault("ko", "")
     return segs
 
 
@@ -419,7 +407,6 @@ def yt_id(url: str) -> str:
 
 
 def audio_public(v: dict, d: dict) -> dict | None:
-    """영상에 연결된 오디오의 공개 정보"""
     aid = v.get("audio_id")
     if not aid or aid not in d["audios"]:
         return None
@@ -430,43 +417,114 @@ def audio_public(v: dict, d: dict) -> dict | None:
             "license": a.get("license", "")}
 
 
+def video_public(v: dict, d: dict) -> dict:
+    au = audio_public(v, d)
+    return {"id": v["id"], "yt": v["yt"], "title": v["title"],
+            "segs": v["segs"], "n": len(v["segs"]),
+            "audio": au, "has_audio": au is not None,
+            "complete": prog.is_complete(v["id"]),
+            "tests": prog.test_best(v["id"])}
+
+
+DEMO_VIDEO_IDS = ("vdemo0001", "vdemo0002")
+DEMO_AUDIO_IDS = ("ademo0001",)
+
+
+def drop_demo() -> dict:
+    """과거 버전이 만든 데모(토끼) 영상/음원을 기동 시 1회 제거한다. 멱등."""
+    d = db()
+    removed = []
+    for vid in list(d["videos"]):
+        if vid in DEMO_VIDEO_IDS:
+            d["videos"].pop(vid, None)
+            removed.append(vid)
+    for aid in list(d["audios"]):
+        if aid in DEMO_AUDIO_IDS:
+            a = d["audios"].pop(aid, None)
+            removed.append(aid)
+            if a:
+                try:
+                    storage.delete(a.get("key", ""))
+                except Exception:
+                    pass
+    if removed:
+        for v in d["videos"].values():
+            if v.get("audio_id") in DEMO_AUDIO_IDS:
+                v["audio_id"] = None
+        save_db(d)
+    return {"removed": removed}
+
+
+drop_demo()
+
+
 # --------------------------------------------------------------- API
 @app.get("/api/health")
 def health():
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
-            "version": app.version}
+            "script_md": True, "version": app.version}
 
 
 # ---- 영상
 @app.get("/api/videos")
 def list_videos():
     d = db()
-    out = []
-    for v in d["videos"].values():
-        au = audio_public(v, d)
-        out.append({"id": v["id"], "yt": v["yt"], "title": v["title"],
-                    "segs": v["segs"], "n": len(v["segs"]),
-                    "audio": au, "has_audio": au is not None})
+    out = [video_public(v, d) for v in d["videos"].values()]
+    for o in out:
+        o["memorized"] = prog.memorized(o["id"], o["n"])
     out.sort(key=lambda x: x["id"], reverse=True)
     return out
 
 
+@app.get("/api/videos/{vid}")
+def one_video(vid: str):
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    o = video_public(v, d)
+    o["memorized"] = prog.memorized(vid, o["n"])
+    return o
+
+
 @app.post("/api/videos")
 def add_video(payload: dict):
-    vid_yt = yt_id(payload.get("url", ""))
-    segs = parse_transcript(payload.get("transcript", ""), float(payload.get("duration") or 0))
+    """마크다운 대본(script) 또는 구형 자막(transcript)으로 영상을 등록한다."""
+    md = (payload.get("script") or "").strip()
+    title = (payload.get("title") or "").strip()
+    url = (payload.get("url") or "").strip()
+    duration = float(payload.get("duration") or 0)
+
+    warnings: list[str] = []
+    if md:
+        sc = script_md.parse(md, duration)
+        warnings = sc.warnings
+        if not url:
+            url = sc.yt
+        if not title:
+            title = sc.title
+        if not duration:
+            duration = sc.duration
+        segs = script_md.to_segs(sc)
+    else:
+        segs = parse_transcript(payload.get("transcript", ""), duration)
+
+    if not url:
+        raise HTTPException(422, "유튜브 링크를 입력해주세요")
     if not segs:
-        raise HTTPException(422, "자막을 해석하지 못했습니다.")
+        raise HTTPException(422, "대본을 해석하지 못했습니다. 형식을 확인해주세요.")
+    vid_yt = yt_id(url)
+
     vid = "v" + os.urandom(4).hex()
     rec = {"id": vid, "yt": vid_yt,
-           "title": (payload.get("title") or "").strip()[:80] or f"YouTube {vid_yt}",
+           "title": title[:80] or f"YouTube {vid_yt}",
            "thumb": f"https://i.ytimg.com/vi/{vid_yt}/mqdefault.jpg",
-           "segs": segs, "audio_id": payload.get("audio_id")}
+           "segs": segs, "audio_id": payload.get("audio_id"),
+           "duration": round(float(duration or 0), 2)}
     d = db()
     d["videos"][vid] = rec
     save_db(d)
-    return rec
+    return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
+            "markdown": script_md.serialize(rec["title"], vid_yt, segs, rec["duration"])}
 
 
 @app.delete("/api/videos/{vid}")
@@ -485,21 +543,79 @@ def patch_segment(vid: str, idx: int, payload: dict):
     if not (0 <= idx < len(v["segs"])):
         raise HTTPException(404, "문장을 찾을 수 없습니다")
     s = v["segs"][idx]
-    prev = {"start": s["start"], "end": s["end"], "text": s["text"]}
+    prev = {"start": s["start"], "end": s["end"], "text": s.get("text", "")}
     for k in ("start", "end"):
         if payload.get(k) is not None:
             s[k] = round(max(0.0, float(payload[k])), 3)
     if payload.get("text") is not None:
         s["text"] = str(payload["text"])[:300]
+        s["en"] = s["text"]
+    if payload.get("en") is not None:
+        s["en"] = str(payload["en"])[:300]
+        s["text"] = s["en"]
+    if payload.get("ko") is not None:
+        s["ko"] = str(payload["ko"])[:300]
     if s["end"] <= s["start"]:
         raise HTTPException(422, "종료 시간은 시작보다 뒤여야 합니다")
     d["videos"][vid] = v
     save_db(d)
-    return {"ok": True, "seg": s, "prev": prev,
-            "dur": round(s["end"] - s["start"], 3)}
+    return {"ok": True, "seg": s, "prev": prev, "dur": round(s["end"] - s["start"], 3)}
 
 
-# ---- 오디오 라이브러리 (서버 보관)
+# ---- 대본(마크다운)
+@app.get("/api/videos/{vid}/script")
+def get_script(vid: str):
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    md = script_md.serialize(v.get("title", ""), v.get("yt", ""), v["segs"],
+                             float(v.get("duration") or 0))
+    return {"ok": True, "markdown": md, "segs": v["segs"],
+            "template": SCRIPT_TEMPLATE}
+
+
+@app.put("/api/videos/{vid}/script")
+def put_script(vid: str, payload: dict):
+    """대본을 통째로 교체한다. 저장 전에 파싱 오류를 그대로 돌려준다."""
+    md = (payload.get("markdown") or "").strip()
+    if not md:
+        raise HTTPException(422, "대본이 비어 있습니다")
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    sc = script_md.parse(md, float(v.get("duration") or 0))
+    segs = script_md.to_segs(sc)
+    if not segs:
+        raise HTTPException(422, "문장을 하나도 찾지 못했습니다. '## 0:04-0:07.5' 형식을 확인해주세요.")
+    v["segs"] = segs
+    if sc.title:
+        v["title"] = sc.title[:80]
+    if sc.duration:
+        v["duration"] = round(sc.duration, 2)
+    d["videos"][vid] = v
+    save_db(d)
+    return {"ok": True, "segs": segs, "warnings": sc.warnings, "title": v["title"],
+            "markdown": script_md.serialize(v["title"], v.get("yt", ""), segs,
+                                            float(v.get("duration") or 0))}
+
+
+SCRIPT_TEMPLATE = """# 카페에서 주문하기
+@yt aqz-KE-bpKQ
+@duration 24
+
+## 0:04-0:07.5
+EN: Hi, can I get a latte please?
+KO: 라떼 한 잔 주세요.
+
+## 0:08-0:11.5
+EN: Sure. What size would you like?
+KO: 네, 어떤 사이즈로 드릴까요?
+
+## 0:12-0:15
+EN: Medium, please. For here.
+KO: 중간 사이즈로 주세요. 매장에서 마실게요.
+"""
+
+
+# ---- 오디오 라이브러리
 @app.get("/api/audios")
 def list_audios():
     d = db()
@@ -507,7 +623,8 @@ def list_audios():
     for a in d["audios"].values():
         ok = storage.exists(a["key"])
         out.append({**{k: a.get(k) for k in ("id", "title", "dur", "offset", "source", "license")},
-                    "url": storage.url(a["key"]) if ok else None, "bytes": storage.size(a["key"]) if ok else 0,
+                    "url": storage.url(a["key"]) if ok else None,
+                    "bytes": storage.size(a["key"]) if ok else 0,
                     "used_by": [v["id"] for v in d["videos"].values() if v.get("audio_id") == a["id"]]})
     out.sort(key=lambda x: x["id"], reverse=True)
     return out
@@ -576,7 +693,6 @@ def del_audio(aid: str):
 
 @app.post("/api/videos/{vid}/link-audio")
 def link_audio(vid: str, payload: dict):
-    """영상 <-> 오디오 연결. offset(초)로 시간축을 맞춘다."""
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     aid = payload.get("audio_id")
@@ -599,14 +715,7 @@ def link_audio(vid: str, payload: dict):
 # ---- offset 자동 캘리브레이션
 @app.post("/api/videos/{vid}/calibrate")
 def calibrate(vid: str, payload: dict | None = Body(default=None)):
-    """자막 타임스탬프(발화 위치)와 원본 음원 엔벨로프의 상호상관으로 offset 을 추정.
-
-    offset 정의: audio_time = video_time - offset
-      → 영상 0초가 오디오 파일의 몇 초인지.
-    요청(모두 선택)
-      {"audio_id": "a...", "search_s": [lo, hi], "step_ms": 20,
-       "smooth_s": 0.12, "min_overlap_s": 2.0, "apply": false, "link": false}
-    """
+    """자막 타임스탬프와 원본 음원 엔벨로프의 상호상관으로 offset 을 추정."""
     p = dict(payload or {})
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
@@ -637,7 +746,6 @@ def calibrate(vid: str, payload: dict | None = Body(default=None)):
     video_end = max(float(s["end"]) for s in v["segs"])
     act = segment_activity(v["segs"], video_end, hop)
 
-    # 기본 탐색범위: 최소 겹침이 확보되는 전체 구간
     lo_d = -(audio_dur - min_ov)
     hi_d = video_end - min_ov
     srch = p.get("search_s")
@@ -677,7 +785,6 @@ def calibrate(vid: str, payload: dict | None = Body(default=None)):
 
 # ---- 미디어 서빙 (HTTP Range 지원)
 def _range_response(path: Path, mime: str, request: Request) -> StreamingResponse | FileResponse:
-    """브라우저 <audio> 가 구간 seek 을 하려면 206 Partial Content 가 필요하다."""
     total = path.stat().st_size
     rng = request.headers.get("range")
     headers = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"}
@@ -688,7 +795,7 @@ def _range_response(path: Path, mime: str, request: Request) -> StreamingRespons
     if not m:
         return FileResponse(str(path), media_type=mime, headers=headers)
     start_s, end_s = m.group(1), m.group(2)
-    if start_s == "":                       # bytes=-500  (마지막 500바이트)
+    if start_s == "":
         length = int(end_s or 0)
         start = max(0, total - length)
         end = total - 1
@@ -727,7 +834,7 @@ def serve_media(key: str, request: Request):
         raise HTTPException(404, "파일이 없습니다")
     except ValueError:
         raise HTTPException(400, "잘못된 경로")
-    if path is None:                              # S3 등 원격 저장소
+    if path is None:
         return RedirectResponse(storage.url(key), status_code=307)
     mime = MIME.get("." + key.rsplit(".", 1)[-1].lower(), "application/octet-stream")
     return _range_response(path, mime, request)
@@ -768,7 +875,227 @@ async def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
     else:
         res = timing_score(take_y, seg_dur)
         res["ref_dur"] = round(seg_dur, 2)
-    return {"vid": vid, "idx": idx, "text": seg["text"], **res}
+
+    try:
+        prog.record_attempt(vid, idx, res["total"], res["mode"])
+    except Exception:
+        pass
+    res["memorized"] = prog.memorized(vid, len(v["segs"]))
+    return {"vid": vid, "idx": idx, "text": seg.get("en") or seg.get("text", ""),
+            "ko": seg.get("ko", ""), **res}
+
+
+# ---- 홈 진척도
+@app.get("/api/progress")
+def get_progress():
+    d = db()
+    return prog.progress(d["videos"])
+
+
+@app.get("/api/badges")
+def get_badges():
+    return {"badges": prog.badges(), "xp": prog.level_info(),
+            "completed": prog.completed_count()}
+
+
+# ---- 북마크 / 오답노트 / 단어장
+@app.get("/api/notes")
+def get_notes():
+    return prog.notes()
+
+
+@app.post("/api/notes/sentence")
+def note_sentence(payload: dict):
+    vid = str(payload.get("vid") or "")
+    idx = int(payload.get("idx", -1))
+    d = db()
+    v = d["videos"].get(vid)
+    if not v:
+        raise HTTPException(404, "영상을 찾을 수 없습니다")
+    if not (0 <= idx < len(v["segs"])):
+        raise HTTPException(404, "문장을 찾을 수 없습니다")
+    return prog.toggle_sentence(vid, idx, v["segs"][idx], v, str(payload.get("note") or ""))
+
+
+@app.delete("/api/notes/sentence/{vid}/{idx}")
+def unnote_sentence(vid: str, idx: int):
+    return prog.toggle_sentence(vid, idx, {})
+
+
+@app.post("/api/notes/word")
+def note_word(payload: dict):
+    return prog.toggle_word(str(payload.get("word") or ""),
+                            str(payload.get("meaning") or ""),
+                            str(payload.get("ctx") or ""),
+                            str(payload.get("vid") or ""),
+                            int(payload.get("idx", -1)))
+
+
+@app.get("/api/words/{word}")
+def word_info(word: str):
+    return prog.lookup(word)
+
+
+
+# ---- 싱크(재생하며 타이밍 찍기)
+@app.post("/api/sync/split")
+def sync_split(payload: dict):
+    """붙여넣은 대본 → 문장(영어/한국어) 목록. 타이밍은 아직 없음."""
+    items = synclib.split_transcript(payload.get("text", ""),
+                                     bool(payload.get("split_sentences", True)))
+    if not items:
+        raise HTTPException(422, "문장을 찾지 못했습니다. 한 줄에 한 문장씩 넣어주세요.")
+    return {"ok": True, "items": items, "count": len(items)}
+
+
+@app.post("/api/sync/apply")
+def sync_apply(payload: dict):
+    """재생하며 찍은 타이밍을 저장한다.
+
+    {url, title, vid?, sentences:[{start,end,en,ko}], markdown?, duration?}
+      · markdown 이 오면 그것을 정본으로 파싱(손으로 고친 값을 존중)
+      · vid 가 있으면 그 영상의 대본을 교체, 없으면 새 영상 생성
+    """
+    d = db()
+    vid = (payload.get("vid") or "").strip()
+    md = (payload.get("markdown") or "").strip()
+    duration = float(payload.get("duration") or 0)
+    title = str(payload.get("title") or "").strip()
+    url = str(payload.get("url") or "").strip()
+
+    if md:
+        sc = script_md.parse(md, duration)
+        segs = script_md.to_segs(sc)
+        warnings = sc.warnings
+        if not title and sc.title:
+            title = sc.title
+        if not url and sc.yt:
+            url = sc.yt
+        if sc.duration:
+            duration = sc.duration
+    else:
+        rows = []
+        for it in (payload.get("sentences") or []):
+            st = round(max(0.0, float(it.get("start") or 0)), 2)
+            en = round(max(0.0, float(it.get("end") or 0)), 2)
+            if en <= st:
+                en = round(st + 0.2, 2)
+            rows.append({"start": st, "end": en,
+                         "en": str(it.get("en") or "").strip()[:300],
+                         "ko": str(it.get("ko") or "").strip()[:300]})
+        if not rows:
+            raise HTTPException(422, "저장할 문장이 없습니다")
+        warnings = synclib.validate(rows, duration)
+        segs = [{"i": k, "start": r["start"], "end": r["end"], "en": r["en"],
+                 "ko": r["ko"], "text": r["en"]} for k, r in enumerate(rows)]
+
+    if not segs:
+        raise HTTPException(422, "문장을 해석하지 못했습니다")
+
+    if vid and vid in d["videos"]:
+        v = d["videos"][vid]
+    else:
+        if not url:
+            raise HTTPException(422, "쇼츠 주소가 필요합니다")
+        vid = "v" + os.urandom(4).hex()
+        yt = yt_id(url)
+        d["videos"][vid] = {"id": vid, "yt": yt, "title": title[:80] or f"YouTube {yt}",
+                            "thumb": f"https://i.ytimg.com/vi/{yt}/mqdefault.jpg",
+                            "segs": segs, "audio_id": payload.get("audio_id"),
+                            "duration": round(duration, 2)}
+        save_db(d)
+        rec = d["videos"][vid]
+        return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
+                "created": True,
+                "markdown": script_md.serialize(rec["title"], rec["yt"], segs,
+                                                float(rec.get("duration") or 0))}
+
+    v["segs"] = segs
+    if title:
+        v["title"] = title[:80]
+    if duration:
+        v["duration"] = round(duration, 2)
+    d["videos"][vid] = v
+    save_db(d)
+    return {"ok": True, "video": v, "segs": segs, "warnings": warnings, "created": False,
+            "markdown": script_md.serialize(v.get("title", ""), v.get("yt", ""), segs,
+                                            float(v.get("duration") or 0))}
+
+
+
+# ---- 암기 테스트(드릴) / 최종 암송
+@app.get("/api/videos/{vid}/drills")
+def get_drill(vid: str, kind: str = "order", seed: int | None = None):
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    try:
+        data = drills.build(kind, v["segs"], vid, seed)
+    except ValueError:
+        raise HTTPException(422, f"알 수 없는 테스트 종류: {kind}")
+    data["video"] = {"id": v["id"], "title": v.get("title", ""), "n": len(v["segs"])}
+    data["best"] = (prog.test_best(vid) or {}).get(kind) or None
+    return data
+
+
+@app.post("/api/videos/{vid}/drills/{kind}/check")
+def check_drill(vid: str, kind: str, payload: dict):
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    answers = payload.get("answers")
+    try:
+        res = drills.check(kind, answers, v["segs"])
+    except ValueError:
+        raise HTTPException(422, f"알 수 없는 테스트 종류: {kind}")
+    rec = prog.record_test(vid, kind, res["passed"], res["score"],
+                           {"hit": res.get("hit"), "total": res.get("total")})
+    return {**res, "record": rec,
+            "memorized": prog.memorized(vid, len(v["segs"])),
+            "tests": prog.test_best(vid)}
+
+
+@app.post("/api/videos/{vid}/recite/check")
+def check_recite(vid: str, payload: dict):
+    """최종 암송 채점. 통과하면 그 쇼츠는 '암기 완료'가 된다."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    segs = v["segs"]
+    expected = [(s.get("en") or s.get("text") or "").strip() for s in segs]
+    said = str(payload.get("said") or "")
+    if not said.strip():
+        raise HTTPException(422, "인식된 문장이 없습니다. 다시 시도해주세요")
+    thr = int(payload.get("threshold") or drills.FINAL_PASS)
+    res = drills.match_recitation(expected, said, thr)
+    rec = prog.record_test(vid, "recite", res["passed"], res["score"],
+                           {"passed_count": res.get("passed_count"),
+                            "total": res.get("total")})
+    return {**res, "record": rec,
+            "complete": prog.is_complete(vid),
+            "memorized": prog.memorized(vid, len(segs)),
+            "tests": prog.test_best(vid)}
+
+
+@app.post("/api/videos/{vid}/recite/self")
+def self_score(vid: str, payload: dict):
+    """짝꿍 채점: 두 사람이 서로 채점하던 방식을 앱으로. 전부 통과 표시하면 완료."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    marks = payload.get("marks") or []
+    n = len(v["segs"])
+    if len(marks) != n:
+        raise HTTPException(422, "문장 수와 채점 수가 다릅니다")
+    ok_count = len([m for m in marks if m])
+    passed = ok_count == n and n > 0
+    score = int(round(100 * ok_count / max(1, n)))
+    rec = prog.record_test(vid, "recite", passed, score,
+                           {"self": 1, "passed_count": ok_count, "total": n})
+    return {"ok": True, "passed": passed, "score": score, "record": rec,
+            "complete": prog.is_complete(vid), "tests": prog.test_best(vid)}
+
+
+@app.delete("/api/videos/{vid}/tests")
+def reset_video_tests(vid: str):
+    prog.reset_tests(vid)
+    return {"ok": True}
 
 
 # ---- 정적

@@ -1,90 +1,48 @@
-"""데모 데이터 시드
+"""초기 데이터 시드
 
-- data/videos.json : {"videos": {...}, "audios": {...}}
-- data/media/audios/ademo0001.wav : 서버 보관 원본 음원(합성 데모)
-  * vdemo0001 -> 오디오 연결됨 (4축 음향 채점)
-  * vdemo0002 -> 오디오 없음 (타이밍 채점)
+v3.4부터 **데모 영상은 만들지 않는다.** (토끼 영상 제거 요청)
+빈 DB만 준비하고, 기존에 남아 있던 데모 레코드는 main.py 기동 시 자동으로 정리된다.
+
+  data/videos.json      : {"videos": {}, "audios": {}}
+  data/media/audios/    : (비어 있음)
 """
 import json
 from pathlib import Path
 
-import numpy as np
-import soundfile as sf
-
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data"
 MEDIA = DATA / "media" / "audios"
-MEDIA.mkdir(parents=True, exist_ok=True)
-SR = 16000
 
-SEGS_A = [
-    (4.0, 7.5, "Hi, can I get a latte please?"),
-    (8.0, 11.5, "Sure. What size would you like?"),
-    (12.0, 15.0, "Medium, please. For here."),
-    (16.0, 20.0, "That'll be six fifty. Card or cash?"),
-]
-SEGS_B = [
-    (1.0, 4.2, "Let's get started with the agenda."),
-    (5.0, 8.6, "First, we review last week's numbers."),
-    (9.5, 13.0, "Then we'll talk about the timeline."),
-]
-
-
-def synth(total=24.0) -> np.ndarray:
-    """구간마다 피치가 흔들리는 톤 버스트 = 억양 데모용 합성 음성"""
-    n = int(total * SR)
-    y = np.zeros(n, dtype=np.float32)
-    rng = np.random.default_rng(7)
-    for k, (s, e, _) in enumerate(SEGS_A):
-        base = 150 + k * 22
-        dur = int((e - s - 0.25) * SR)
-        t = np.arange(dur) / SR
-        f0 = base + 26 * np.sin(2 * np.pi * 1.3 * t + k) + 9 * np.sin(2 * np.pi * 0.4 * t)
-        ph = 2 * np.pi * np.cumsum(f0) / SR
-        env = np.minimum(1, t / 0.05) * np.minimum(1, (t[-1] - t) / 0.12 + 0.15)
-        sig = (0.55 * np.sin(ph) + 0.22 * np.sin(2 * ph) + 0.12 * np.sin(3 * ph)) * env
-        sig = sig + 0.02 * rng.standard_normal(dur)
-        i = int(s * SR)
-        y[i:i + dur] += sig.astype(np.float32)
-    return 0.8 * y / max(1e-6, np.max(np.abs(y)))
+DEMO_VIDEO_IDS = ("vdemo0001", "vdemo0002")
+DEMO_AUDIO_IDS = ("ademo0001",)
 
 
 def main() -> None:
-    wav = MEDIA / "ademo0001.wav"
-    if not wav.exists():
-        sf.write(str(wav), synth(), SR, subtype="PCM_16")
-    dur = round(len(sf.read(str(wav), dtype="float32")[0]) / SR, 2)
+    DATA.mkdir(parents=True, exist_ok=True)
+    MEDIA.mkdir(parents=True, exist_ok=True)
 
-    db = {
-        "videos": {
-            "vdemo0001": {
-                "id": "vdemo0001", "yt": "aqz-KE-bpKQ",
-                "title": "데모 A · 원본 음원 연결됨",
-                "thumb": "https://i.ytimg.com/vi/aqz-KE-bpKQ/mqdefault.jpg",
-                "audio_id": "ademo0001",
-                "segs": [{"i": i, "start": s, "end": e, "text": t}
-                         for i, (s, e, t) in enumerate(SEGS_A)],
-            },
-            "vdemo0002": {
-                "id": "vdemo0002", "yt": "aqz-KE-bpKQ",
-                "title": "데모 B · 오디오 미연결(타이밍 채점)",
-                "thumb": "https://i.ytimg.com/vi/aqz-KE-bpKQ/mqdefault.jpg",
-                "audio_id": None,
-                "segs": [{"i": i, "start": s, "end": e, "text": t}
-                         for i, (s, e, t) in enumerate(SEGS_B)],
-            },
-        },
-        "audios": {
-            "ademo0001": {
-                "id": "ademo0001", "key": "audios/ademo0001.wav",
-                "title": "데모 원본 음원 (합성)", "dur": dur, "offset": 0.0,
-                "source": "owned", "license": "self-recorded demo",
-                "mime": "audio/wav",
-            },
-        },
-    }
-    (DATA / "videos.json").write_text(json.dumps(db, ensure_ascii=False, indent=1), "utf-8")
-    print(f"시드 완료: 영상 2개 / 오디오 1개 ({dur}s) -> {DATA / 'videos.json'}")
+    path = DATA / "videos.json"
+    db = {"videos": {}, "audios": {}}
+    if path.exists():
+        try:
+            old = json.loads(path.read_text("utf-8"))
+            vs = old.get("videos", old) if isinstance(old, dict) else {}
+            au = old.get("audios", {}) if isinstance(old, dict) else {}
+            db["videos"] = {k: v for k, v in vs.items() if k not in DEMO_VIDEO_IDS}
+            db["audios"] = {k: v for k, v in au.items() if k not in DEMO_AUDIO_IDS}
+        except Exception:
+            pass
+    path.write_text(json.dumps(db, ensure_ascii=False, indent=1), "utf-8")
+
+    removed = 0
+    for f in MEDIA.glob("ademo*.wav"):
+        try:
+            f.unlink()
+            removed += 1
+        except OSError:
+            pass
+    print(f"시드 완료: 영상 {len(db['videos'])}개 / 오디오 {len(db['audios'])}개"
+          f" (데모 음원 {removed}개 정리) -> {path}")
 
 
 if __name__ == "__main__":
