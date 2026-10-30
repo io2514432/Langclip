@@ -1,0 +1,775 @@
+"""Echo — 유튜브 문장별 셰도잉 (FastAPI)
+
+구조
+  영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
+  오디오(audio) : 서버 보관. 소유·라이선스가 확보된 음원만 등록.
+  링크         : video.audio_id -> audio.id  (+ offset 초)
+
+offset 정의
+  audio_time = video_time - offset
+  즉 offset 은 "영상 0초에 해당하는 오디오 파일의 재생 위치".
+  영상 전체를 그대로 받은 파일이면 0.0, 일부만 잘라낸 파일이면 그 시작 시각.
+  값이 애매하면 POST /api/videos/{vid}/calibrate 로 자동 추정할 수 있다.
+"""
+from __future__ import annotations
+
+import io
+import json
+import math
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+import librosa
+import numpy as np
+import soundfile as sf
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
+import engine
+from store import DATA, storage
+
+STATIC = Path(__file__).resolve().parent / "static"
+DB = DATA / "videos.json"
+
+SR = engine.SR
+MAX_UPLOAD = 60 * 1024 * 1024
+AUDIO_EXT = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".webm", ".flac"}
+MIME = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+        ".aac": "audio/aac", ".ogg": "audio/ogg", ".opus": "audio/ogg",
+        ".webm": "audio/webm", ".flac": "audio/flac"}
+
+# ---- offset 자동 캘리브레이션 기본값
+CAL_HOP = 0.02          # 20ms 프레임 (상호상관 해상도, 포물선 보간으로 ~5ms)
+CAL_SMOOTH = 0.12       # 엔벨로프/문장활동 평활화 (초)
+CAL_MIN_OVERLAP = 2.0   # 최소 겹침 길이 (초)
+
+app = FastAPI(title="Echo Shadowing API", version="3.1")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+# --------------------------------------------------------------- store
+def db() -> dict:
+    """{"videos": {...}, "audios": {...}} — 구버전(평면 video dict)도 자동 승격."""
+    raw = {}
+    if DB.exists():
+        try:
+            raw = json.loads(DB.read_text("utf-8"))
+        except Exception:
+            raw = {}
+    if "videos" in raw or "audios" in raw:
+        raw.setdefault("videos", {})
+        raw.setdefault("audios", {})
+        return raw
+    return {"videos": raw, "audios": {}}          # 구버전 마이그레이션
+
+
+def save_db(d: dict) -> None:
+    DB.write_text(json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
+
+
+def get_video(vid: str) -> dict:
+    v = db()["videos"].get(vid)
+    if not v:
+        raise HTTPException(404, "영상을 찾을 수 없습니다")
+    return v
+
+
+def get_audio(aid: str) -> dict:
+    a = db()["audios"].get(aid)
+    if not a:
+        raise HTTPException(404, "오디오를 찾을 수 없습니다")
+    return a
+
+
+# --------------------------------------------------------------- audio util
+def to_wav16k(src: bytes, suffix: str) -> np.ndarray:
+    suffix = suffix if suffix.startswith(".") else "." + suffix
+    with tempfile.TemporaryDirectory() as t:
+        raw, out = os.path.join(t, "in" + suffix), os.path.join(t, "out.wav")
+        open(raw, "wb").write(src)
+        p = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", raw,
+             "-ac", "1", "-ar", str(SR), "-f", "wav", out],
+            capture_output=True,
+        )
+        if p.returncode != 0:
+            raise HTTPException(400, f"오디오 변환 실패: {p.stderr.decode()[:240]}")
+        y, _ = sf.read(out, dtype="float32")
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    return y.astype(np.float32)
+
+
+def probe_duration(data: bytes, suffix: str) -> float:
+    with tempfile.TemporaryDirectory() as t:
+        raw = os.path.join(t, "in" + suffix)
+        open(raw, "wb").write(data)
+        p = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", raw],
+            capture_output=True, text=True,
+        )
+        try:
+            return round(float(p.stdout.strip()), 2)
+        except Exception:
+            return 0.0
+
+
+def timing_score(y: np.ndarray, seg_dur: float) -> dict:
+    p = engine.preprocess(y)
+    dur = len(p) / SR
+    ratio = dur / max(seg_dur, 0.1)
+    v = 100.0 * math.exp(-abs(math.log(max(ratio, 1e-6))) / 0.35)
+    v = float(max(0.0, min(100.0, v)))
+    return {"total": round(v, 1), "mode": "timing", "timing": round(v, 1),
+            "has_pitch": False, "weights": {"timing": 1.0},
+            "raw": {"dur_take": round(dur, 2), "dur_seg": round(seg_dur, 2),
+                    "ratio": round(ratio, 3)}}
+
+
+def _to_mono(y) -> np.ndarray:
+    y = np.asarray(y, dtype=np.float32)
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    return y.astype(np.float32)
+
+
+def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
+    """저장소(로컬/원격)에서 [t0, t1) 구간만 16kHz 모노로 디코드.
+
+    ★ 원격(S3/R2) 스트리밍 경로
+      1) storage.open(key) 로 seek 가능한 파일 객체를 받아 soundfile 이
+         필요한 구간만 읽는다(HTTP Range). 원격이어도 전체를 받지 않는다.
+      2) libsndfile 이 못 읽는 형식(m4a/aac 등)은 storage.uri(key) 를 ffmpeg 에
+         넘긴다. ffmpeg 는 HTTP 입력에서 Range 로 필요한 구간만 당겨온다.
+    """
+    t0 = max(0.0, float(t0))
+    t1 = max(t0 + 0.05, float(t1))
+    dur = t1 - t0
+    try:
+        with storage.open(key) as f:
+            with sf.SoundFile(f) as snd:
+                sr = snd.samplerate
+                start = int(round(t0 * sr))
+                if start >= snd.frames:
+                    return np.zeros(0, dtype=np.float32)
+                snd.seek(start)
+                n = max(1, int(round(dur * sr)))
+                y = snd.read(n, dtype="float32", always_2d=False)
+        y = _to_mono(y) if y is not None else np.zeros(0, np.float32)
+        if y.size and sr != SR:
+            y = librosa.resample(y, orig_sr=sr, target_sr=SR).astype(np.float32)
+        return y
+    except Exception:
+        pass                                   # 형식 미지원 → ffmpeg 폴백
+
+    uri = storage.uri(key)
+    p = subprocess.run(
+        ["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{t0:.3f}", "-t", f"{dur:.3f}",
+         "-i", uri, "-ac", "1", "-ar", str(SR), "-f", "wav", "-"],
+        capture_output=True,
+    )
+    if p.returncode != 0 or len(p.stdout) < 64:
+        msg = p.stderr.decode()[:160].strip() or "구간 디코드에 실패했습니다"
+        raise ValueError(msg)
+    with sf.SoundFile(io.BytesIO(p.stdout)) as snd:
+        y = snd.read(dtype="float32", always_2d=False)
+    return _to_mono(y)
+
+
+# ------------------------------------------------ offset 캘리브레이션 util
+def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
+    """저장소 오디오 전체의 log-RMS 엔벨로프. 원격이면 Range 스트리밍으로 훑는다."""
+    parts: list[np.ndarray] = []
+    with storage.open(key) as f:
+        with sf.SoundFile(f) as snd:
+            sr = snd.samplerate
+            win = max(1, int(round(sr * hop)))
+            block = max(win, (int(round(sr * 8.0)) // win) * win)
+            while True:
+                blk = snd.read(block, dtype="float32", always_2d=False)
+                if blk is None or len(blk) < win:
+                    break
+                b = _to_mono(blk)
+                m = (b.size // win) * win
+                fr = b[:m].astype(np.float64).reshape(-1, win)
+                parts.append(np.sqrt((fr ** 2).mean(axis=1) + 1e-12))
+    if not parts:
+        raise ValueError("오디오가 비어 있습니다")
+    return np.log(np.concatenate(parts) + 1e-6)
+
+
+def segment_activity(segs: list[dict], t_end: float, hop: float = CAL_HOP) -> np.ndarray:
+    """자막 타임스탬프를 '발화 중 = 1' 인 영상 타임라인 신호로 만든다."""
+    n = max(2, int(math.ceil(max(t_end, hop) / hop)) + 1)
+    a = np.zeros(n, np.float32)
+    for s in segs:
+        i0 = int(round(max(0.0, float(s["start"])) / hop))
+        i1 = int(round(max(0.0, float(s["end"])) / hop))
+        i0 = min(i0, n - 1)
+        a[i0:min(max(i1, i0 + 1), n)] = 1.0
+    return a
+
+
+def _smooth(x: np.ndarray, k: int) -> np.ndarray:
+    if k <= 1:
+        return x
+    return np.convolve(x, np.ones(k) / k, mode="same")
+
+
+def _prefix(x: np.ndarray):
+    return (np.concatenate([[0.0], np.cumsum(x)]),
+            np.concatenate([[0.0], np.cumsum(x * x)]))
+
+
+def _xcorr_scan(a: np.ndarray, e: np.ndarray, L0: int, L1: int,
+                min_frames: int) -> list[tuple[int, float]]:
+    """a(영상 타임라인) ↔ e(오디오 타임라인) 정규화 상호상관 스캔.
+
+    lag L 은 "영상 i ↔ 오디오 i-L" 대응이므로 offset = L * hop.
+    겹침 구간의 평균·분산은 누적합으로 O(1)에 구한다.
+    """
+    a1, a2 = _prefix(a)
+    e1, e2 = _prefix(e)
+    Na, Ne = len(a), len(e)
+    out: list[tuple[int, float]] = []
+    for L in range(L0, L1 + 1):
+        i0, i1 = max(0, L), min(Na, Ne + L)
+        n = i1 - i0
+        if n < min_frames:
+            continue
+        j0, j1 = i0 - L, i1 - L
+        sa, saa = a1[i1] - a1[i0], a2[i1] - a2[i0]
+        se, see = e1[j1] - e1[j0], e2[j1] - e2[j0]
+        den = (n * saa - sa * sa) * (n * see - se * se)
+        if den <= 1e-12:
+            continue
+        r = (n * float(np.dot(a[i0:i1], e[j0:j1])) - sa * se) / math.sqrt(den)
+        out.append((L, float(r)))
+    return out
+
+
+def _parabolic(rows: list[tuple[int, float]], L: int, hop: float) -> float:
+    """최고점 주변 3점 포물선 보간 → 프레임 이하 정밀도."""
+    m = dict(rows)
+    rm, r0, rp = m.get(L - 1), m.get(L), m.get(L + 1)
+    if rm is None or rp is None or r0 is None:
+        return float(L) * hop
+    d = rm - 2 * r0 + rp
+    if abs(d) < 1e-9:
+        return float(L) * hop
+    return (L + max(-0.5, min(0.5, 0.5 * (rm - rp) / d))) * hop
+
+
+def best_offset(env: np.ndarray, act: np.ndarray, hop: float,
+                lo: float, hi: float, smooth_s: float = CAL_SMOOTH,
+                min_overlap_s: float = CAL_MIN_OVERLAP) -> dict:
+    """오디오 엔벨로프 ↔ 자막 활동신호의 정규화 상호상관으로 offset 탐색.
+
+    offset = "영상 0초에 대응하는 오디오 시각" 이므로
+    영상 인덱스 i 는 오디오 인덱스 (i - L) 과 짝이 된다(L = offset / hop).
+
+    1) 굵은 탐색: 두 신호를 0.12초 평활화해 비교.
+       겹침이 짧은 lag 은 상관이 우연히 높아지므로 최소 겹침을 강제한다.
+    2) 미세 보정: 발화 시작(어택) 성분만 남긴 신호로 ±0.3초 재탐색.
+       자막 끝이 실제 발화보다 길면 1)이 뒤로 밀리는데 그 편향을 없앤다.
+    """
+    raw_e = np.asarray(env, float)
+    raw_a = np.asarray(act, float)
+    k = max(1, int(round(smooth_s / hop)))
+    e, a = _smooth(raw_e, k), _smooth(raw_a, k)
+
+    Na, Ne = len(a), len(e)
+    mo = max(int(round(min_overlap_s / hop)), int(round(0.35 * min(Na, Ne))))
+    rows = _xcorr_scan(a, e, int(math.floor(lo / hop)), int(math.ceil(hi / hop)), mo)
+    if not rows:
+        raise ValueError("자막 구간과 오디오가 충분히 겹치지 않습니다")
+
+    r_best, L_best = max((r, L) for L, r in rows)
+    offset = _parabolic(rows, L_best, hop)
+
+    ke = max(1, int(round(0.04 / hop)))
+    de = np.clip(np.diff(_smooth(raw_e, ke), prepend=0.0), 0, None)
+    da = np.clip(np.diff(_smooth(raw_a, ke), prepend=0.0), 0, None)
+    span = max(2, int(round(0.3 / hop)))
+    fine = _xcorr_scan(da, de, L_best - span, L_best + span,
+                       max(4, int(round(0.3 / hop))))
+    if fine:
+        rf, Lf = max((r, L) for L, r in fine)
+        if rf >= 0.20:
+            offset = _parabolic(fine, Lf, hop)
+
+    far = [r for L, r in rows if abs(L - L_best) > 0.5 / hop]
+    second = max(far) if far else -1.0
+    contrast = r_best - second
+    # 신뢰도: (a) 상관 자체가 충분한가 (b) 0.5초 밖 후보와 얼마나 벌어졌는가
+    conf = (max(0.0, min(1.0, (r_best - 0.10) / 0.35))
+            * max(0.0, min(1.0, contrast / 0.08)))
+
+    step = max(1, len(rows) // 120)
+    return {
+        "offset": round(float(offset), 3),
+        "lag_frames": L_best,
+        "peak": round(float(r_best), 3),
+        "second": round(float(second), 3),
+        "contrast": round(float(contrast), 3),
+        "confidence": round(float(conf), 2),
+        "n_lags": len(rows),
+        "curve": [[round(L * hop, 2), round(float(r), 3)] for L, r in rows[::step]],
+    }
+
+
+# --------------------------------------------------------------- transcript
+SRT = re.compile(r"(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*(.*)")
+RANGE = re.compile(r"^\[?(\d{1,2}:)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?\]?\s*[-~]\s*\[?(\d{1,2}:)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?\]?\s*(.*)$")
+ONLY = re.compile(r"^\[?(\d{1,2}:)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?\]?\s*(.*)$")
+
+
+def _sec(h, m, s, ms) -> float:
+    v = int(m or 0) * 60 + int(s or 0)
+    if h:
+        v += int(str(h).rstrip(":")) * 3600
+    return float(v) + (int((ms or "").ljust(3, "0")) / 1000.0 if ms else 0.0)
+
+
+def _split_tc(tc: str):
+    tc = tc.replace(",", ".")
+    parts = tc.split(":")
+    if len(parts) == 3:
+        h, m, s = parts
+        sec, _, ms = s.partition(".")
+    else:
+        h, m, s = "", parts[0], parts[1]
+        sec, _, ms = s.partition(".")
+    return h, m, sec, ms
+
+
+def parse_transcript(text: str, total: float = 0.0) -> list[dict]:
+    lines = [l.rstrip() for l in (text or "").splitlines()]
+    segs: list[dict] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i].strip()
+        if not raw or (
+            raw.isdigit() and len(raw) <= 4 and i + 1 < len(lines) and SRT.search(lines[i + 1])
+        ):
+            i += 1
+            continue
+        m = SRT.search(raw)
+        if m:
+            st, en = _sec(*_split_tc(m.group(1))), _sec(*_split_tc(m.group(2)))
+            body = m.group(3).strip()
+            j = i + 1
+            while j < len(lines) and lines[j].strip() and not SRT.search(lines[j]):
+                body = (body + " " + lines[j].strip()).strip()
+                j += 1
+            if body:
+                segs.append({"start": st, "end": en, "text": body})
+            i = j
+            continue
+        m = RANGE.match(raw)
+        if m:
+            st = _sec(m.group(1), m.group(2), m.group(3), m.group(4))
+            en = _sec(m.group(5), m.group(6), m.group(7), m.group(8))
+            if m.group(9).strip():
+                segs.append({"start": st, "end": en, "text": m.group(9).strip()})
+            i += 1
+            continue
+        m = ONLY.match(raw)
+        if m and (m.group(5) or "").strip():
+            st = _sec(m.group(1), m.group(2), m.group(3), m.group(4))
+            segs.append({"start": st, "end": st + 4.0, "text": m.group(5).strip()})
+            i += 1
+            continue
+        if raw:
+            segs.append({"start": None, "end": None, "text": raw})
+        i += 1
+
+    for k, s in enumerate(segs):
+        if s["start"] is not None and (s["end"] is None or s["end"] <= s["start"]):
+            nxt = next((x["start"] for x in segs[k + 1:] if x["start"] is not None), None)
+            s["end"] = nxt if nxt and nxt > s["start"] else s["start"] + 4.0
+
+    if segs and segs[0]["start"] is None:
+        total = total if total and total > 0 else max(6.0, 2.6 * len(segs))
+        step = total / len(segs)
+        for k, s in enumerate(segs):
+            s["start"], s["end"] = round(k * step, 2), round((k + 1) * step, 2)
+
+    segs = [s for s in segs if s["text"]]
+    for k, s in enumerate(segs):
+        s["i"] = k
+        s["start"], s["end"] = round(float(s["start"]), 2), round(float(s["end"]), 2)
+    return segs
+
+
+def yt_id(url: str) -> str:
+    url = (url or "").strip()
+    m = re.search(r"(?:v=|/shorts/|/embed/|youtu\.be/|/live/)([A-Za-z0-9_-]{11})", url)
+    if m:
+        return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url):
+        return url
+    raise HTTPException(422, "유튜브 URL에서 영상 ID를 찾지 못했습니다")
+
+
+def audio_public(v: dict, d: dict) -> dict | None:
+    """영상에 연결된 오디오의 공개 정보"""
+    aid = v.get("audio_id")
+    if not aid or aid not in d["audios"]:
+        return None
+    a = d["audios"][aid]
+    return {"id": a["id"], "url": storage.url(a["key"]) if storage.exists(a["key"]) else None,
+            "offset": a.get("offset", 0.0), "dur": a.get("dur", 0.0),
+            "title": a.get("title", ""), "source": a.get("source", "owned"),
+            "license": a.get("license", "")}
+
+
+# --------------------------------------------------------------- API
+@app.get("/api/health")
+def health():
+    return {"ok": True, "sr": SR, "storage": storage.name,
+            "range": True, "linked_audio": True, "remote_open": True,
+            "version": app.version}
+
+
+# ---- 영상
+@app.get("/api/videos")
+def list_videos():
+    d = db()
+    out = []
+    for v in d["videos"].values():
+        au = audio_public(v, d)
+        out.append({"id": v["id"], "yt": v["yt"], "title": v["title"],
+                    "segs": v["segs"], "n": len(v["segs"]),
+                    "audio": au, "has_audio": au is not None})
+    out.sort(key=lambda x: x["id"], reverse=True)
+    return out
+
+
+@app.post("/api/videos")
+def add_video(payload: dict):
+    vid_yt = yt_id(payload.get("url", ""))
+    segs = parse_transcript(payload.get("transcript", ""), float(payload.get("duration") or 0))
+    if not segs:
+        raise HTTPException(422, "자막을 해석하지 못했습니다.")
+    vid = "v" + os.urandom(4).hex()
+    rec = {"id": vid, "yt": vid_yt,
+           "title": (payload.get("title") or "").strip()[:80] or f"YouTube {vid_yt}",
+           "thumb": f"https://i.ytimg.com/vi/{vid_yt}/mqdefault.jpg",
+           "segs": segs, "audio_id": payload.get("audio_id")}
+    d = db()
+    d["videos"][vid] = rec
+    save_db(d)
+    return rec
+
+
+@app.delete("/api/videos/{vid}")
+def del_video(vid: str):
+    d = db()
+    d["videos"].pop(vid, None)
+    save_db(d)
+    return {"ok": True}
+
+
+@app.patch("/api/videos/{vid}/segments/{idx}")
+def patch_segment(vid: str, idx: int, payload: dict):
+    """문장 start/end/text 수정 — ±0.1s 미세조정 UI가 이 엔드포인트를 쓴다."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    if not (0 <= idx < len(v["segs"])):
+        raise HTTPException(404, "문장을 찾을 수 없습니다")
+    s = v["segs"][idx]
+    prev = {"start": s["start"], "end": s["end"], "text": s["text"]}
+    for k in ("start", "end"):
+        if payload.get(k) is not None:
+            s[k] = round(max(0.0, float(payload[k])), 3)
+    if payload.get("text") is not None:
+        s["text"] = str(payload["text"])[:300]
+    if s["end"] <= s["start"]:
+        raise HTTPException(422, "종료 시간은 시작보다 뒤여야 합니다")
+    d["videos"][vid] = v
+    save_db(d)
+    return {"ok": True, "seg": s, "prev": prev,
+            "dur": round(s["end"] - s["start"], 3)}
+
+
+# ---- 오디오 라이브러리 (서버 보관)
+@app.get("/api/audios")
+def list_audios():
+    d = db()
+    out = []
+    for a in d["audios"].values():
+        ok = storage.exists(a["key"])
+        out.append({**{k: a.get(k) for k in ("id", "title", "dur", "offset", "source", "license")},
+                    "url": storage.url(a["key"]) if ok else None, "bytes": storage.size(a["key"]) if ok else 0,
+                    "used_by": [v["id"] for v in d["videos"].values() if v.get("audio_id") == a["id"]]})
+    out.sort(key=lambda x: x["id"], reverse=True)
+    return out
+
+
+@app.post("/api/audios")
+async def add_audio(
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    offset: float = Form(0.0),
+    source: str = Form("owned"),
+    license: str = Form(""),
+):
+    """소유·라이선스가 확보된 음원만 등록한다. (제3자 영상 오디오 추출 금지)"""
+    ext = os.path.splitext(file.filename or ".m4a")[1].lower()
+    if ext not in AUDIO_EXT:
+        raise HTTPException(415, f"지원하지 않는 형식: {ext}")
+    data = await file.read()
+    if not data:
+        raise HTTPException(422, "빈 파일입니다")
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "60MB를 초과했습니다")
+    dur = probe_duration(data, ext)
+    aid = "a" + os.urandom(4).hex()
+    key = f"audios/{aid}{ext}"
+    try:
+        url = storage.put(key, data)
+    except Exception as e:
+        raise HTTPException(500, f"저장 실패: {e}")
+    d = db()
+    d["audios"][aid] = {
+        "id": aid, "key": key, "title": (title or file.filename or aid)[:80],
+        "dur": dur, "offset": round(float(offset), 3), "source": source[:20],
+        "license": license[:120], "mime": MIME.get(ext, "application/octet-stream"),
+    }
+    save_db(d)
+    return {"ok": True, "id": aid, "url": url, "dur": dur, "offset": round(float(offset), 3)}
+
+
+@app.patch("/api/audios/{aid}")
+def patch_audio(aid: str, payload: dict):
+    d = db()
+    a = d["audios"].get(aid) or get_audio(aid)
+    if payload.get("offset") is not None:
+        a["offset"] = round(float(payload["offset"]), 3)
+    for k in ("title", "license", "source"):
+        if payload.get(k) is not None:
+            a[k] = str(payload[k])[:120]
+    d["audios"][aid] = a
+    save_db(d)
+    return a
+
+
+@app.delete("/api/audios/{aid}")
+def del_audio(aid: str):
+    d = db()
+    a = d["audios"].pop(aid, None)
+    if a:
+        storage.delete(a["key"])
+        for v in d["videos"].values():
+            if v.get("audio_id") == aid:
+                v["audio_id"] = None
+    save_db(d)
+    return {"ok": True}
+
+
+@app.post("/api/videos/{vid}/link-audio")
+def link_audio(vid: str, payload: dict):
+    """영상 <-> 오디오 연결. offset(초)로 시간축을 맞춘다."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    aid = payload.get("audio_id")
+    if aid:
+        a = d["audios"].get(aid)
+        if not a:
+            raise HTTPException(404, "오디오를 찾을 수 없습니다")
+        v["audio_id"] = aid
+        if payload.get("offset") is not None:
+            a["offset"] = round(float(payload["offset"]), 3)
+            d["audios"][aid] = a
+    else:
+        v["audio_id"] = None
+    d["videos"][vid] = v
+    save_db(d)
+    return {"ok": True, "video": vid, "audio_id": v.get("audio_id"),
+            "offset": d["audios"].get(aid, {}).get("offset") if aid else None}
+
+
+# ---- offset 자동 캘리브레이션
+@app.post("/api/videos/{vid}/calibrate")
+def calibrate(vid: str, payload: dict | None = Body(default=None)):
+    """자막 타임스탬프(발화 위치)와 원본 음원 엔벨로프의 상호상관으로 offset 을 추정.
+
+    offset 정의: audio_time = video_time - offset
+      → 영상 0초가 오디오 파일의 몇 초인지.
+    요청(모두 선택)
+      {"audio_id": "a...", "search_s": [lo, hi], "step_ms": 20,
+       "smooth_s": 0.12, "min_overlap_s": 2.0, "apply": false, "link": false}
+    """
+    p = dict(payload or {})
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    if not v["segs"]:
+        raise HTTPException(422, "문장이 없어 정렬 기준을 만들 수 없습니다")
+
+    aid = p.get("audio_id") or v.get("audio_id")
+    if not aid:
+        raise HTTPException(422, "이 영상에 연결된 원본 음원이 없습니다. 먼저 오디오를 연결하세요.")
+    a = d["audios"].get(aid)
+    if not a:
+        raise HTTPException(404, "오디오를 찾을 수 없습니다")
+    if not storage.exists(a["key"]):
+        raise HTTPException(404, "오디오 파일이 저장소에 없습니다")
+
+    hop = max(0.005, float(p.get("step_ms") or CAL_HOP * 1000) / 1000.0)
+    smooth = float(p.get("smooth_s", CAL_SMOOTH))
+    min_ov = float(p.get("min_overlap_s", CAL_MIN_OVERLAP))
+
+    try:
+        env = audio_envelope(a["key"], hop)
+    except FileNotFoundError:
+        raise HTTPException(404, "오디오 파일이 저장소에 없습니다")
+    except Exception as ex:
+        raise HTTPException(422, f"음원을 읽지 못했습니다: {ex}")
+
+    audio_dur = len(env) * hop
+    video_end = max(float(s["end"]) for s in v["segs"])
+    act = segment_activity(v["segs"], video_end, hop)
+
+    # 기본 탐색범위: 최소 겹침이 확보되는 전체 구간
+    lo_d = -(audio_dur - min_ov)
+    hi_d = video_end - min_ov
+    srch = p.get("search_s")
+    if isinstance(srch, (list, tuple)) and len(srch) == 2:
+        lo_d, hi_d = max(lo_d, float(srch[0])), min(hi_d, float(srch[1]))
+    if hi_d <= lo_d:
+        lo_d, hi_d = -(audio_dur - min_ov), max(hop, video_end - min_ov)
+
+    try:
+        est = best_offset(env, act, hop, lo_d, hi_d, smooth, min_ov)
+    except ValueError as ex:
+        raise HTTPException(422, str(ex))
+
+    off_prev = float(a.get("offset", 0.0))
+    applied = bool(p.get("apply"))
+    if applied:
+        a["offset"] = float(est["offset"])
+        d["audios"][aid] = a
+        if p.get("link") or aid != v.get("audio_id"):
+            v["audio_id"] = aid
+            d["videos"][vid] = v
+        save_db(d)
+
+    note = None
+    if est["confidence"] < 0.35:
+        note = ("상관이 약합니다(문장 사이 여백이 적거나 음원이 짧음). "
+                "제안값을 참고하되 원본 듣기로 한 번 확인하세요.")
+    return {"ok": True, "video_id": vid, "audio_id": aid,
+            "offset": est["offset"], "offset_prev": off_prev, "applied": applied,
+            "confidence": est["confidence"], "peak": est["peak"],
+            "second": est["second"], "contrast": est["contrast"],
+            "method": "envelope_xcorr", "step_ms": round(hop * 1000, 1),
+            "search": [round(lo_d, 2), round(hi_d, 2)],
+            "audio_dur": round(audio_dur, 2), "video_dur": round(video_end, 2),
+            "n_lags": est["n_lags"], "curve": est["curve"], "note": note}
+
+
+# ---- 미디어 서빙 (HTTP Range 지원)
+def _range_response(path: Path, mime: str, request: Request) -> StreamingResponse | FileResponse:
+    """브라우저 <audio> 가 구간 seek 을 하려면 206 Partial Content 가 필요하다."""
+    total = path.stat().st_size
+    rng = request.headers.get("range")
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"}
+    if not rng:
+        return FileResponse(str(path), media_type=mime, headers=headers)
+
+    m = re.match(r"bytes=(\d*)-(\d*)", rng)
+    if not m:
+        return FileResponse(str(path), media_type=mime, headers=headers)
+    start_s, end_s = m.group(1), m.group(2)
+    if start_s == "":                       # bytes=-500  (마지막 500바이트)
+        length = int(end_s or 0)
+        start = max(0, total - length)
+        end = total - 1
+    else:
+        start = int(start_s)
+        end = int(end_s) if end_s else total - 1
+    end = min(end, total - 1)
+    if start > end or start >= total:
+        return StreamingResponse(iter(()), status_code=416,
+                                 headers={**headers, "Content-Range": f"bytes */{total}"})
+    length = end - start + 1
+
+    def it():
+        with open(path, "rb") as f:
+            f.seek(start)
+            left = length
+            while left > 0:
+                chunk = f.read(min(65536, left))
+                if not chunk:
+                    break
+                left -= len(chunk)
+                yield chunk
+
+    return StreamingResponse(
+        it(), status_code=206, media_type=mime,
+        headers={**headers, "Content-Range": f"bytes {start}-{end}/{total}",
+                 "Content-Length": str(length)},
+    )
+
+
+@app.get("/api/media/{key:path}")
+def serve_media(key: str, request: Request):
+    try:
+        path = storage.path(key)
+    except FileNotFoundError:
+        raise HTTPException(404, "파일이 없습니다")
+    except ValueError:
+        raise HTTPException(400, "잘못된 경로")
+    if path is None:                              # S3 등 원격 저장소
+        return RedirectResponse(storage.url(key), status_code=307)
+    mime = MIME.get("." + key.rsplit(".", 1)[-1].lower(), "application/octet-stream")
+    return _range_response(path, mime, request)
+
+
+# ---- 채점
+@app.post("/api/videos/{vid}/segments/{idx}/score")
+async def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    if not (0 <= idx < len(v["segs"])):
+        raise HTTPException(404, "문장을 찾을 수 없습니다")
+    seg = v["segs"][idx]
+    data = await take.read()
+    if not data:
+        raise HTTPException(422, "빈 녹음입니다")
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "녹음이 너무 큽니다")
+    take_y = to_wav16k(data, os.path.splitext(take.filename or ".webm")[1] or ".webm")
+    seg_dur = max(0.3, float(seg["end"]) - float(seg["start"]))
+
+    au = audio_public(v, d)
+    if au and au["url"]:
+        a = d["audios"][v["audio_id"]]
+        off = float(a.get("offset", 0.0))
+        try:
+            ref_y = load_ref_slice(a["key"], seg["start"] - off, seg["end"] - off)
+            if len(ref_y) < int(0.25 * SR):
+                raise ValueError("구간이 너무 짧습니다")
+            res = engine.score(ref_y, take_y)
+            res["mode"] = "acoustic"
+            res["ref_dur"] = round(len(ref_y) / SR, 2)
+            res["ref_src"] = {"storage": storage.name, "read": "open+range"}
+        except Exception as ex:
+            res = timing_score(take_y, seg_dur)
+            res["note"] = f"구간 음향 채점 불가({ex}) → 타이밍 채점"
+            res["ref_dur"] = round(seg_dur, 2)
+    else:
+        res = timing_score(take_y, seg_dur)
+        res["ref_dur"] = round(seg_dur, 2)
+    return {"vid": vid, "idx": idx, "text": seg["text"], **res}
+
+
+# ---- 정적
+app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
