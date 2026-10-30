@@ -1,4 +1,4 @@
-"""Echo — 학습 기록 / 북마크 / 게이미피케이션
+"""Langclip — 학습 기록 / 북마크 / 게이미피케이션
 
 파일
   data/attempts.json  : [{ts, vid, idx, total, mode}, ...]
@@ -288,7 +288,7 @@ def _dict_lookup(word: str) -> dict | None:
         return c.get("data")
     try:
         url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
-        req = urllib.request.Request(url, headers={"User-Agent": "Echo/3.5"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Langclip/3.8"})
         with urllib.request.urlopen(req, timeout=5) as r:
             raw = json.loads(r.read().decode("utf-8"))
         entry = raw[0] if isinstance(raw, list) and raw else {}

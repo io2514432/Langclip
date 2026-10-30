@@ -66,10 +66,10 @@ body{
 }
 .brand{display:flex;align-items:center;gap:8px;font-weight:780;font-size:16px;letter-spacing:-.02em}
 .logo{
-  width:21px;height:21px;border-radius:50%;
-  background:radial-gradient(circle at 32% 30%,#CFF0FF,var(--sky) 46%,var(--sky-d));
-  box-shadow:0 6px 14px -6px rgba(14,165,233,.85);
+  width:24px;height:24px;flex:0 0 auto;display:block;
+  filter:drop-shadow(0 4px 8px rgba(14,165,233,.4));
 }
+.brand{gap:7px}
 .streak{font-size:11px;color:var(--sky-d);background:var(--sky-l);border:1px solid #CDE9FB;
   padding:4px 10px;border-radius:999px;font-weight:700}
 
@@ -725,7 +725,6 @@ body{
 
 /* 연속 학습 불꽃 아이콘 보정 */
 .streak .ic{width:15px;height:15px;stroke-width:1.7;fill:none;stroke:#F59E0B}
-.brand .logo{vertical-align:middle}
 
 /* 쉐도잉 중 배경 조작 차단 */
 .vstage.lock #vframe,.vstage.lock .vtop,.vstage.lock .vbottom{pointer-events:none}

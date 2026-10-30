@@ -1,5 +1,5 @@
 /* =========================================================
-   Echo · 싱크 맞추기 (문장 끝만 찍기)  v3.5
+   Langclip · 싱크 맞추기 (문장 끝만 찍기)  v3.8
    · 영상은 들어가자마자 재생되고, 찍어도 멈추지 않는다.
    · 각 문장의 '끝나는 순간'만 찍는다. (문장 n개 → n-1번)
    · 마지막으로 찍은 지점부터 영상 끝까지는 마지막 문장이 된다.
@@ -17,7 +17,7 @@
     const m = Math.floor(t / 60), s = t - m * 60;
     return `${m}:${s.toFixed(1).padStart(4, "0")}`;
   };
-  const App = () => window.EchoApp;
+  const App = () => window.LangclipApp;
   const toast = (m, ms) => App() && App().toast(m, ms);
   const show = (id) => App() && App().show(id);
   const $ = (s) => document.querySelector(s);
@@ -345,5 +345,5 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
   else bind();
 
-  window.EchoSync = { ST, start, tap, undo, finish };
+  window.LangclipSync = { ST, start, tap, undo, finish };
 })();

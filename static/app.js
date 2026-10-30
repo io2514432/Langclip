@@ -1,5 +1,5 @@
 /* =========================================================
-   Langel · 문장별 셰도잉  v3.7
+   Langclip · 문장별 셰도잉  v3.8
    - 연속 재생 / 반복(문장 끝 자연 반복) / 별표 북마크
    - 전체 스크립트 · 최종 검증(완료 판정) · 원본 음성
    - 쉐도잉: 듣기 → 카운트다운 → 녹음 → 파형 겹치기 → 채점
@@ -1252,8 +1252,8 @@ async function startSyncFromAdd() {
   if (!url) return toast("쇼츠 주소를 입력해주세요");
   if (!text.trim()) return toast("대본을 붙여넣어 주세요");
   $("#sheet-add").hidden = true;
-  if (!window.EchoSync) return toast("싱크 모듈을 불러오지 못했습니다");
-  await window.EchoSync.start({ url, title, text });
+  if (!window.LangclipSync) return toast("싱크 모듈을 불러오지 못했습니다");
+  await window.LangclipSync.start({ url, title, text });
 }
 
 /* ================= 이벤트 ================= */
@@ -1346,7 +1346,7 @@ function bind() {
 })();
 
 window.loadYT = loadYT;
-window.EchoApp = {
+window.LangclipApp = {
   S, show, toast, esc, fmt, jsonPost, api, loadHome, loadVideos, openVideo,
   startTick, stopTick, sizeVideo, reloadNotes, mmss, pausePlayer, loadYT, ic,
 };

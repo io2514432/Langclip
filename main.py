@@ -1,4 +1,4 @@
-"""Langel — 유튜브 문장별 셰도잉 (FastAPI) v3.7
+"""Langclip — 유튜브 문장별 셰도잉 (FastAPI) v3.8
 
 구조
   영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
@@ -56,7 +56,7 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Langel Shadowing API", version="3.7")
+app = FastAPI(title="Langclip Shadowing API", version="3.8")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -75,7 +75,7 @@ def is_admin(request: Request | None) -> bool:
         return False
     tok = (request.headers.get("x-admin-token") or "").strip()
     if not tok:
-        tok = (request.cookies.get("langel_admin") or "").strip()
+        tok = (request.cookies.get("langclip_admin") or "").strip()
     return tok == ADMIN_TOKEN
 
 
@@ -490,7 +490,7 @@ def health():
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
             "script_md": True, "version": app.version,
-            "locked": bool(ADMIN_TOKEN), "name": "Langel"}
+            "locked": bool(ADMIN_TOKEN), "name": "Langclip"}
 
 
 # ---- 영상
@@ -985,7 +985,7 @@ def yt_meta(url: str = ""):
             "thumb": f"https://i.ytimg.com/vi/{yt}/mqdefault.jpg"}
     try:
         req = urllib.request.Request(target, headers={
-            "User-Agent": "Mozilla/5.0 (Langel/3.7)", "Accept": "application/json"})
+            "User-Agent": "Mozilla/5.0 (Langclip/3.8)", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=6) as r:
             j = json.loads(r.read().decode("utf-8"))
         data.update({"ok": bool(j.get("title")), "title": j.get("title", "")[:120],
@@ -1116,7 +1116,7 @@ def admin_login(request: Request):
     tok = (request.query_params.get("token") or "").strip()
     resp = RedirectResponse("/", status_code=302)
     if ADMIN_TOKEN and tok == ADMIN_TOKEN:
-        resp.set_cookie("langel_admin", tok, max_age=60 * 60 * 24 * 30,
+        resp.set_cookie("langclip_admin", tok, max_age=60 * 60 * 24 * 30,
                         httponly=True, samesite="lax")
     return resp
 
