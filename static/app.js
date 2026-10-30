@@ -1,7 +1,9 @@
 /* =========================================================
-   Echo · 문장별 셰도잉  v3.4
+   Echo · 문장별 셰도잉  v3.5
    - 홈 대시보드(XP·레벨·배지·연속일)
    - 연속 재생 플레이어 / 반복 on-off / 별표 북마크
+   - 전체 스크립트 패널(현재 문장 하이라이트)
+   - 쉐도잉: 카운트다운 → 재생 + 녹음 → 파형 겹쳐 그리기 → 채점
    ========================================================= */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -10,11 +12,19 @@ const S = {
   videos: [], cur: null, idx: 0,
   player: null, ready: false,
   sub: "both", repeat: false,
-  seg: null, tick: null, playedOnce: false,
-  stream: null, rec: null, chunks: [], actx: null, an: null,
-  raf: 0, t0: 0, lastLoud: 0, timer: 0,
+  seg: null, tick: null,
+  ctick: null,
   takeBlob: null, notes: { sentences: [], words: [] },
   progress: null, word: null, lastResult: null,
+};
+
+/* 쉐도잉 상태 */
+const SH = {
+  phase: "idle",        // idle | count | rec | review
+  dur: 1, ref: new Float32Array(0), user: [],
+  playT: 0, t0: 0, raf: 0, cdTimer: 0,
+  stream: null, rec: null, chunks: [], actx: null, an: null, buf: null,
+  score: null,
 };
 
 /* ---------------- utils ---------------- */
@@ -33,7 +43,8 @@ function show(id) {
   $$(".tab").forEach((t) => t.classList.toggle("is-on", t.dataset.tab === id));
   const sc = $("#" + id + " .scroll");
   if (sc) sc.scrollTop = 0;
-  if (id !== "s-play" && id !== "s-test") stopTick();
+  if (id !== "s-play") { stopTick(); pausePlayer(); }
+  if (id !== "s-play") closeWave();
 }
 
 async function api(url, opts) {
@@ -47,9 +58,6 @@ async function api(url, opts) {
 }
 const jsonPost = (url, body) => api(url, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
-});
-const jsonPatch = (url, body) => api(url, {
-  method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
 });
 
 /* ---------------- YouTube ---------------- */
@@ -85,7 +93,16 @@ function sizeVideo() {
   f.style.left = Math.round((iw - w) / 2) + "px";
   f.style.top = Math.round((ih - h) / 2) + "px";
 }
-window.addEventListener("resize", () => { if (S.cur) sizeVideo(); });
+window.addEventListener("resize", () => { if (S.cur) { sizeVideo(); sizeWave(); drawWave(); } });
+
+function killCaptions(p) {
+  try { p.unloadModule("captions"); } catch {}
+  try { p.unloadModule("cc"); } catch {}
+  try { p.setOption("captions", "track", {}); } catch {}
+}
+function pausePlayer() {
+  try { if (S.player && S.ready) S.player.pauseVideo(); } catch {}
+}
 
 async function mountPlayer(videoId) {
   const YT = await loadYT();
@@ -98,12 +115,24 @@ async function mountPlayer(videoId) {
     S.player = null; S.ready = false;
     return;
   }
+  S.player = null; S.ready = false;
   await new Promise((resolve) => {
     S.player = new YT.Player(box, {
       videoId,
-      playerVars: { enablejsapi: 1, playsinline: 1, rel: 0, modestbranding: 1, controls: 0, origin: location.origin },
+      playerVars: {
+        enablejsapi: 1, playsinline: 1, rel: 0, modestbranding: 1, controls: 0,
+        cc_load_policy: 0, cc_lang_pref: "", iv_load_policy: 3, fs: 0,
+        origin: location.origin,
+      },
       events: {
-        onReady: () => { S.ready = true; sizeVideo(); resolve(); },
+        onReady: () => {
+          S.ready = true;
+          killCaptions(S.player);
+          setTimeout(() => S.player && killCaptions(S.player), 900);
+          sizeVideo();
+          resolve();
+        },
+        onStateChange: (e) => { if (e.data === 1) killCaptions(S.player); },
         onError: () => { S.ready = false; resolve(); },
       },
     });
@@ -285,6 +314,7 @@ async function deleteVideo(v) {
 
 /* ================= 플레이어 ================= */
 async function openVideo(v, idx = 0) {
+  closeWave();
   S.cur = v;
   S.idx = Math.max(0, Math.min(idx, (v.segs || []).length - 1));
   S.repeat = false;
@@ -309,12 +339,10 @@ function onTick() {
   const playing = (() => { try { return S.player.getPlayerState() === 1; } catch { return false; } })();
 
   if (S.repeat && S.seg) {
-    // 반복 켜짐: 현재 문장 구간만 계속 돈다
     if (t >= S.seg.end - 0.06 || t < S.seg.start - 0.35) {
       try { S.player.seekTo(S.seg.start, true); } catch {}
     }
   } else {
-    // 반복 꺼짐: 영상은 계속 재생, 자막만 따라간다
     const i = S.cur.segs.findIndex((x) => t >= x.start - 0.06 && t < x.end);
     if (i >= 0 && i !== S.idx) selectSeg(i, true);
   }
@@ -368,7 +396,8 @@ function selectSeg(i, quiet) {
   S.idx = i;
   S.seg = S.cur.segs[i];
   renderSeg();
-  if (!quiet) setHint("마이크를 눌러 따라 말하기");
+  if (SH.phase === "idle") $("#sb-sub").textContent = "듣고 그대로 말하면 점수를 매겨요";
+  if (!quiet) setHint("🎤 따라 말하기를 누르면 2초 뒤 문장이 재생됩니다");
 }
 
 function setHint(h) { const el = $("#rec-hint"); if (el) el.innerHTML = h; }
@@ -387,7 +416,7 @@ function togglePlay() {
   if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
   let st = 0;
   try { st = S.player.getPlayerState(); } catch {}
-  if (st === 1) { try { S.player.pauseVideo(); } catch {} setPlayBtn(false); }
+  if (st === 1) { pausePlayer(); setPlayBtn(false); }
   else { playFrom(S.idx); }
 }
 
@@ -437,62 +466,287 @@ async function toggleStar() {
   } catch (e) { toast("저장 실패: " + e.message, 3800); }
 }
 
-/* ================= 녹음 / 채점 ================= */
-async function startRec() {
-  if (!navigator.mediaDevices?.getUserMedia) return toast("이 브라우저는 녹음을 지원하지 않습니다");
+/* ================= 전체 스크립트 ================= */
+function openScriptSheet() {
+  if (!S.cur) return;
+  $("#sc-title").textContent = S.cur.title || "전체 스크립트";
+  $("#sc-list").innerHTML = S.cur.segs.map((s, i) => `
+    <button class="sc-row ${i === S.idx ? "on" : ""}" data-i="${i}">
+      <b>${i + 1}</b>
+      <span class="sc-txt">
+        <em>${esc(s.en || s.text || "")}</em>
+        ${s.ko ? `<i>${esc(s.ko)}</i>` : ""}
+      </span>
+      <span class="sc-time">${fmt(s.start)}s</span>
+    </button>`).join("");
+  $$("#sc-list .sc-row").forEach((b) => {
+    b.onclick = () => {
+      $("#sheet-script").hidden = true;
+      playFrom(+b.dataset.i);
+    };
+  });
+  $("#sheet-script").hidden = false;
+  const cur = $("#sc-list .sc-row.on");
+  if (cur) setTimeout(() => cur.scrollIntoView({ block: "center" }), 60);
+}
+
+/* ================= 쉐도잉 (파형 + 카운트다운) ================= */
+function sizeWave() {
+  const cv = $("#wv-cv");
+  if (!cv) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+  if (!w || !h) return;
+  if (cv.width !== w) cv.width = w;
+  if (cv.height !== h) cv.height = h;
+}
+
+/* 문장 텍스트 → 음절 기반 기준 파형(유튜브 오디오는 추출하지 않는다) */
+function refEnvelope(text, dur) {
+  const N = 260;
+  const a = new Float32Array(N);
+  const words = String(text || "").toLowerCase().replace(/[^a-z' ]/g, " ").split(/\s+/).filter(Boolean);
+  const units = [];
+  words.forEach((w) => {
+    const vs = (w.match(/[aeiouy]+/g) || []).length || 1;
+    for (let i = 0; i < vs; i++) units.push(0.85 + 0.15 * (((w.charCodeAt(i % w.length) * 13) % 7) / 7));
+    units.push(0.16);
+  });
+  if (!units.length) units.push(1);
+  const total = units.reduce((x, y) => x + y, 0);
+  let acc = 0;
+  units.forEach((u, k) => {
+    const s = Math.floor((acc / total) * N), e = Math.max(s + 1, Math.floor(((acc + u) / total) * N));
+    const amp = 0.34 + 0.58 * Math.abs(Math.sin((k + 1) * 2.399));
+    for (let i = s; i < Math.min(e, N); i++) {
+      const x = (i - s) / Math.max(1, e - s);
+      a[i] = Math.max(a[i], amp * Math.sin(Math.PI * x));
+    }
+    acc += u;
+  });
+  for (let i = 1; i < N - 1; i++) a[i] = (a[i - 1] + 2 * a[i] + a[i + 1]) / 4;
+  return a;
+}
+
+function drawWave() {
+  const cv = $("#wv-cv");
+  if (!cv || !cv.width) return;
+  const g = cv.getContext("2d");
+  const w = cv.width, h = cv.height;
+  const dpr = w / Math.max(1, cv.clientWidth);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = "#0B1524";
+  g.fillRect(0, 0, w, h);
+
+  const mid = h * 0.5;
+  const half = h * 0.42;
+
+  g.strokeStyle = "rgba(255,255,255,.28)";
+  g.lineWidth = Math.max(1, dpr * 0.8);
+  g.beginPath(); g.moveTo(0, mid); g.lineTo(w, mid); g.stroke();
+
+  const N = SH.ref.length;
+  if (N > 2) {
+    g.beginPath();
+    for (let i = 0; i < N; i++) g.lineTo((i / (N - 1)) * w, mid - SH.ref[i] * half);
+    for (let i = N - 1; i >= 0; i--) g.lineTo((i / (N - 1)) * w, mid + SH.ref[i] * half);
+    g.closePath();
+    g.fillStyle = "rgba(139,124,246,.5)";
+    g.fill();
+    g.strokeStyle = "rgba(196,187,255,.95)";
+    g.lineWidth = Math.max(1, dpr);
+    g.stroke();
+  }
+
+  const un = SH.user.length;
+  if (un > 1) {
+    g.beginPath();
+    for (let i = 0; i < un; i++) g.lineTo((SH.user[i].t / SH.dur) * w, mid - SH.user[i].a * half);
+    for (let i = un - 1; i >= 0; i--) g.lineTo((SH.user[i].t / SH.dur) * w, mid + SH.user[i].a * half);
+    g.closePath();
+    g.fillStyle = "rgba(255,45,149,.45)";
+    g.fill();
+    g.strokeStyle = "#FF6FBF";
+    g.lineWidth = Math.max(1, dpr * 1.2);
+    g.stroke();
+  }
+
+  if (SH.phase === "rec" || SH.phase === "review") {
+    const t = Math.min(SH.dur, Math.max(0, SH.phase === "review" ? SH.dur : SH.playT));
+    const x = (t / SH.dur) * w;
+    g.strokeStyle = "#FF3B5C";
+    g.lineWidth = Math.max(1.5, dpr * 1.6);
+    g.shadowColor = "#FF3B5C";
+    g.shadowBlur = 10 * dpr;
+    g.beginPath(); g.moveTo(x, 3 * dpr); g.lineTo(x, h - 3 * dpr); g.stroke();
+    g.shadowBlur = 0;
+  }
+}
+
+function openWave(label) {
+  $("#wave").hidden = false;
+  $("#wv-lab").textContent = label;
+  $("#wv-score").textContent = "";
+  $("#vsub").classList.add("hidden-sub");
+  requestAnimationFrame(() => { sizeWave(); drawWave(); });
+}
+
+function closeWave() {
+  clearInterval(SH.cdTimer);
+  cancelAnimationFrame(SH.raf);
+  SH.phase = "idle";
+  SH.user = [];
+  SH.playT = 0;
+  try { if (SH.rec && SH.rec.state === "recording") SH.rec.stop(); } catch {}
+  try { if (SH.stream) SH.stream.getTracks().forEach((t) => t.stop()); } catch {}
+  SH.stream = null; SH.rec = null;
+  const w = $("#wave");
+  if (w) w.hidden = true;
+  const cd = $("#countdown");
+  if (cd) cd.hidden = true;
+  const vsub = $("#vsub");
+  if (vsub) vsub.classList.remove("hidden-sub");
+  const b = $("#btn-shadow");
+  if (b) { b.classList.remove("rec", "armed"); $("#sb-tx").textContent = "따라 말하기"; }
+  $("#wv-dot").classList.remove("on");
+}
+
+function countdown(n, onDone) {
+  const el = $("#countdown");
+  el.hidden = false;
+  let k = n;
+  $("#cd-num").textContent = k;
+  el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick");
+  clearInterval(SH.cdTimer);
+  SH.cdTimer = setInterval(() => {
+    k--;
+    if (k <= 0) {
+      clearInterval(SH.cdTimer);
+      el.hidden = true;
+      onDone();
+      return;
+    }
+    $("#cd-num").textContent = k;
+    el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick");
+  }, 1000);
+}
+
+async function startShadow() {
+  if (!S.cur || !S.seg) return;
+  if (SH.phase === "count" || SH.phase === "rec") return;
+  if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
+
+  const seg = S.seg;
+  SH.dur = Math.max(0.5, seg.end - seg.start);
+  SH.ref = refEnvelope(seg.en || seg.text, SH.dur);
+  SH.user = [];
+  SH.playT = 0;
+  SH.phase = "count";
+  openWave(seg.en || seg.text || "");
+
+  $("#btn-shadow").classList.add("armed");
+  $("#sb-tx").textContent = "준비";
+  $("#sb-sub").textContent = "2초 뒤 문장이 재생됩니다";
+
   try {
-    S.stream = await navigator.mediaDevices.getUserMedia({
+    SH.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-  } catch (e) { return toast("마이크를 사용할 수 없습니다 (" + e.name + ")", 4000); }
+  } catch (e) {
+    closeWave();
+    return toast("마이크를 사용할 수 없습니다 (" + e.name + ")", 4000);
+  }
+  if (SH.phase !== "count") { try { SH.stream.getTracks().forEach((t) => t.stop()); } catch {} return; }
+
+  countdown(2, beginTake);
+}
+
+function beginTake() {
+  if (SH.phase !== "count" || !S.seg) return;
+  const seg = S.seg;
+
+  try { S.player.seekTo(seg.start, true); S.player.playVideo(); } catch {}
 
   const mimes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
   const mime = mimes.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || "";
-  S.chunks = [];
-  S.rec = new MediaRecorder(S.stream, mime ? { mimeType: mime } : undefined);
-  S.rec.ondataavailable = (e) => { if (e.data.size) S.chunks.push(e.data); };
-  S.rec.onstop = onRecStop;
+  SH.chunks = [];
+  try {
+    SH.rec = new MediaRecorder(SH.stream, mime ? { mimeType: mime } : undefined);
+  } catch (e) {
+    closeWave();
+    return toast("녹음을 시작할 수 없습니다", 3600);
+  }
+  SH.rec.ondataavailable = (e) => { if (e.data.size) SH.chunks.push(e.data); };
+  SH.rec.onstop = onTakeStop;
 
-  const ctx = S.actx || (S.actx = new (window.AudioContext || window.webkitAudioContext)());
-  if (ctx.state === "suspended") await ctx.resume();
-  S.an = ctx.createAnalyser();
-  S.an.fftSize = 1024;
-  ctx.createMediaStreamSource(S.stream).connect(S.an);
-  const buf = new Float32Array(S.an.fftSize);
-  S.t0 = performance.now(); S.lastLoud = S.t0;
+  const ctx = SH.actx || (SH.actx = new (window.AudioContext || window.webkitAudioContext)());
+  if (ctx.state === "suspended") ctx.resume();
+  SH.an = ctx.createAnalyser();
+  SH.an.fftSize = 1024;
+  ctx.createMediaStreamSource(SH.stream).connect(SH.an);
+  SH.buf = new Float32Array(SH.an.fftSize);
 
-  const loop = () => {
-    S.an.getFloatTimeDomainData(buf);
+  SH.phase = "rec";
+  SH.t0 = performance.now();
+  SH.rec.start();
+
+  $("#btn-shadow").classList.add("rec");
+  $("#btn-shadow").classList.remove("armed");
+  $("#sb-tx").textContent = "녹음 중";
+  $("#sb-sub").textContent = "지금 말하세요!";
+  $("#wv-dot").classList.add("on");
+  setHint("<b>지금 말하세요!</b> 원본 파형을 따라 말해보세요");
+
+  cancelAnimationFrame(SH.raf);
+  SH.raf = requestAnimationFrame(loopTake);
+}
+
+function loopTake() {
+  if (SH.phase !== "rec") return;
+  const el = (performance.now() - SH.t0) / 1000;
+  SH.playT = Math.min(SH.dur, el);
+
+  if (SH.an && SH.buf) {
+    SH.an.getFloatTimeDomainData(SH.buf);
     let sum = 0;
-    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-    if (Math.sqrt(sum / buf.length) > 0.015) S.lastLoud = performance.now();
-    const el = (performance.now() - S.t0) / 1000;
-    setHint(`녹음 중 <b>${el.toFixed(1)}s</b> · 조용해지면 자동 종료`);
-    if (el > 15) stopRec();
-    S.raf = requestAnimationFrame(loop);
-  };
-  loop();
-  S.timer = setInterval(() => {
-    if (performance.now() - S.t0 > 900 && performance.now() - S.lastLoud > 1600) stopRec();
-  }, 120);
+    for (let i = 0; i < SH.buf.length; i++) sum += SH.buf[i] * SH.buf[i];
+    const rms = Math.sqrt(sum / SH.buf.length);
+    SH.user.push({ t: Math.min(SH.dur, el), a: Math.min(1, rms * 7.5) });
+    if (SH.user.length > 900) SH.user.shift();
+  }
 
-  S.rec.start();
-  $("#btn-rec").classList.add("rec");
+  drawWave();
+  $("#wv-time").textContent = `${el.toFixed(1)}s / ${SH.dur.toFixed(1)}s`;
+
+  if (el >= SH.dur + 0.22) return stopTake();
+  SH.raf = requestAnimationFrame(loopTake);
 }
-function stopRec() {
-  if (!S.rec || S.rec.state !== "recording") return;
-  S.rec.stop();
-  clearInterval(S.timer);
-  cancelAnimationFrame(S.raf);
-  $("#btn-rec").classList.remove("rec");
+
+function stopTake() {
+  if (SH.phase !== "rec") return;
+  SH.phase = "upload";
+  cancelAnimationFrame(SH.raf);
+  pausePlayer();
+  try { if (SH.rec && SH.rec.state === "recording") SH.rec.stop(); } catch {}
+  $("#btn-shadow").classList.remove("rec");
+  $("#sb-tx").textContent = "채점 중…";
+  $("#sb-sub").textContent = "잠시만 기다려주세요";
   setHint("채점 중…");
+  drawWave();
 }
-function onRecStop() {
-  const mime = S.chunks[0]?.type || "audio/webm";
-  S.takeBlob = new Blob(S.chunks, { type: mime });
-  const dur = (performance.now() - S.t0) / 1000;
-  try { S.stream.getTracks().forEach((t) => t.stop()); } catch {}
-  if (S.takeBlob.size < 1000 || dur < 0.3) return setHint("너무 짧습니다. 다시 시도해주세요");
+
+function onTakeStop() {
+  const mime = SH.chunks[0]?.type || "audio/webm";
+  S.takeBlob = new Blob(SH.chunks, { type: mime });
+  try { if (SH.stream) SH.stream.getTracks().forEach((t) => t.stop()); } catch {}
+  SH.stream = null;
+  if (!S.takeBlob || S.takeBlob.size < 1000) {
+    SH.phase = "review";
+    $("#sb-tx").textContent = "따라 말하기";
+    $("#sb-sub").textContent = "녹음이 너무 짧았습니다";
+    setHint("녹음이 너무 짧습니다. 다시 시도해주세요");
+    return;
+  }
   submitScore();
 }
 
@@ -502,10 +756,21 @@ async function submitScore() {
   try {
     const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}/score`, { method: "POST", body: fd });
     S.lastResult = r;
+    SH.phase = "review";
+    SH.score = Math.round(r.total);
+    $("#wv-score").textContent = `${SH.score}점`;
+    $("#wv-score").className = "wv-score " + (r.total >= 70 ? "good" : "low");
+    $("#wv-dot").classList.remove("on");
+    $("#sb-tx").textContent = "따라 말하기";
+    $("#sb-sub").textContent = `${SH.score}점 · 다시 눌러 재도전`;
+    drawWave();
     renderResult(r);
     show("s-result");
     loadHome();
   } catch (e) {
+    SH.phase = "review";
+    $("#sb-tx").textContent = "따라 말하기";
+    $("#sb-sub").textContent = "채점 실패";
     setHint("채점 실패");
     toast("채점에 실패했습니다: " + e.message, 4200);
   }
@@ -537,7 +802,7 @@ function renderResult(r) {
   note.classList.add("show");
   note.innerHTML = acoustic
     ? `원본 음원과 <b>직접 비교</b>한 4축 채점입니다.`
-    : `이 문장의 <b>발화 길이</b>를 기준 구간과 비교했습니다. 문장별 암기 테스트로 내용까지 확인하세요.`;
+    : `이 문장의 <b>발화 길이</b>를 기준 구간과 비교했습니다. 파형과 겹쳐 보며 길이를 맞춰보세요.`;
 
   const g = gradeOf(total);
   $("#grade").textContent = g.label;
@@ -568,7 +833,7 @@ function coaching(r, acoustic) {
     const raw = r.raw || {};
     if ((raw.ratio ?? 1) > 1.25) tips.push(["길이", "원본보다 길게 말했습니다. 문장을 끊지 말고 한 호흡에 이어 말해보세요."]);
     else if ((raw.ratio ?? 1) < 0.8) tips.push(["길이", "원본보다 짧습니다. 문장 끝까지 소리를 유지해보세요."]);
-    else tips.push(["길이", "속도는 잘 맞았습니다. 다음은 '⋯ 테스트'에서 전체 암송에 도전해보세요."]);
+    else tips.push(["길이", "속도는 잘 맞았습니다. 내 파형과 원본 파형의 봉우리 위치를 비교해보세요."]);
   }
   if (!tips.length) tips.push(["완료", "모든 항목이 훌륭합니다. 반복 횟수를 늘려 완전히 익혀보세요."]);
   return `<h4>코칭</h4><ul>${tips.map(([k, m]) => `<li><b>${k}</b> · ${m}</li>`).join("")}</ul>`;
@@ -629,9 +894,40 @@ async function reloadNotes() {
   $("#note-count").textContent = (S.notes.sentences || []).length;
 }
 
-/* ================= 추가(+) ================= */
+/* ================= 추가(+) · 제목 자동 ================= */
+let titleTimer = 0;
+let titleAuto = "";
 function openAdd() {
   $("#sheet-add").hidden = false;
+  if (!$("#sy-url").value.trim()) setTimeout(() => $("#sy-url").focus(), 80);
+}
+
+async function fetchTitle() {
+  const url = $("#sy-url").value.trim();
+  const state = $("#sy-title-state");
+  if (!url) return;
+  const titleEl = $("#sy-title");
+  state.textContent = "불러오는 중…";
+  try {
+    const r = await api("/api/yt/meta?url=" + encodeURIComponent(url));
+    if (r && r.title) {
+      titleAuto = r.title;
+      if (!titleEl.value.trim() || titleEl.value === titleAuto) titleEl.value = r.title;
+      state.textContent = r.author ? `· ${r.author}` : "";
+      if (r.id) titleEl.dataset.yt = r.id;
+    } else {
+      state.textContent = "· 제목을 직접 입력하세요";
+    }
+  } catch {
+    state.textContent = "· 제목을 직접 입력하세요";
+  }
+}
+
+function onUrlInput() {
+  clearTimeout(titleTimer);
+  const url = $("#sy-url").value.trim();
+  if (url.length < 12) return;
+  titleTimer = setTimeout(fetchTitle, 700);
 }
 
 async function startSyncFromAdd() {
@@ -642,7 +938,7 @@ async function startSyncFromAdd() {
   if (!text.trim()) return toast("대본을 붙여넣어 주세요");
   $("#sheet-add").hidden = true;
   if (!window.EchoSync) return toast("싱크 모듈을 불러오지 못했습니다");
-  await window.EchoSync.start({ url, title, text, split: $("#sy-split").checked });
+  await window.EchoSync.start({ url, title, text });
 }
 
 /* ================= 이벤트 ================= */
@@ -652,6 +948,9 @@ function bind() {
   $$("[data-close]").forEach((el) => (el.onclick = () => { el.closest(".sheet-wrap").hidden = true; }));
 
   $("#btn-sync-start").onclick = startSyncFromAdd;
+  $("#sy-url").addEventListener("input", onUrlInput);
+  $("#sy-url").addEventListener("blur", fetchTitle);
+  $("#sy-url").addEventListener("paste", () => setTimeout(onUrlInput, 60));
 
   $("#daily").onclick = () => {
     const f = S.progress && S.progress.focus;
@@ -665,20 +964,21 @@ function bind() {
   };
   $("#note-more").onclick = () => show("s-notes");
 
-  $("#btn-back").onclick = () => { try { S.player && S.player.pauseVideo(); } catch {} stopTick(); show("s-home"); };
+  $("#btn-back").onclick = () => { pausePlayer(); stopTick(); show("s-home"); };
   $("#btn-play").onclick = togglePlay;
   $("#btn-prev").onclick = () => step(-1);
   $("#btn-next-seg").onclick = () => step(1);
   $("#btn-sub").onclick = cycleSub;
   $("#btn-repeat").onclick = toggleRepeat;
   $("#btn-star").onclick = toggleStar;
-  $("#btn-more").onclick = () => window.EchoTests && window.EchoTests.openMenu();
-
-  $("#btn-rec").onclick = () => {
-    if (S.rec && S.rec.state === "recording") stopRec();
-    else startRec();
+  $("#btn-script").onclick = openScriptSheet;
+  $("#btn-shadow").onclick = () => {
+    if (SH.phase === "rec") stopTake();
+    else if (SH.phase === "idle" || SH.phase === "review") startShadow();
   };
-  $("#btn-retry").onclick = () => { show("s-play"); setHint("마이크를 눌러 다시 시도"); startTick(); };
+  $("#wv-close").onclick = closeWave;
+
+  $("#btn-retry").onclick = () => { show("s-play"); startTick(); playFrom(S.idx); };
   $("#btn-next").onclick = () => { step(1); show("s-play"); startTick(); };
 
   $("#w-save").onclick = saveWordMeaning;
@@ -702,4 +1002,8 @@ function bind() {
   await loadHome();
 })();
 
-window.EchoApp = { S, show, toast, esc, fmt, jsonPost, api, loadHome, loadVideos, openVideo, startTick, stopTick, sizeVideo, reloadNotes, mmss };
+window.loadYT = loadYT;
+window.EchoApp = {
+  S, show, toast, esc, fmt, jsonPost, api, loadHome, loadVideos, openVideo,
+  startTick, stopTick, sizeVideo, reloadNotes, mmss, pausePlayer, loadYT,
+};

@@ -1,13 +1,15 @@
 /* =========================================================
-   Echo · 재생하며 타이밍 찍기 (탭 싱크)
-   추가(+) 시트에서 start({url,title,text,split}) 로 시작한다.
+   Echo · 싱크 맞추기 (문장 끝만 찍기)  v3.5
+   · 영상은 들어가자마자 재생되고, 찍어도 멈추지 않는다.
+   · 각 문장의 '끝나는 순간'만 찍는다. (문장 n개 → n-1번)
+   · 마지막으로 찍은 지점부터 영상 끝까지는 마지막 문장이 된다.
    ========================================================= */
 (function () {
+  "use strict";
   const ST = {
-    url: "", title: "", vid: null,
-    items: [], bounds: [], sentences: [],
-    player: null, ready: false, autoPause: true, speed: 1,
-    clock: 0, finished: false,
+    url: "", title: "", items: [], bounds: [],
+    sentences: [], player: null, ready: false, speed: 1,
+    clock: 0, finished: false, need: 0,
   };
 
   const fmtT = (t) => {
@@ -18,6 +20,9 @@
   const App = () => window.EchoApp;
   const toast = (m, ms) => App() && App().toast(m, ms);
   const show = (id) => App() && App().show(id);
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+  const esc = (s) => App().esc(s);
 
   function fitFrame() {
     const host = $("#sync-frame");
@@ -45,15 +50,15 @@
     const b = $("#btn-sync-start");
     if (b) { b.disabled = true; b.textContent = "준비 중…"; }
     try {
-      const r = await App().jsonPost("/api/sync/split", { text, split_sentences: opts.split !== false });
+      const r = await App().jsonPost("/api/sync/split", { text, split_sentences: true });
       if (!r.items || !r.items.length) throw new Error("문장을 찾지 못했습니다");
       ST.url = url; ST.title = title; ST.items = r.items;
       ST.bounds = []; ST.finished = false;
+      ST.need = r.items.length > 1 ? r.items.length - 1 : 1;
       show("s-sync");
       $("#sync-title").textContent = title || "싱크 맞추기";
       render();
-      await mount(url);
-      toast(`문장 ${r.items.length}개 · 문장이 끝날 때마다 버튼을 누르세요`, 4200);
+      mount(url);
     } catch (e) {
       toast("시작 실패: " + e.message, 4400);
     } finally {
@@ -75,19 +80,50 @@
     await new Promise((res) => {
       ST.player = new YT.Player(box, {
         videoId: vid,
-        playerVars: { enablejsapi: 1, playsinline: 1, rel: 0, modestbranding: 1, controls: 0, origin: location.origin },
+        playerVars: {
+          enablejsapi: 1, playsinline: 1, rel: 0, modestbranding: 1, controls: 0,
+          cc_load_policy: 0, cc_lang_pref: "", iv_load_policy: 3, fs: 0,
+          origin: location.origin,
+        },
         events: {
-          onReady: () => { ST.ready = true; fitFrame(); res(); },
+          onReady: () => {
+            ST.ready = true;
+            try { ST.player.unloadModule("captions"); } catch {}
+            fitFrame();
+            res();
+          },
+          onStateChange: (e) => {
+            if (e.data === 1) { try { ST.player.unloadModule("captions"); } catch {} }
+          },
           onError: () => { ST.ready = false; res(); },
         },
       });
     });
     setTimeout(fitFrame, 220);
+
+    // 들어가자마자 재생
+    try {
+      ST.player.seekTo(0, true);
+      ST.player.playVideo();
+      ST.player.setPlaybackRate(ST.speed);
+    } catch {}
+
     if (ST.clock) clearInterval(ST.clock);
     ST.clock = setInterval(() => {
       if (!ST.player || !ST.player.getCurrentTime) return;
-      $("#sync-clock").textContent = fmtT(ST.player.getCurrentTime());
+      const t = ST.player.getCurrentTime() || 0;
+      $("#sync-clock").textContent = fmtT(t);
     }, 80);
+  }
+
+  function tipFor(k) {
+    const n = ST.items.length;
+    if (k === 0) return "첫 문장이 끝나는 순간에 누르세요.";
+    if (k >= ST.need) return "완료!";
+    if (k === ST.need - 1 && n > 1) {
+      return `${k + 1}번째 문장이 끝나는 순간에 누르세요 · 이후는 마지막 문장으로 처리됩니다.`;
+    }
+    return `${k + 1}번째 문장이 끝나는 순간에 누르세요.`;
   }
 
   function render() {
@@ -95,44 +131,41 @@
     $("#sync-count").textContent = `${Math.min(k, n)} / ${n}`;
     const i = Math.min(k, n - 1);
     const it = ST.items[i] || { en: "", ko: "" };
-    const nextIt = ST.items[i + 1];
 
-    $("#sync-step").textContent = k === 0
-      ? "① 첫 문장이 시작되는 순간에 누르세요"
-      : (k <= n ? `② ${i + 1}번 문장이 끝나는 순간에 누르세요` : "완료!");
+    $("#sync-step").textContent = tipFor(k);
     $("#sync-en").textContent = it.en || "—";
     $("#sync-ko").textContent = it.ko || "";
 
     const done = [];
-    for (let j = 0; j < k - 1 && j < n; j++) {
-      done.push(`<span class="sd-chip"><b>${j + 1}</b>${fmtT(ST.bounds[j])}–${fmtT(ST.bounds[j + 1])}</span>`);
+    for (let j = 0; j < k; j++) {
+      const st = j === 0 ? 0 : ST.bounds[j - 1];
+      done.push(`<span class="sd-chip"><b>${j + 1}</b>${fmtT(st)}–${fmtT(ST.bounds[j])}</span>`);
     }
     $("#sync-done").innerHTML = done.length ? done.join("") : `<span class="sd-none">아직 찍은 구간이 없습니다</span>`;
 
     const tap = $("#sync-tap");
-    tap.querySelector("span").textContent = k === 0 ? "시작 찍기" : k >= n ? "마지막 끝 찍기" : "경계 찍기";
-    $("#sync-hint").textContent = nextIt
-      ? `다음 문장: ${(nextIt.en || "").slice(0, 42)}${(nextIt.en || "").length > 42 ? "…" : ""}`
-      : "마지막 문장입니다";
+    const lab = tap.querySelector("span");
+    if (k === 0) lab.textContent = "첫 문장 끝";
+    else if (k >= ST.need - 1) lab.textContent = "마지막 문장 전";
+    else lab.textContent = "문장 끝 찍기";
+
+    const next = ST.items[k + 1];
+    $("#sync-hint").textContent = next
+      ? `다음 문장: ${(next.en || "").slice(0, 40)}${(next.en || "").length > 40 ? "…" : ""}`
+      : "영상은 계속 재생됩니다 · 멈추지 않고 찍으세요";
   }
 
   function tap() {
     if (!ST.player || !ST.ready) return toast("플레이어 준비 중입니다");
-    const n = ST.items.length;
-    if (ST.bounds.length > n) return;
-    const t = Math.round(ST.player.getCurrentTime() * 100) / 100;
+    if (ST.bounds.length >= ST.need) return;
+    const t = Math.round((ST.player.getCurrentTime() || 0) * 100) / 100;
     const last = ST.bounds.length ? ST.bounds[ST.bounds.length - 1] : -1;
-    if (last >= 0 && t - last < 0.12) return toast("너무 가깝습니다. 조금 더 진행한 뒤 눌러주세요");
+    if (last >= 0 && t - last < 0.15) return toast("너무 가깝습니다. 조금 더 진행한 뒤 눌러주세요");
+    if (ST.bounds.length && t <= last) return toast("앞 지점입니다. 조금 더 진행한 뒤 눌러주세요");
 
     ST.bounds.push(t);
     render();
-
-    if (ST.autoPause) {
-      if (ST.bounds.length > n) ST.player.pauseVideo();
-      else if (ST.bounds.length === 1) ST.player.pauseVideo();
-      else ST.player.playVideo();
-    }
-    if (ST.bounds.length >= n + 1) finish();
+    if (ST.bounds.length >= ST.need) finish();
   }
 
   function undo() {
@@ -140,7 +173,13 @@
     ST.bounds.pop();
     ST.finished = false;
     render();
-    toast("마지막 경계를 지웠습니다");
+    toast("마지막 지점을 지웠습니다");
+  }
+
+  function duration() {
+    let d = 0;
+    try { d = ST.player.getDuration() || 0; } catch {}
+    return d > 0 ? Math.round(d * 100) / 100 : 0;
   }
 
   function finish() {
@@ -153,12 +192,21 @@
 
   function build() {
     const n = ST.items.length, b = ST.bounds;
+    const dur = duration();
     ST.sentences = ST.items.map((it, i) => {
-      const st = b[i] != null ? b[i] : (i ? b[i - 1] + 3 : 0);
-      let en = b[i + 1] != null ? b[i + 1] : st + 3;
-      if (en <= st) en = st + 0.2;
-      return { en: it.en || "", ko: it.ko || "", start: Math.round(st * 100) / 100, end: Math.round(en * 100) / 100 };
-    }).slice(0, n);
+      const st = i === 0 ? 0 : (b[i - 1] != null ? b[i - 1] : 0);
+      let en;
+      if (i < n - 1) en = b[i] != null ? b[i] : st + 2;
+      else {
+        // 마지막 문장 = 마지막으로 찍은 지점 ~ 영상 끝
+        en = dur > st + 0.3 ? dur : (b.length ? b[b.length - 1] + 2.5 : st + 2.5);
+      }
+      if (en <= st + 0.15) en = st + 0.4;
+      return {
+        en: it.en || "", ko: it.ko || "",
+        start: Math.round(st * 100) / 100, end: Math.round(en * 100) / 100,
+      };
+    });
   }
 
   function vidOf(url) {
@@ -170,6 +218,8 @@
     if (ST.title) L.push("# " + ST.title);
     const v = vidOf(ST.url);
     if (v) L.push("@yt " + v);
+    const d = duration();
+    if (d) L.push("@duration " + d);
     ST.sentences.forEach((s) => {
       L.push("");
       L.push(`## ${fmtT(s.start)}-${fmtT(s.end)}`);
@@ -236,6 +286,7 @@
       const r = await App().jsonPost("/api/sync/apply", {
         url: ST.url, title: ST.title, vid: null,
         sentences: ST.sentences, markdown: $("#sync-md").value,
+        duration: duration(),
       });
       $("#sheet-sync-review").hidden = true;
       toast(`저장 완료 · 문장 ${r.segs.length}개`, 3000);
@@ -254,8 +305,14 @@
   function redo() {
     $("#sheet-sync-review").hidden = true;
     ST.bounds = []; ST.finished = false;
-    try { ST.player && ST.player.seekTo(0, true); } catch {}
+    try { ST.player && ST.player.seekTo(0, true); ST.player.playVideo(); } catch {}
     render();
+  }
+
+  function stopAll() {
+    try { ST.player && ST.player.pauseVideo(); } catch {}
+    if (ST.clock) clearInterval(ST.clock);
+    ST.clock = 0;
   }
 
   function bind() {
@@ -271,22 +328,13 @@
       try { ST.player && ST.player.setPlaybackRate(ST.speed); } catch {}
       $("#sync-speed").textContent = ST.speed.toFixed(2).replace(/0$/, "") + "x";
     };
-    $("#sync-autopause").onclick = () => {
-      ST.autoPause = !ST.autoPause;
-      $("#sync-autopause").classList.toggle("on", ST.autoPause);
-      toast(ST.autoPause ? "찍으면 자동 일시정지" : "재생 유지하며 연속 찍기");
-    };
-    $("#btn-sync-back").onclick = () => {
-      try { ST.player && ST.player.pauseVideo(); } catch {}
-      if (ST.clock) clearInterval(ST.clock);
-      show("s-home");
-    };
+    $("#btn-sync-back").onclick = () => { stopAll(); show("s-home"); };
     $("#btn-sync-save").onclick = save;
     $("#btn-sync-redo").onclick = redo;
 
     document.addEventListener("keydown", (e) => {
       if (!$("#s-sync").classList.contains("is-active")) return;
-      if (!$("#sheet-sync-review").hidden) return;
+      if ($("#sheet-sync-review").hidden === false) return;
       if (e.target.matches("input,textarea")) return;
       if (e.code === "Space" || e.key === "Enter") { e.preventDefault(); tap(); }
       else if (e.key === "Backspace") { e.preventDefault(); undo(); }

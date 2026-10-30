@@ -37,11 +37,10 @@
             </button>
           </div>
 
-          <!-- XP / 레벨 -->
           <div class="xpbar" id="xpcard">
             <div class="xp-top">
               <span class="xp-lv" id="xp-lv">Lv.1</span>
-              <span class="xp-t" id="xp-t">0 XP · 다음 레벨까지 120</span>
+              <span class="xp-t" id="xp-t">0 XP · 다음까지 120</span>
               <span class="xp-b" id="xp-badges">🏅 0</span>
             </div>
             <div class="xp-track"><i id="xp-fill"></i></div>
@@ -82,7 +81,7 @@
           <div id="vlist"></div>
           <div class="tip">
             <b>영상 추가</b>
-            <p>아래 <b>+ 추가</b> 탭에서 쇼츠 주소와 대본을 넣으면, 재생하며 <b>싱크</b>를 맞춰 바로 등록됩니다.</p>
+            <p>아래 <b>+ 추가</b> 탭에 쇼츠 주소와 대본을 넣으면, 재생하며 <b>싱크</b>를 맞춰 바로 등록됩니다.</p>
           </div>
         </div>
       </section>
@@ -100,8 +99,8 @@
           </div>
 
           <div class="vrail">
-            <button class="rail" id="btn-more" title="암기 테스트">
-              <span class="rail-ic">⋯</span><span class="rail-lab">테스트</span>
+            <button class="rail" id="btn-script" title="전체 스크립트">
+              <span class="rail-ic">📜</span><span class="rail-lab">대본</span>
             </button>
             <button class="rail" id="btn-sub" title="자막 표시">
               <span class="rail-ic">文A</span><span class="rail-lab" id="sub-lab">둘 다</span>
@@ -118,15 +117,50 @@
             <div class="sub-ko" id="sub-ko"></div>
           </div>
 
+          <!-- 쉐도잉 파형 -->
+          <div class="wave" id="wave" hidden>
+            <div class="wv-head">
+              <span class="wv-dot" id="wv-dot"></span>
+              <span class="wv-lab" id="wv-lab">원본 문장</span>
+              <span class="wv-sp"></span>
+              <span class="wv-time" id="wv-time">0.0s</span>
+            </div>
+            <canvas class="wv-cv" id="wv-cv"></canvas>
+            <div class="wv-foot">
+              <span class="wv-lg"><i class="lg-ref"></i>원본</span>
+              <span class="wv-lg"><i class="lg-me"></i>내 목소리</span>
+              <span class="wv-sp"></span>
+              <span class="wv-score" id="wv-score"></span>
+              <button class="wv-x" id="wv-close">닫기</button>
+            </div>
+          </div>
+
+          <!-- 카운트다운 -->
+          <div class="countdown" id="countdown" hidden>
+            <div class="cd-box">
+              <span class="cd-ring"></span>
+              <span class="cd-ring in"></span>
+              <span class="cd-cross h"></span>
+              <span class="cd-cross v"></span>
+              <span class="cd-wedge"></span>
+              <b class="cd-num" id="cd-num">2</b>
+            </div>
+            <div class="cd-tip" id="cd-tip">곧 문장이 재생됩니다 · 준비하세요</div>
+          </div>
+
           <div class="vbottom">
             <div class="vprog"><i id="vprog"></i></div>
             <div class="vrow">
               <button class="vbtn" id="btn-prev">‹ 이전</button>
               <button class="vbtn grow" id="btn-play">▶ 재생</button>
               <button class="vbtn" id="btn-next-seg">다음 ›</button>
-              <button class="mic-btn" id="btn-rec" aria-label="녹음"></button>
             </div>
-            <div class="vhint" id="rec-hint">문장을 고르고 마이크를 누르세요</div>
+            <button class="shadow-btn" id="btn-shadow">
+              <span class="sb-ic">🎤</span>
+              <span class="sb-tx">따라 말하기</span>
+              <span class="sb-sub" id="sb-sub">듣고 그대로 말하면 점수를 매겨요</span>
+            </button>
+            <div class="vhint" id="rec-hint">문장을 고르고 🎤 따라 말하기를 누르세요</div>
           </div>
         </div>
       </section>
@@ -196,7 +230,7 @@
           </div>
 
           <div class="sync-panel">
-            <div class="sync-lab" id="sync-step">첫 문장이 시작되는 순간에 눌러주세요</div>
+            <div class="sync-lab" id="sync-step">첫 문장이 끝나는 순간에 누르세요</div>
             <div class="sync-en" id="sync-en">—</div>
             <div class="sync-ko" id="sync-ko"></div>
             <div class="sync-done" id="sync-done"></div>
@@ -206,26 +240,15 @@
             <div class="sync-clock"><b id="sync-clock">0:00.0</b><span>현재 영상 시각</span></div>
             <div class="sync-row">
               <button class="vbtn" id="sync-undo" title="마지막 경계 지우기 (Backspace)">↶ 되돌리기</button>
-              <button class="sync-tap" id="sync-tap"><span>시작 찍기</span><em>SPACE</em></button>
+              <button class="sync-tap" id="sync-tap"><span>첫 문장 끝</span><em>SPACE</em></button>
               <button class="vbtn" id="sync-play" title="재생/일시정지 (→)">▶ 재생</button>
             </div>
             <div class="sync-opts">
               <button class="vbtn sm" id="sync-speed">1.0x</button>
-              <button class="vbtn sm on" id="sync-autopause">찍으면 일시정지</button>
             </div>
-            <div class="vhint" id="sync-hint">영상을 재생하고 문장이 끝나는 지점마다 눌러주세요</div>
+            <div class="vhint" id="sync-hint">영상은 계속 재생됩니다 · 문장이 끝나는 지점에서만 누르세요</div>
           </div>
         </div>
-      </section>
-
-      <!-- ================= TEST ================= -->
-      <section class="screen" id="s-test">
-        <div class="test-head">
-          <button class="vback dark" id="btn-test-close">‹</button>
-          <div class="test-title" id="test-title">암기 테스트</div>
-          <div class="test-prog" id="test-prog"></div>
-        </div>
-        <div class="scroll test-scroll" id="test-body"></div>
       </section>
 
     </main>
@@ -243,19 +266,17 @@
       <div class="sheet">
         <div class="sheet-grip"></div>
         <h3>쇼츠 추가</h3>
-        <p class="sheet-desc">주소와 대본을 넣고 <b>싱크 맞추기</b>를 누르면, 영상을 보면서 문장 구간을 찍어 바로 등록할 수 있습니다.</p>
+        <p class="sheet-desc">주소와 대본을 넣고 <b>싱크 맞추기</b>를 누르면, 영상을 보면서 문장 끝 지점만 찍어 바로 등록할 수 있습니다.</p>
 
         <label class="field"><span>쇼츠 주소</span>
           <input id="sy-url" placeholder="https://www.youtube.com/shorts/XXXXXXXXXXX" /></label>
-        <label class="field"><span>제목</span>
-          <input id="sy-title" placeholder="예: 카페에서 주문하기" maxlength="80" /></label>
+        <label class="field"><span>제목 <em id="sy-title-state"></em></span>
+          <input id="sy-title" placeholder="주소를 넣으면 자동으로 채워집니다" maxlength="80" /></label>
         <label class="field"><span>대본 전체 붙여넣기</span>
           <textarea id="sy-text" spellcheck="false" placeholder="Hi, can I get a latte please?
 라떼 한 잔 주세요.
 Sure. What size would you like?
 네, 어떤 사이즈로 드릴까요?"></textarea></label>
-
-        <label class="check"><input type="checkbox" id="sy-split" checked /> 긴 문장은 마침표 기준으로 나누기</label>
 
         <button class="btn primary" id="btn-sync-start">싱크 맞추기</button>
         <button class="btn text" data-close>닫기</button>
@@ -279,14 +300,14 @@ Sure. What size would you like?
       </div>
     </div>
 
-    <!-- ===== 테스트 메뉴(...) ===== -->
-    <div class="sheet-wrap" id="sheet-more" hidden>
+    <!-- ===== 전체 스크립트 ===== -->
+    <div class="sheet-wrap" id="sheet-script" hidden>
       <div class="sheet-bg" data-close></div>
       <div class="sheet">
         <div class="sheet-grip"></div>
-        <h3>암기 테스트</h3>
-        <p class="sheet-desc">드릴로 몸을 풀고, 마지막에 전체 암송으로 완료하세요.</p>
-        <div id="more-list"></div>
+        <h3 id="sc-title">전체 스크립트</h3>
+        <p class="sheet-desc">지금 재생 중인 문장이 표시됩니다 · 문장을 누르면 그 구간으로 이동합니다.</p>
+        <div class="sc-list" id="sc-list"></div>
         <button class="btn text" data-close>닫기</button>
       </div>
     </div>
@@ -308,17 +329,6 @@ Sure. What size would you like?
       </div>
     </div>
 
-    <!-- ===== 완료 축하 ===== -->
-    <div class="celebrate" id="celebrate" hidden>
-      <div class="cel-inner">
-        <div class="cel-emoji" id="cel-emoji">🏆</div>
-        <div class="cel-t" id="cel-title">암기 완료!</div>
-        <div class="cel-s" id="cel-sub"></div>
-        <div class="cel-xp" id="cel-xp"></div>
-        <button class="btn primary" id="cel-ok">좋아요</button>
-      </div>
-    </div>
-
     <div class="toast" id="toast" hidden></div>
   </div>
 </div>
@@ -326,6 +336,5 @@ Sure. What size would you like?
 
 <script src="/app.js"></script>
 <script src="/sync.js"></script>
-<script src="/tests.js"></script>
 </body>
 </html>

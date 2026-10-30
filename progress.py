@@ -1,21 +1,15 @@
 """Echo — 학습 기록 / 북마크 / 게이미피케이션
 
 파일
-  data/attempts.json : [{ts, vid, idx, total, mode}, ...]
-  data/notes.json    : {"sentences": {...}, "words": {...}}
-  data/tests.json    : {vid: {"order": {ok,score,at}, "cloze":…, "listen":…,
-                              "chain":…, "recite": {ok,score,at}}}
-  data/wordcache.json: 사전 조회 캐시
+  data/attempts.json  : [{ts, vid, idx, total, mode}, ...]
+  data/notes.json     : {"sentences": {...}, "words": {...}}
+  data/wordcache.json : 사전 조회 캐시
 
 암기율(memorized)
   문장별 '최고 점수'의 평균(%). 한 번 잘 본 문장은 계속 반영된다.
-통과(pass)
-  문장 점수 70점 이상.
-완료(complete)
-  최종 암송 테스트(recite)를 통과해야 그 쇼츠를 '암기 완료'로 인정한다.
-XP / 레벨 / 배지
-  채점 1회 = 점수/10 XP(최대 10) · 드릴 통과 = 25 XP · 최종 암송 통과 = 100 XP
-  레벨 = 1 + XP // 120
+통과(pass)       문장 점수 70점 이상.
+완료(complete)   등록된 문장을 전부 70점 이상으로 통과한 상태.
+XP / 레벨 / 배지  채점 1회 = 점수/10 XP(최대 10) · 레벨 = 1 + XP // 120
 """
 from __future__ import annotations
 
@@ -23,7 +17,6 @@ import json
 import os
 import re
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -32,15 +25,11 @@ from pathlib import Path
 DATA = Path(__file__).resolve().parent / "data"
 ATTEMPTS = DATA / "attempts.json"
 NOTES = DATA / "notes.json"
-TESTS = DATA / "tests.json"
 WCACHE = DATA / "wordcache.json"
 
 MAX_ATTEMPTS = 8000
 PASS_SCORE = 70.0
 XP_PER_LEVEL = 120
-XP_DRILL = 25
-XP_RECITE = 100
-DRILLS = ("order", "cloze", "listen", "chain")
 
 
 # ---------------------------------------------------------------- IO
@@ -129,71 +118,15 @@ def memorized(vid: str, n_segs: int) -> dict:
     return {"pct": round(s / n_segs, 1), "done": done, "total": n_segs, "tried": tried}
 
 
-# ---------------------------------------------------------------- tests
-def _tests() -> dict:
-    t = _load(TESTS, {})
-    if not isinstance(t, dict):
-        return {}
-    return t
-
-
-def record_test(vid: str, kind: str, ok: bool, score: float = 0.0,
-                meta: dict | None = None) -> dict:
-    """테스트 결과 저장. 이미 통과한 항목은 XP를 다시 주지 않는다."""
-    kind = (kind or "").strip().lower()
-    if kind not in DRILLS + ("recite",):
-        raise ValueError("unknown test kind")
-    t = _tests()
-    rec = t.setdefault(vid, {})
-    prev = rec.get(kind) or {}
-    first_clear = bool(ok) and not prev.get("ok")
-
-    rec[kind] = {
-        "ok": bool(ok) or bool(prev.get("ok")),
-        "score": round(max(float(score), float(prev.get("score", 0))), 1),
-        "at": _now(),
-        "tries": int(prev.get("tries", 0)) + 1,
-        "meta": {k: v for k, v in (meta or {}).items() if isinstance(v, (int, float, str))},
-    }
-    t[vid] = rec
-    _save(TESTS, t)
-
-    gain = 0
-    if first_clear:
-        gain = XP_RECITE if kind == "recite" else XP_DRILL
-    before = xp_total() - gain
-    return {"ok": True, "kind": kind, "passed": bool(rec[kind]["ok"]),
-            "first_clear": first_clear, "xp_gain": gain,
-            "xp": before + gain, "level": level_of(before + gain),
-            "new_badges": badges_new(before, before + gain, vid)}
-
-
-def test_best(vid: str) -> dict:
-    return _tests().get(vid, {})
-
-
-def is_complete(vid: str) -> bool:
-    return bool((_tests().get(vid) or {}).get("recite", {}).get("ok"))
-
-
-def completed_count() -> int:
-    return len([v for v, r in _tests().items() if (r.get("recite") or {}).get("ok")])
-
-
-def reset_tests(vid: str) -> None:
-    t = _tests()
-    t.pop(vid, None)
-    _save(TESTS, t)
+def is_complete(vid: str, n_segs: int) -> bool:
+    """문장을 전부 70점 이상으로 통과했는가."""
+    m = memorized(vid, n_segs)
+    return bool(n_segs > 0 and m["done"] >= n_segs)
 
 
 # ---------------------------------------------------------------- XP / level
 def xp_total() -> int:
-    xp = sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts())
-    for _vid, rec in _tests().items():
-        for kind, d in rec.items():
-            if d.get("ok"):
-                xp += XP_RECITE if kind == "recite" else XP_DRILL
-    return int(xp)
+    return int(sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts()))
 
 
 def level_of(xp: int | None = None) -> int:
@@ -215,57 +148,31 @@ BADGES = [
     ("first_try", "🎤", "첫 채점", "처음으로 문장을 녹음해 채점받았어요"),
     ("first_pass", "✅", "첫 통과", "문장 하나를 70점 이상으로 통과했어요"),
     ("perfect_one", "💎", "완벽한 문장", "한 문장에서 90점 이상을 받았어요"),
-    ("order_clear", "🧩", "순서 정리", "문장 순서 맞추기를 통과했어요"),
-    ("cloze_clear", "🕳️", "빈칸 사냥", "빈칸 채우기를 통과했어요"),
-    ("listen_clear", "👂", "귀가 밝음", "듣고 문장 찾기를 통과했어요"),
-    ("chain_clear", "🔗", "이어말하기", "첫 단어만 보고 이어말하기를 통과했어요"),
-    ("recite_clear", "🏆", "첫 암송", "쇼츠 하나를 통째로 암송했어요"),
     ("streak3", "🔥", "3일 연속", "3일 연속으로 학습했어요"),
     ("streak7", "🌟", "7일 연속", "일주일 내내 학습했어요"),
     ("words10", "📚", "단어 10개", "단어장에 10개를 모았어요"),
-    ("commit5", "🎯", "암송 5편", "쇼츠 5편을 완전히 암송했어요"),
 ]
 
 
 def badge_state() -> dict:
-    t = _tests()
     rows = attempts()
     best = best_scores()
     st = streak()
     words = len(_notes()["words"])
-    kinds_ok = set()
-    for rec in t.values():
-        for k, d in rec.items():
-            if d.get("ok"):
-                kinds_ok.add(k)
-    got = {
+    return {
         "first_try": len(rows) >= 1,
         "first_pass": any(v >= PASS_SCORE for v in best.values()),
         "perfect_one": any(float(r.get("total", 0)) >= 90 for r in rows),
-        "order_clear": "order" in kinds_ok,
-        "cloze_clear": "cloze" in kinds_ok,
-        "listen_clear": "listen" in kinds_ok,
-        "chain_clear": "chain" in kinds_ok,
-        "recite_clear": "recite" in kinds_ok,
         "streak3": st["days"] >= 3,
         "streak7": st["days"] >= 7,
         "words10": words >= 10,
-        "commit5": completed_count() >= 5,
     }
-    return got
 
 
 def badges() -> list[dict]:
     got = badge_state()
     return [{"id": i, "emoji": e, "label": n, "desc": d, "got": bool(got.get(i))}
             for i, e, n, d in BADGES]
-
-
-def badges_new(xp_before: int, xp_after: int, vid: str) -> list[dict]:
-    """XP 증가 직후 새로 열린 배지 (간단 계산: 지금 상태 기준 최근 것만)"""
-    got = badge_state()
-    keys = [i for i, _e, _n, _d in BADGES if got.get(i)]
-    return [b for b in badges() if b["got"]][-2:] if keys else []
 
 
 # ---------------------------------------------------------------- 현황
@@ -278,20 +185,20 @@ def today_focus(videos: dict) -> dict | None:
     if last_today:
         picked = videos.get(last_today[-1].get("vid"))
     if picked is None:
-        open_v = [v for v in videos.values() if not is_complete(v["id"])]
+        open_v = [v for v in videos.values()
+                  if not is_complete(v["id"], len(v.get("segs", [])))]
         picked = (open_v or list(videos.values()))[0]
     n = len(picked.get("segs", []))
     m = memorized(picked["id"], n)
     n_today = len({r.get("idx") for r in last_today if r.get("vid") == picked["id"]})
     return {"id": picked["id"], "title": picked.get("title", ""),
             "yt": picked.get("yt", ""), "segs": n, "memorized": m,
-            "tried_today": n_today, "complete": is_complete(picked["id"])}
+            "tried_today": n_today, "complete": is_complete(picked["id"], n)}
 
 
 def progress(videos: dict) -> dict:
     return {"focus": today_focus(videos), "streak": streak(),
             "xp": level_info(), "badges": badges(),
-            "completed": completed_count(),
             "total_attempts": len(attempts())}
 
 
@@ -368,7 +275,7 @@ def _dict_lookup(word: str) -> dict | None:
         return c.get("data")
     try:
         url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
-        req = urllib.request.Request(url, headers={"User-Agent": "Echo/3.4"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Echo/3.5"})
         with urllib.request.urlopen(req, timeout=5) as r:
             raw = json.loads(r.read().decode("utf-8"))
         entry = raw[0] if isinstance(raw, list) and raw else {}

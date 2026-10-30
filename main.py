@@ -1,4 +1,4 @@
-"""Echo — 유튜브 문장별 셰도잉 (FastAPI) v3.3
+"""Echo — 유튜브 문장별 셰도잉 (FastAPI) v3.5
 
 구조
   영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
@@ -23,6 +23,9 @@ import os
 import re
 import subprocess
 import tempfile
+import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import librosa
@@ -33,7 +36,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-import drills
 import engine
 import progress as prog
 import script_md
@@ -54,7 +56,7 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Echo Shadowing API", version="3.4")
+app = FastAPI(title="Echo Shadowing API", version="3.5")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -422,8 +424,7 @@ def video_public(v: dict, d: dict) -> dict:
     return {"id": v["id"], "yt": v["yt"], "title": v["title"],
             "segs": v["segs"], "n": len(v["segs"]),
             "audio": au, "has_audio": au is not None,
-            "complete": prog.is_complete(v["id"]),
-            "tests": prog.test_best(v["id"])}
+            "complete": prog.is_complete(v["id"], len(v["segs"]))}
 
 
 DEMO_VIDEO_IDS = ("vdemo0001", "vdemo0002")
@@ -894,8 +895,7 @@ def get_progress():
 
 @app.get("/api/badges")
 def get_badges():
-    return {"badges": prog.badges(), "xp": prog.level_info(),
-            "completed": prog.completed_count()}
+    return {"badges": prog.badges(), "xp": prog.level_info()}
 
 
 # ---- 북마크 / 오답노트 / 단어장
@@ -935,6 +935,39 @@ def note_word(payload: dict):
 def word_info(word: str):
     return prog.lookup(word)
 
+
+
+# ---- 유튜브 메타(제목 자동 채우기)
+_YT_META: dict[str, dict] = {}
+
+
+@app.get("/api/yt/meta")
+def yt_meta(url: str = ""):
+    """oEmbed 로 제목/채널을 가져온다. 실패하면 조용히 빈 값을 돌려준다."""
+    yt = yt_id(url or "")
+    if not yt:
+        raise HTTPException(422, "유튜브 주소를 확인해주세요")
+    hit = _YT_META.get(yt)
+    if hit and time.time() - hit.get("at", 0) < 86400:
+        return {**hit["data"], "cached": True}
+    target = ("https://www.youtube.com/oembed?format=json&url="
+              + urllib.parse.quote(f"https://www.youtube.com/watch?v={yt}", safe=""))
+    data = {"ok": False, "id": yt, "title": "", "author": "",
+            "thumb": f"https://i.ytimg.com/vi/{yt}/mqdefault.jpg"}
+    try:
+        req = urllib.request.Request(target, headers={
+            "User-Agent": "Mozilla/5.0 (Echo/3.5)", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            j = json.loads(r.read().decode("utf-8"))
+        data.update({"ok": bool(j.get("title")), "title": j.get("title", "")[:120],
+                     "author": j.get("author_name", "")[:80]})
+    except Exception:
+        pass
+    _YT_META[yt] = {"at": time.time(), "data": data}
+    if len(_YT_META) > 500:
+        for k in list(_YT_META)[:100]:
+            _YT_META.pop(k, None)
+    return data
 
 
 # ---- 싱크(재생하며 타이밍 찍기)
@@ -1021,81 +1054,6 @@ def sync_apply(payload: dict):
             "markdown": script_md.serialize(v.get("title", ""), v.get("yt", ""), segs,
                                             float(v.get("duration") or 0))}
 
-
-
-# ---- 암기 테스트(드릴) / 최종 암송
-@app.get("/api/videos/{vid}/drills")
-def get_drill(vid: str, kind: str = "order", seed: int | None = None):
-    d = db()
-    v = d["videos"].get(vid) or get_video(vid)
-    try:
-        data = drills.build(kind, v["segs"], vid, seed)
-    except ValueError:
-        raise HTTPException(422, f"알 수 없는 테스트 종류: {kind}")
-    data["video"] = {"id": v["id"], "title": v.get("title", ""), "n": len(v["segs"])}
-    data["best"] = (prog.test_best(vid) or {}).get(kind) or None
-    return data
-
-
-@app.post("/api/videos/{vid}/drills/{kind}/check")
-def check_drill(vid: str, kind: str, payload: dict):
-    d = db()
-    v = d["videos"].get(vid) or get_video(vid)
-    answers = payload.get("answers")
-    try:
-        res = drills.check(kind, answers, v["segs"])
-    except ValueError:
-        raise HTTPException(422, f"알 수 없는 테스트 종류: {kind}")
-    rec = prog.record_test(vid, kind, res["passed"], res["score"],
-                           {"hit": res.get("hit"), "total": res.get("total")})
-    return {**res, "record": rec,
-            "memorized": prog.memorized(vid, len(v["segs"])),
-            "tests": prog.test_best(vid)}
-
-
-@app.post("/api/videos/{vid}/recite/check")
-def check_recite(vid: str, payload: dict):
-    """최종 암송 채점. 통과하면 그 쇼츠는 '암기 완료'가 된다."""
-    d = db()
-    v = d["videos"].get(vid) or get_video(vid)
-    segs = v["segs"]
-    expected = [(s.get("en") or s.get("text") or "").strip() for s in segs]
-    said = str(payload.get("said") or "")
-    if not said.strip():
-        raise HTTPException(422, "인식된 문장이 없습니다. 다시 시도해주세요")
-    thr = int(payload.get("threshold") or drills.FINAL_PASS)
-    res = drills.match_recitation(expected, said, thr)
-    rec = prog.record_test(vid, "recite", res["passed"], res["score"],
-                           {"passed_count": res.get("passed_count"),
-                            "total": res.get("total")})
-    return {**res, "record": rec,
-            "complete": prog.is_complete(vid),
-            "memorized": prog.memorized(vid, len(segs)),
-            "tests": prog.test_best(vid)}
-
-
-@app.post("/api/videos/{vid}/recite/self")
-def self_score(vid: str, payload: dict):
-    """짝꿍 채점: 두 사람이 서로 채점하던 방식을 앱으로. 전부 통과 표시하면 완료."""
-    d = db()
-    v = d["videos"].get(vid) or get_video(vid)
-    marks = payload.get("marks") or []
-    n = len(v["segs"])
-    if len(marks) != n:
-        raise HTTPException(422, "문장 수와 채점 수가 다릅니다")
-    ok_count = len([m for m in marks if m])
-    passed = ok_count == n and n > 0
-    score = int(round(100 * ok_count / max(1, n)))
-    rec = prog.record_test(vid, "recite", passed, score,
-                           {"self": 1, "passed_count": ok_count, "total": n})
-    return {"ok": True, "passed": passed, "score": score, "record": rec,
-            "complete": prog.is_complete(vid), "tests": prog.test_best(vid)}
-
-
-@app.delete("/api/videos/{vid}/tests")
-def reset_video_tests(vid: str):
-    prog.reset_tests(vid)
-    return {"ok": True}
 
 
 # ---- 정적

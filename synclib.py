@@ -97,14 +97,35 @@ def split_transcript(text: str, split_sentences: bool = True) -> list[dict]:
     return out
 
 
+
+def _split_en(en: str) -> list[str]:
+    """영어 한 줄을 문장 단위로 나눈다.
+
+    "Sure." 처럼 낱말 2개 이하의 조각은 앞 문장에 붙여 오히려 문장을 뭉개지 않게 한다.
+    (한영 쌍이 어긋나는 것을 막기 위한 최소 규칙)
+    """
+    parts = [c.strip() for c in re.split(r"(?<=[.!?])\s+", en) if c.strip()]
+    out: list[str] = []
+    buf = ""
+    for i, part in enumerate(parts):
+        cand = (buf + " " + part).strip() if buf else part
+        if len(cand.split()) <= 2 and i < len(parts) - 1:
+            buf = cand
+            continue
+        out.append(cand)
+        buf = ""
+    if buf:
+        out.append(buf)
+    return out or [en]
+
+
 def _push(items: list[dict], en: str, ko: str, do_split: bool) -> None:
     if not en:
         if items and ko and not items[-1]["ko"]:
             items[-1]["ko"] = ko
         return
-    chunks = [en]
-    if do_split and len(en) > 40:
-        chunks = [c.strip() for c in SENT_END.split(en) if c.strip()] or [en]
+    # v3.5: 체크박스 없이 항상 마침표/물음표/느낌표 기준으로 나눈다.
+    chunks = _split_en(en) if do_split else [en]
     for c in chunks:
         items.append({"en": c, "ko": ko if len(chunks) == 1 else ""})
 
