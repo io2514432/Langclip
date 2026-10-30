@@ -40,6 +40,7 @@ import engine
 import progress as prog
 import script_md
 import synclib
+import verify
 from store import DATA, storage
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -449,7 +450,7 @@ def video_public(v: dict, d: dict) -> dict:
             "segs": v["segs"], "n": len(v["segs"]),
             "audio": au, "has_audio": au is not None,
             "complete": prog.is_complete(v["id"]),
-            "final": prog.final_of(v["id"])}
+            "verify": prog.verify_of(v["id"])}
 
 
 DEMO_VIDEO_IDS = ("vdemo0001", "vdemo0002")
@@ -1086,26 +1087,51 @@ def sync_apply(payload: dict, request: Request):
 
 
 
-# ---- 최종 검증 (완료 판정의 유일한 기준)
-@app.post("/api/videos/{vid}/final/check")
-def check_final(vid: str, payload: dict):
-    """문장별 셰도잉 점수 묶음을 받아 통과 판정을 내린다."""
+# ---- 학습 완료 검증 (3단계)
+_SPOT: dict[str, dict] = {}
+
+
+@app.get("/api/videos/{vid}/verify/spot")
+def verify_spot(vid: str, k: int = verify.SPOT_K):
+    """스팟 체크 문장을 무작위로 골라 준다. 힌트만 노출."""
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
-    scores = payload.get("scores") or []
-    n = len(v["segs"])
-    if len(scores) != n:
-        raise HTTPException(422, f"문장 수({n})와 점수 개수({len(scores)})가 다릅니다")
-    res = prog.record_final(vid, scores)
-    return {**res, "complete": prog.is_complete(vid),
-            "xp": prog.level_info(), "completed": prog.completed_count()}
+    idx = verify.spot_pick(vid, len(v["segs"]), k, salt=_now_salt())
+    _SPOT[vid] = {"at": time.time(), "idx": idx}
+    items = [{"i": i, "ko": v["segs"][i].get("ko", ""),
+              "hint": verify.hint_of(v["segs"][i].get("en") or v["segs"][i].get("text") or "")}
+             for i in idx]
+    return {"ok": True, "k": len(items), "items": items, "count": len(v["segs"])}
 
 
-@app.delete("/api/videos/{vid}/final")
-def reset_final(vid: str):
-    d = prog._finals()
+def _now_salt() -> str:
+    return str(int(time.time() // 60))
+
+
+@app.post("/api/videos/{vid}/verify/check")
+def verify_check(vid: str, payload: dict):
+    """3단계 결과를 한 번에 판정한다. 통과하면 그 쇼츠는 학습 완료."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    segs = v["segs"]
+    issued = (_SPOT.get(vid) or {}).get("idx") or []
+    if not issued:
+        issued = verify.spot_pick(vid, len(segs), verify.SPOT_K, salt=_now_salt())
+
+    res = verify.judge(segs, payload.get("read") or [], payload.get("typed") or {},
+                       issued, payload.get("spot") or {})
+    rec = prog.record_verify(vid, res)
+    _SPOT.pop(vid, None)
+    return {**res, **rec, "complete": prog.is_complete(vid),
+            "completed": prog.completed_count(), "xp": prog.level_info()}
+
+
+@app.delete("/api/videos/{vid}/verify")
+def reset_verify(vid: str, request: Request):
+    require_admin(request)
+    d = prog._verifies()
     d.pop(vid, None)
-    prog._save(prog.FINAL, d)
+    prog._save(prog.VERIFY, d)
     return {"ok": True, "complete": False}
 
 

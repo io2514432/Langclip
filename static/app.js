@@ -24,11 +24,12 @@ const SH = {
   dur: 1, ref: new Float32Array(0), user: [],
   playT: 0, raf: 0, cdTimer: 0, startAt: 0,
   stream: null, rec: null, chunks: [], actx: null, an: null, buf: null,
-  audio: null, audioUrl: "", decoded: null, score: null, final: false,
+  audio: null, audioUrl: "", decoded: null, score: null,
 };
 
-/* 최종 검증 */
-const FN = { on: false, i: 0, scores: [] };
+/* 학습 완료 검증 (3단계) */
+const VF = { on: false, stage: "read", i: 0, scores: [], typed: {}, spot: {}, spotItems: [], n: 0 };
+const FN = { on: false, i: 0, scores: [] };     // 가림 낭독 단계 진행 상태
 
 /* ---------------- utils ---------------- */
 function toast(msg, ms = 2600) {
@@ -174,7 +175,7 @@ function renderHome() {
 
   if (f) {
     const m = f.memorized || { pct: 0, total: f.segs };
-    const state = f.complete ? "학습 완료" : (f.final && f.final.tries ? "최종 검증 재도전" : `진행 ${Math.round(m.pct)}%`);
+    const state = f.complete ? "학습 완료" : (f.verify && f.verify.tries ? "검증 재도전" : `진행 ${Math.round(m.pct)}%`);
     $("#daily-t").innerHTML = f.complete
       ? `오늘의 쇼츠 <b>학습 완료</b>`
       : `오늘의 쇼츠 <b>${Math.round(m.pct)}%</b> 진행`;
@@ -284,7 +285,7 @@ function renderVideos() {
           <div class="nc-meta" style="margin-top:5px">
             <span class="tag">문장 ${v.n}개</span>
             ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
-            <span>${v.complete ? "최종 검증 통과" : (v.final && v.final.tries ? "검증 재도전" : "학습 중")}</span>
+            <span>${v.complete ? "검증 통과" : (v.verify && v.verify.tries ? "검증 재도전" : "학습 중")}</span>
           </div>
           <div class="focus-bar" style="margin-top:8px;height:5px"><i style="width:${pct}%"></i></div>
         </div>
@@ -470,11 +471,11 @@ function openScriptSheet() {
   $$("#sc-list .sc-row").forEach((b) => {
     b.onclick = () => { $("#sheet-script").hidden = true; playFrom(+b.dataset.i); };
   });
-  const fin = S.cur.final || {};
+  const vf = S.cur.verify || {};
   const stEl = $("#sc-final-state");
-  stEl.textContent = S.cur.complete ? "통과" : (fin.tries ? `${fin.score}점 · 재도전` : "미응시");
+  stEl.textContent = S.cur.complete ? "통과" : (vf.tries ? `${vf.score}점 · 재도전` : "미응시");
   stEl.className = S.cur.complete ? "on" : "";
-  $("#sc-final-btn").textContent = S.cur.complete ? "최종 검증 다시 하기" : "최종 검증 시작";
+  $("#sc-final-btn").textContent = S.cur.complete ? "검증 다시 하기" : "검증 시작";
   $("#sc-audio").hidden = !S.admin;
   renderAudioState();
   $("#sheet-script").hidden = false;
@@ -707,7 +708,6 @@ function closeWave(silent) {
   SH.phase = "idle";
   SH.user = [];
   SH.playT = 0;
-  SH.final = false;
   try { if (SH.rec && SH.rec.state === "recording") SH.rec.stop(); } catch {}
   SH.rec = null;
   try { if (SH.stream) SH.stream.getTracks().forEach((t) => t.stop()); } catch {}
@@ -790,7 +790,6 @@ async function startShadow() {
   SH.user = [];
   SH.playT = 0;
   SH.score = null;
-  SH.final = FN.on;
 
   openWave(FN.on ? `최종 검증 ${FN.i + 1}/${S.cur.n} · ${seg.en || ""}` : `${S.idx + 1}. ${seg.en || seg.text || ""}`);
   $("#shadow-lab").textContent = FN.on ? `${FN.i + 1}/${S.cur.n}` : "취소";
@@ -965,7 +964,7 @@ async function submitScore() {
         setTimeout(() => { if (FN.on) startShadow(); }, 550);
         return;
       }
-      return finishFinal();
+      return finishRead();
     }
     renderResult(r);
     show("s-result");
@@ -980,61 +979,171 @@ async function submitScore() {
   }
 }
 
-/* ---------------- 최종 검증 ---------------- */
-function startFinal() {
+/* ---------------- 학습 완료 검증 (3단계) ---------------- */
+function startVerify() {
   if (!S.cur) return;
   if (!S.cur.segs || !S.cur.segs.length) return toast("문장이 없습니다");
   if (SH.phase !== "idle") closeWave(true);
   $("#sheet-script").hidden = true;
+  VF.on = true; VF.stage = "read"; VF.i = 0; VF.scores = [];
+  VF.typed = {}; VF.spot = {}; VF.spotItems = []; VF.n = S.cur.segs.length;
   FN.on = true; FN.i = 0; FN.scores = [];
   show("s-play");
   startTick();
   selectSeg(0, true);
-  toast(`최종 검증 시작 · 문장 ${S.cur.segs.length}개를 차례로 따라 말합니다`, 3600);
+  document.body.classList.add("vf-mask");
+  toast(`1단계 가림 낭독 · 문장 ${VF.n}개를 순서대로 말합니다`, 3600);
   setTimeout(() => startShadow(), 420);
 }
 
-async function finishFinal() {
-  const scores = FN.scores.slice();
+/* 1단계 끝 → 2단계 */
+function finishRead() {
+  VF.scores = FN.scores.slice();
   FN.on = false;
+  closeWave(true);
+  document.body.classList.remove("vf-mask");
+  VF.stage = "recall";
+  show("s-verify");
+  renderVerify();
+}
+
+function stepBar() {
+  const steps = [["read", "가림 낭독"], ["recall", "가림 복창"], ["spot", "스팟 체크"]];
+  const order = steps.map(([k]) => k);
+  const cur = order.indexOf(VF.stage);
+  $("#vf-steps").innerHTML = steps.map(([k, label], i) => {
+    const done = i < cur, on = i === cur;
+    return `<div class="vf-step ${done ? "done" : ""} ${on ? "on" : ""}">
+      <b>${done ? ic("i-check", "ic xs") : i + 1}</b><span>${label}</span></div>`;
+  }).join("");
+  $("#vf-prog").textContent = `${cur + 1} / 3`;
+}
+
+function renderVerify() {
+  stepBar();
+  if (VF.stage === "recall") return renderRecall();
+  if (VF.stage === "spot") return renderSpot();
+  if (VF.stage === "done") return renderVerifyResult();
+}
+
+/* 2단계: 한국어만 보고 영어 복창 */
+function renderRecall() {
+  const segs = S.cur.segs;
+  $("#vf-body").innerHTML = `
+    <p class="test-desc">영어는 보이지 않습니다. <b>한국어만 보고</b> 영어 문장을 그대로 써보세요.
+      문장마다 <b>${verifyNeed.recall}점</b> 이상이면 통과입니다. (오타 1~2자 허용)</p>
+    ${segs.map((s, i) => `
+      <div class="vf-row" data-i="${i}">
+        <div class="vf-ko"><b>${i + 1}</b>${esc(s.ko || "(한국어 없음 · 영어만)")}</div>
+        <textarea class="vf-in" data-i="${i}" rows="2" spellcheck="false" autocapitalize="off"
+          placeholder="${s.ko ? "영어로 옮겨 적기" : esc((s.en || "").slice(0, 1)) + "…"}"></textarea>
+      </div>`).join("")}
+    <button class="btn primary" id="vf-recall-next">2단계 제출 · 스팟 체크로</button>`;
+  $$("#vf-body .vf-in").forEach((el) => {
+    el.value = VF.typed[el.dataset.i] || "";
+    el.oninput = () => { VF.typed[el.dataset.i] = el.value; };
+  });
+  const first = $("#vf-body .vf-in");
+  if (first) first.focus();
+  $("#vf-recall-next").onclick = async () => {
+    const empty = segs.filter((s, i) => !String(VF.typed[i] || "").trim()).length;
+    if (empty && !confirm(`아직 쓰지 않은 문장이 ${empty}개 있습니다.
+
+이대로 다음 단계로 갈까요?`)) return;
+    VF.stage = "spot";
+    await loadSpot();
+    renderVerify();
+  };
+}
+
+/* 3단계: 무작위 스팟 체크 */
+async function loadSpot() {
+  if (VF.spotItems.length) return;
   try {
-    const r = await jsonPost(`/api/videos/${S.cur.id}/final/check`, { scores });
-    await refreshCur();
-    await loadHome();
-    await loadVideos();
-    SH.phase = "done";
-    closeWave(true);
-    renderFinalResult(r, scores);
-    show("s-result");
+    const r = await api(`/api/videos/${S.cur.id}/verify/spot?k=3`);
+    VF.spotItems = r.items || [];
   } catch (e) {
-    closeWave(true);
-    toast("검증 결과를 저장하지 못했습니다: " + e.message, 4200);
+    VF.spotItems = [];
+    toast("스팟 문장을 불러오지 못했습니다: " + e.message, 3800);
   }
 }
 
-function renderFinalResult(r, scores) {
-  const avg = Math.round(r.avg);
-  $("#total").textContent = avg;
-  $("#ring").style.setProperty("--p", Math.max(0, Math.min(100, r.avg)));
-  $("#axis-card").style.display = "none";
-  $("#listen-card").style.display = "none";
-  $("#res-text").textContent = `문장 ${scores.length}개 전체`;
-  $("#res-ko").textContent = scores.map((s) => `${s}점`).join(" · ");
-  $("#res-time").textContent = `기준 평균 ${r.need_avg} · 최저 ${r.need_low}`;
+function renderSpot() {
+  $("#vf-body").innerHTML = `
+    <p class="test-desc">무작위로 뽑힌 <b>${VF.spotItems.length}문장</b>입니다. 첫 글자 힌트만 보고 채우세요.
+      문장마다 <b>${verifyNeed.spot}점</b> 이상이면 통과입니다.</p>
+    ${VF.spotItems.map((it) => `
+      <div class="vf-row" data-i="${it.i}">
+        <div class="vf-ko"><b>${it.i + 1}</b>${esc(it.ko || "")}</div>
+        <div class="vf-hint">${esc(it.hint)}</div>
+        <textarea class="vf-in" data-i="${it.i}" rows="2" spellcheck="false"
+          placeholder="첫 글자를 따라 문장을 완성하세요"></textarea>
+      </div>`).join("")}
+    <button class="btn primary" id="vf-finish">검증 결과 보기</button>`;
+  $$("#vf-body .vf-in").forEach((el) => {
+    el.value = VF.spot[el.dataset.i] || "";
+    el.oninput = () => { VF.spot[el.dataset.i] = el.value; };
+  });
+  $("#vf-finish").onclick = submitVerify;
+}
 
-  $("#grade").textContent = r.passed ? "PASS" : "RETRY";
-  $("#grade").style.color = r.passed ? "#0EA5E9" : "#F59E0B";
-  $("#verdict").textContent = r.passed
-    ? "이 쇼츠의 대본을 전부 익혔습니다. 학습 완료!"
-    : `평균 ${avg}점 · 최저 ${r.low}점입니다. 부족한 문장을 다시 연습하세요.`;
+const verifyNeed = { recall: 90, spot: 85 };
 
-  const lowIdx = scores.map((s, i) => ({ s, i })).sort((a, b) => a.s - b.s).slice(0, 3);
-  $("#coach").innerHTML = `<h4>문장별 점수</h4><ul>${lowIdx
-    .map(({ s, i }) => `<li><b>${i + 1}번</b> · ${s}점 ${s < r.need_low ? "(기준 미달)" : ""}</li>`).join("")}</ul>`;
+async function submitVerify() {
+  const b = $("#vf-finish");
+  if (b) { b.disabled = true; b.textContent = "채점 중…"; }
+  try {
+    const r = await jsonPost(`/api/videos/${S.cur.id}/verify/check`, {
+      read: VF.scores, typed: VF.typed, spot: VF.spot,
+    });
+    VF.result = r;
+    VF.stage = "done";
+    await refreshCur();
+    await loadHome();
+    await loadVideos();
+    renderVerify();
+  } catch (e) {
+    if (b) { b.disabled = false; b.textContent = "검증 결과 보기"; }
+    toast("검증 실패: " + e.message, 4200);
+  }
+}
 
-  $("#btn-retry").hidden = true;
-  $("#btn-final-again").hidden = false;
-  $("#mode-note").classList.remove("show");
+function renderVerifyResult() {
+  stepBar();
+  const r = VF.result || {};
+  const st = r.stages || {};
+  const row = (key, label, s, extra) => {
+    const ok = s && s.passed;
+    const detail = s
+      ? (key === "read" ? `평균 ${Math.round(s.avg || 0)}점 · 최저 ${Math.round(s.low || 0)}점`
+        : `${s.hit || 0} / ${s.total || 0} 문장`)
+      : "미응시";
+    return `<div class="vf-res ${ok ? "ok" : "no"}">
+      <span class="vf-res-ic">${ok ? ic("i-check", "ic xs") : ic("i-close", "ic xs")}</span>
+      <span class="vf-res-b"><b>${label}</b><em>${detail}${extra ? " · " + extra : ""}</em></span>
+    </div>`;
+  };
+  const fails = ((st.recall || {}).rows || []).filter((x) => !x.pass).slice(0, 5);
+  $("#vf-body").innerHTML = `
+    <div class="vf-head ${r.passed ? "ok" : ""}">
+      <div class="vf-score"><b>${Math.round(r.score || 0)}</b><small>점</small></div>
+      <div class="vf-head-b">
+        <div class="vf-verdict">${r.passed ? "학습 완료" : esc(r.headline || "다시 도전")}</div>
+        <div class="vf-sub">${r.passed ? "세 단계를 모두 통과했습니다" : "부족한 단계를 다시 연습하세요"}</div>
+      </div>
+    </div>
+    ${row("read", "가림 낭독", st.read)}
+    ${row("recall", "가림 복창", st.recall)}
+    ${row("spot", "스팟 체크", st.spot)}
+    ${fails.length ? `<div class="vf-list"><b class="vf-list-h">복창이 부족한 문장</b>${fails.map((x) => `
+      <div class="vf-li"><span>${x.i + 1}번 · ${x.score}점</span><em>${esc(x.answer)}</em></div>`).join("")}</div>` : ""}
+    <div class="actions">
+      <button class="btn primary" id="vf-again">다시 검증하기</button>
+      <button class="btn ghost" id="vf-close">학습으로 돌아가기</button>
+    </div>`;
+  $("#vf-again").onclick = () => { VF.spotItems = []; startVerify(); };
+  $("#vf-close").onclick = () => { VF.on = false; show("s-play"); startTick(); };
+  if (r.passed) toast("학습 완료! 세 단계를 모두 통과했습니다", 4200);
 }
 
 /* ================= 결과 ================= */
@@ -1042,8 +1151,6 @@ function renderResult(r) {
   const total = Math.round(r.total);
   $("#axis-card").style.display = "";
   $("#listen-card").style.display = "";
-  $("#btn-retry").hidden = false;
-  $("#btn-final-again").hidden = true;
 
   $("#total").textContent = total;
   $("#ring").style.setProperty("--p", Math.max(0, Math.min(100, r.total)));
@@ -1281,7 +1388,7 @@ function bind() {
     const f = S.progress && S.progress.focus;
     if (!f) return;
     await jumpTo(f.id, 0);
-    setTimeout(startFinal, 900);
+    setTimeout(startVerify, 900);
   };
   $("#note-more").onclick = () => show("s-notes");
 
@@ -1305,13 +1412,13 @@ function bind() {
   $("#wv-skip").onclick = endListen;
 
   $("#btn-retry").onclick = () => { closeWave(); show("s-play"); startTick(); playFrom(S.idx); };
-  $("#btn-final-again").onclick = () => { show("s-play"); startTick(); startFinal(); };
+  $("#btn-verify-close").onclick = () => { VF.on = false; show("s-play"); startTick(); };
 
   $("#mix-ref").onclick = () => playMix("ref");
   $("#mix-me").onclick = () => playMix("me");
   $("#mix-both").onclick = () => playMix("both");
 
-  $("#sc-final-btn").onclick = startFinal;
+  $("#sc-final-btn").onclick = startVerify;
   $("#sc-audio-btn").onclick = openAudioSheet;
   $("#sc-audio-unlink").onclick = unlinkAudio;
   $("#au-save").onclick = saveAudio;

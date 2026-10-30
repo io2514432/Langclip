@@ -3,13 +3,13 @@
 파일
   data/attempts.json  : [{ts, vid, idx, total, mode}, ...]
   data/notes.json     : {"sentences": {...}, "words": {...}}
-  data/final.json     : {vid: {ok, score, low, at, tries, scores}} 최종 검증 기록
+  data/verify.json    : {vid: {ok, score, stages, at, tries}} 3단계 검증 기록
   data/wordcache.json : 사전 조회 캐시
 
 암기율(memorized)
   문장별 '최고 점수'의 평균(%). 한 번 잘 본 문장은 계속 반영된다.
 통과(pass)       문장 점수 70점 이상.
-완료(complete)   최종 검증(모든 문장 연속 따라말하기)을 통과해야 인정.
+완료(complete)   가림낭독·가림복창·스팟체크 3단계를 모두 통과해야 인정.
 XP / 레벨 / 배지  채점 1회 = 점수/10 XP(최대 10) · 레벨 = 1 + XP // 120
 """
 from __future__ import annotations
@@ -122,7 +122,7 @@ def memorized(vid: str, n_segs: int) -> dict:
 # ---------------------------------------------------------------- XP / level
 def xp_total() -> int:
     xp = sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts())
-    xp += 120 * completed_count()          # 최종 검증 통과 = 120 XP
+    xp += 120 * completed_count()          # 학습 완료 1편 = 120 XP
     return int(xp)
 
 
@@ -140,52 +140,45 @@ def level_info() -> dict:
             "next": (lv + 1) * XP_PER_LEVEL - xp}
 
 
-# ---------------------------------------------------------------- 최종 검증
-FINAL = DATA / "final.json"
-FINAL_MIN = 60      # 문장별 최저
-FINAL_AVG = 78      # 전체 평균
+# ---------------------------------------------------------------- 학습 완료 검증
+VERIFY = DATA / "verify.json"
 
 
-def _finals() -> dict:
-    d = _load(FINAL, {})
+def _verifies() -> dict:
+    d = _load(VERIFY, {})
     return d if isinstance(d, dict) else {}
 
 
-def record_final(vid: str, scores: list[int]) -> dict:
-    """전체 문장을 연속으로 따라 말한 점수 묶음 → 통과 판정 후 저장."""
-    sc = [int(round(float(x))) for x in (scores or [])]
-    if not sc:
-        return {"ok": False, "error": "점수가 없습니다"}
-    avg = round(sum(sc) / len(sc), 1)
-    low = min(sc)
-    passed = low >= FINAL_MIN and avg >= FINAL_AVG
-    prev = _finals().get(vid) or {}
+def record_verify(vid: str, result: dict) -> dict:
+    """3단계 검증 결과 저장. 한 번 통과하면 유지된다."""
+    d = _verifies()
+    prev = d.get(vid) or {}
+    passed = bool(result.get("passed"))
     rec = {
-        "ok": bool(passed) or bool(prev.get("ok")),
-        "score": round(max(avg, float(prev.get("score", 0))), 1),
-        "low": min(low, int(prev.get("low", 100))) if prev.get("low") is not None else low,
+        "ok": passed or bool(prev.get("ok")),
+        "score": round(max(float(result.get("score", 0)), float(prev.get("score", 0))), 1),
         "at": _now(),
         "tries": int(prev.get("tries", 0)) + 1,
-        "scores": sc,
+        "headline": result.get("headline", ""),
+        "stages": {k: {"passed": bool(v.get("passed")), "hit": v.get("hit"), "total": v.get("total"),
+                       "avg": v.get("avg"), "score": v.get("score")}
+                   for k, v in (result.get("stages") or {}).items()},
     }
-    d = _finals()
     d[vid] = rec
-    _save(FINAL, d)
-    return {"ok": True, "passed": bool(passed), "avg": avg, "low": low,
-            "need_avg": FINAL_AVG, "need_low": FINAL_MIN, "record": rec,
-            "first_clear": bool(passed) and not prev.get("ok")}
+    _save(VERIFY, d)
+    return {"record": rec, "first_clear": passed and not prev.get("ok")}
 
 
-def final_of(vid: str) -> dict:
-    return _finals().get(vid, {})
+def verify_of(vid: str) -> dict:
+    return _verifies().get(vid, {})
 
 
 def is_complete(vid: str) -> bool:
-    return bool((_finals().get(vid) or {}).get("ok"))
+    return bool((_verifies().get(vid) or {}).get("ok"))
 
 
 def completed_count() -> int:
-    return len([1 for r in _finals().values() if r.get("ok")])
+    return len([1 for r in _verifies().values() if r.get("ok")])
 
 
 # ---------------------------------------------------------------- 현황
@@ -206,7 +199,7 @@ def today_focus(videos: dict) -> dict | None:
     return {"id": picked["id"], "title": picked.get("title", ""),
             "yt": picked.get("yt", ""), "segs": n, "memorized": m,
             "tried_today": n_today, "complete": is_complete(picked["id"]),
-            "final": final_of(picked["id"])}
+            "verify": verify_of(picked["id"])}
 
 
 def progress(videos: dict) -> dict:

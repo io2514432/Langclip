@@ -758,3 +758,67 @@ body{
 .cta.ghost{background:none;border:1px solid var(--line);color:var(--ink-3);margin-top:7px;
   box-shadow:none;display:inline-flex;align-items:center;justify-content:center;gap:5px}
 .cta.ghost .ic{width:14px;height:14px}
+
+
+/* ================= v3.8 : 3단계 검증 ================= */
+.test-head{position:relative;z-index:3;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:14px 12px 6px}
+.test-title{flex:1 1 auto;font-size:14px;font-weight:900;color:var(--ink);letter-spacing:-.01em}
+.test-prog{font-size:10px;font-weight:800;color:var(--sky-d);font-variant-numeric:tabular-nums}
+.vf-scroll{padding:2px 12px 22px;overflow-y:auto;flex:1 1 auto}
+.test-desc{font-size:11px;line-height:1.6;color:var(--ink-3);margin:4px 0 11px}
+.test-desc b{color:var(--ink)}
+#s-verify{background:var(--bg);display:none;flex-direction:column}
+#s-verify.is-active{display:flex}
+
+.vf-steps{display:flex;gap:6px;padding:0 12px 8px}
+.vf-step{flex:1 1 0;display:flex;align-items:center;gap:5px;padding:7px 8px;border:1px solid var(--line);
+  border-radius:10px;background:#fff;font-size:9.5px;font-weight:800;color:#A6BCCC}
+.vf-step b{flex:0 0 15px;height:15px;border-radius:5px;background:#F1F7FC;color:#A6BCCC;
+  font-size:8.5px;display:grid;place-items:center}
+.vf-step.on{border-color:var(--sky);background:#EAF7FF;color:var(--sky-d)}
+.vf-step.on b{background:var(--sky-d);color:#fff}
+.vf-step.done{border-color:#C8EBDD;background:#F5FDF9;color:#22B884}
+.vf-step.done b{background:#22B884;color:#fff}
+
+.vf-row{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px;margin-bottom:8px}
+.vf-ko{font-size:11px;line-height:1.5;color:var(--ink);font-weight:650;display:flex;gap:6px}
+.vf-ko b{flex:0 0 17px;height:17px;border-radius:5px;background:var(--sky-l);color:var(--sky-d);
+  font-size:9px;display:grid;place-items:center;margin-top:1px}
+.vf-hint{margin-top:6px;font-size:10px;font-weight:800;color:var(--sky-d);letter-spacing:.02em;
+  background:#F4FBFF;border:1px dashed #BFE6FB;border-radius:7px;padding:5px 7px}
+.vf-in{width:100%;margin-top:7px;border:1px solid var(--line);border-radius:9px;background:#FBFEFF;
+  font:inherit;font-size:11px;line-height:1.5;padding:7px 8px;color:var(--ink);resize:vertical}
+.vf-in:focus{outline:none;border-color:var(--sky);background:#fff}
+
+.vf-head{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);
+  border-radius:16px;background:#fff;margin-bottom:9px}
+.vf-head.ok{border-color:#BFE6FB;background:linear-gradient(180deg,#F7FCFF,#EAF7FF)}
+.vf-score{flex:0 0 58px;height:58px;border-radius:50%;background:conic-gradient(var(--sky-d) 0 72%,var(--sky-l) 72% 100%);
+  display:grid;place-items:center}
+.vf-score b{width:48px;height:48px;border-radius:50%;background:#fff;display:grid;place-items:center;
+  font-size:17px;font-weight:900;color:var(--sky-d);font-variant-numeric:tabular-nums}
+.vf-score small{display:none}
+.vf-verdict{font-size:16px;font-weight:900;color:var(--ink);letter-spacing:-.02em}
+.vf-sub{font-size:10px;color:var(--ink-3);margin-top:2px}
+.vf-res{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);
+  border-radius:10px;background:#fff;margin-bottom:6px}
+.vf-res.ok{border-color:#C8EBDD;background:#F6FDF9}
+.vf-res.no{border-color:#FBD3D0;background:#FFF8F7}
+.vf-res-ic{flex:0 0 20px;height:20px;border-radius:6px;display:grid;place-items:center;background:#F1F7FC;color:#A6BCCC}
+.vf-res.ok .vf-res-ic{background:#22B884;color:#fff}
+.vf-res.no .vf-res-ic{background:#F87171;color:#fff}
+.vf-res-b{flex:1 1 auto;display:flex;flex-direction:column;gap:1px}
+.vf-res-b b{font-size:11px;font-weight:850;color:var(--ink)}
+.vf-res-b em{font-style:normal;font-size:9.5px;color:var(--ink-3)}
+.vf-list{margin:10px 0}
+.vf-list-h{display:block;font-size:10px;color:var(--ink-3);margin-bottom:5px}
+.vf-li{display:flex;flex-direction:column;gap:1px;padding:7px 9px;border:1px solid #FBD3D0;
+  border-radius:9px;background:#FFF8F7;margin-bottom:5px}
+.vf-li span{font-size:9.5px;font-weight:850;color:#E2564F}
+.vf-li em{font-style:normal;font-size:10px;color:var(--ink);line-height:1.4}
+
+/* 가림 낭독: 영어 자막 숨김 */
+body.vf-mask .sub-en,.body-vf .sub-en{display:none!important}
+body.vf-mask #btn-star{display:none!important}
+body.vf-mask .sub-ko{font-size:13px}
+.actions{display:flex;flex-direction:column;gap:7px;margin-top:6px}
