@@ -1,4 +1,4 @@
-"""Langclip — 유튜브 문장별 셰도잉 (FastAPI) v4.0
+"""Langclip — 유튜브 문장별 셰도잉 (FastAPI) v4.2
 
 구조
   영상(video)  : 유튜브 IFrame 으로 재생만. 오디오를 끄내지 않는다.
@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import secrets
 import os
 import re
 import subprocess
@@ -32,6 +33,7 @@ import librosa
 import numpy as np
 import soundfile as sf
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -42,6 +44,12 @@ import script_md
 import synclib
 import verify
 from store import DATA, storage
+
+# APP_MODE=public → 공개 서버. 쓰기(등록·삭제·싱크·음원) 라우트를 아예 등록하지 않는다.
+APP_MODE = os.getenv("APP_MODE", "admin").strip().lower()
+PUBLIC = APP_MODE == "public"
+COOKIE = "langclip_uid"
+
 
 STATIC = Path(__file__).resolve().parent / "static"
 DB = DATA / "videos.json"
@@ -57,8 +65,48 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Langclip Shadowing API", version="4.0")
+app = FastAPI(title="Langclip Shadowing API", version="4.2")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+def _uid_from(request: Request) -> str:
+    """공개 서버: 쿠키의 방문자 id. 관리자 서버: 빈 값(=내 기록)."""
+    raw = (request.cookies.get(COOKIE) or "").strip()
+    return raw if re.fullmatch(r"[A-Za-z0-9]{6,40}", raw) else ""
+
+
+if PUBLIC:
+    from fastapi.responses import JSONResponse
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _public_404(request: Request, exc: StarletteHTTPException):
+        """공개 모드에서는 '메서드 불일치'도 404 로 답한다.
+
+        쓰기 라우트는 이미 등록되지 않았지만, 같은 경로의 GET 이 남아 있으면
+        FastAPI 가 405 를 돌려준다. 405 는 '이 주소는 있으나 너는 못 쓴다'는
+        신호라서, 존재 자체를 감추려고 404 로 바꾼다.
+        """
+        if exc.status_code in (405, 404):
+            return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+        return JSONResponse({"ok": False, "error": str(exc.detail)}, status_code=exc.status_code)
+
+
+@app.middleware("http")
+async def user_profile(request: Request, call_next):
+    """요청마다 학습 기록 주인을 정한다. 공개 서버는 방문자별로 분리."""
+    uid = _uid_from(request) if PUBLIC else ""
+    new_uid = ""
+    if PUBLIC and not uid:
+        uid = "u" + secrets.token_hex(9)
+        new_uid = uid
+    prog.set_uid(uid)
+    response = await call_next(request)
+    if new_uid:
+        response.set_cookie(COOKIE, new_uid, max_age=60 * 60 * 24 * 365,
+                            httponly=True, samesite="lax")
+    response.headers["X-Langclip-Mode"] = APP_MODE
+    return response
 
 
 
@@ -77,7 +125,10 @@ def _token_from_file() -> str:
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip() or _token_from_file()
 
 
+
 def is_admin(request: Request | None) -> bool:
+    if PUBLIC:
+        return False
     if not ADMIN_TOKEN:
         return True
     if request is None:
@@ -490,7 +541,8 @@ def drop_demo() -> dict:
     return {"removed": removed}
 
 
-drop_demo()
+if not PUBLIC:
+    drop_demo()
 
 
 # --------------------------------------------------------------- API
@@ -499,7 +551,7 @@ def health():
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
             "script_md": True, "version": app.version,
-            "locked": bool(ADMIN_TOKEN), "name": "Langclip"}
+            "locked": bool(ADMIN_TOKEN) or PUBLIC, "mode": APP_MODE, "name": "Langclip"}
 
 
 # ---- 영상
@@ -1143,6 +1195,38 @@ def reset_verify(vid: str, request: Request):
     d.pop(vid, None)
     prog._save(prog.VERIFY, d)
     return {"ok": True, "complete": False}
+
+
+# ---- 공개 모드: 쓰기 라우트 제거 (등록·삭제·싱크·음원 업로드는 존재하지 않는다)
+PUBLIC_ALLOW = {
+    ("GET", "/api/health"),
+    ("GET", "/api/media/{key:path}"),
+    ("GET", "/api/videos"),
+    ("GET", "/api/videos/{vid}"),
+    ("GET", "/api/videos/{vid}/script"),
+    ("POST", "/api/videos/{vid}/segments/{idx}/score"),
+    ("GET", "/api/progress"),
+    ("GET", "/api/notes"),
+    ("POST", "/api/notes/sentence"),
+    ("DELETE", "/api/notes/sentence/{vid}/{idx}"),
+    ("POST", "/api/notes/word"),
+    ("GET", "/api/words/{word}"),
+    ("GET", "/api/videos/{vid}/verify/spot"),
+    ("POST", "/api/videos/{vid}/verify/check"),
+}
+if PUBLIC:
+    kept, dropped = [], []
+    for r in app.router.routes:
+        if isinstance(r, APIRoute):
+            methods = {m.upper() for m in (r.methods or set())}
+            if methods and not any((m, r.path) in PUBLIC_ALLOW for m in methods):
+                dropped.append(f"{'/'.join(sorted(methods))} {r.path}")
+                continue
+        kept.append(r)
+    app.router.routes = kept
+    print(f"[Langclip] 공개 모드 · 쓰기 라우트 {len(dropped)}개 제거")
+    for d in dropped:
+        print("   -", d)
 
 
 # ---- 정적

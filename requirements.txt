@@ -1,8 +1,9 @@
+# Python 3.11+ / 검증 환경 3.12
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
-python-multipart>=0.0.9
-librosa>=0.10
-numpy>=1.24
-soundfile>=0.12
+python-multipart==0.0.32
+librosa==1.0.0
+numpy==2.5.4
+soundfile==0.14.0
 # 테스트(test_features.py)에서만 사용
-httpx>=0.27
+httpx==0.28.1

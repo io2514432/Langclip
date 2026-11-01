@@ -1,19 +1,20 @@
-"""Langclip — 학습 기록 / 북마크 / 게이미피케이션
+"""Langclip — 학습 기록 / 북마크 / 게이미피케이션 (사용자별 분리)
 
-파일
-  data/attempts.json  : [{ts, vid, idx, total, mode}, ...]
-  data/notes.json     : {"sentences": {...}, "words": {...}}
-  data/verify.json    : {vid: {ok, score, stages, at, tries}} 3단계 검증 기록
-  data/wordcache.json : 사전 조회 캐시
+저장 위치
+  관리자(나)      data/attempts.json · notes.json · verify.json
+  방문자(친구)    data/users/<uid>/attempts.json · notes.json · verify.json
 
-암기율(memorized)
-  문장별 '최고 점수'의 평균(%). 한 번 잘 본 문장은 계속 반영된다.
-통과(pass)       문장 점수 70점 이상.
-완료(complete)   가림낭독·가림복창·스팟체크 3단계를 모두 통과해야 인정.
-XP / 레벨 / 배지  채점 1회 = 점수/10 XP(최대 10) · 레벨 = 1 + XP // 120
+왜 이렇게 나누는가
+  공개 링크로 들어온 사람이 내 오답노트·완료 기록을 보면 안 된다.
+  로그인 없이 기기마다 다른 프로필을 주기 위해, 공개 서버가 쿠키로 발급한
+  uid 를 요청마다 contextvar 에 심고 모든 기록 함수가 그 uid 폴더를 쓴다.
+
+  uid 는 요청 컨텍스트(contextvar)로 전달되므로, 기록 함수의 호출부는
+  전혀 바꾸지 않아도 된다.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import re
@@ -24,13 +25,35 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DATA = Path(__file__).resolve().parent / "data"
-ATTEMPTS = DATA / "attempts.json"
-NOTES = DATA / "notes.json"
-WCACHE = DATA / "wordcache.json"
+USERS = DATA / "users"
 
 MAX_ATTEMPTS = 8000
 PASS_SCORE = 70.0
 XP_PER_LEVEL = 120
+
+_UID = contextvars.ContextVar("langclip_uid", default="")
+_UID_RE = re.compile(r"^[A-Za-z0-9]{6,40}$")
+
+
+def set_uid(uid: str | None) -> None:
+    """요청 단위 사용자 지정. 빈 값이면 관리자(내 기록)."""
+    u = (uid or "").strip()
+    _UID.set(u if _UID_RE.match(u) else "")
+
+
+def current_uid() -> str:
+    return _UID.get()
+
+
+def _dir() -> Path:
+    u = _UID.get()
+    d = DATA if not u else (USERS / u)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _p(name: str) -> Path:
+    return _dir() / name
 
 
 # ---------------------------------------------------------------- IO
@@ -42,7 +65,7 @@ def _load(path: Path, default):
 
 
 def _save(path: Path, obj) -> None:
-    DATA.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=1), "utf-8")
     os.replace(tmp, path)
@@ -58,16 +81,17 @@ def _now() -> str:
 
 # ---------------------------------------------------------------- attempts
 def record_attempt(vid: str, idx: int, total: float, mode: str) -> None:
-    rows = _load(ATTEMPTS, [])
+    f = _p("attempts.json")
+    rows = _load(f, [])
     rows.append({"ts": _now(), "vid": vid, "idx": int(idx),
                  "total": round(float(total), 1), "mode": mode})
     if len(rows) > MAX_ATTEMPTS:
         rows = rows[-MAX_ATTEMPTS:]
-    _save(ATTEMPTS, rows)
+    _save(f, rows)
 
 
 def attempts() -> list[dict]:
-    return _load(ATTEMPTS, [])
+    return _load(_p("attempts.json"), [])
 
 
 def best_scores(vid: str | None = None) -> dict[int, float]:
@@ -87,19 +111,53 @@ def _day_of(ts: str) -> str:
         return ""
 
 
+# ---------------------------------------------------------------- 검증 기록
 def _verifies() -> dict:
-    d = _load(VERIFY, {})
+    d = _load(_p("verify.json"), {})
     return d if isinstance(d, dict) else {}
 
 
+def record_verify(vid: str, result: dict) -> dict:
+    """3단계 검증 결과 저장. 한 번 통과하면 유지된다."""
+    prev = _verifies().get(vid) or {}
+    passed = bool(result.get("passed"))
+    now_ok = passed or bool(prev.get("ok"))
+    rec = {
+        "ok": now_ok,
+        "done_at": (prev.get("done_at") or _now()) if now_ok else "",
+        "score": round(max(float(result.get("score", 0)), float(prev.get("score", 0))), 1),
+        "at": _now(),
+        "tries": int(prev.get("tries", 0)) + 1,
+        "headline": result.get("headline", ""),
+        "stages": {k: {"passed": bool(v.get("passed")), "hit": v.get("hit"),
+                       "total": v.get("total"), "avg": v.get("avg"), "score": v.get("score")}
+                   for k, v in (result.get("stages") or {}).items()},
+    }
+    d = _verifies()
+    d[vid] = rec
+    _save(_p("verify.json"), d)
+    return {"record": rec, "first_clear": passed and not prev.get("ok")}
+
+
+def verify_of(vid: str) -> dict:
+    return _verifies().get(vid, {})
+
+
+def is_complete(vid: str) -> bool:
+    return bool((_verifies().get(vid) or {}).get("ok"))
+
+
+def completed_count() -> int:
+    return len([1 for r in _verifies().values() if r.get("ok")])
+
+
 def _done_days() -> set[str]:
-    """학습 완료(검증 통과)한 날짜 집합. 연속 학습의 유일한 기준."""
+    """학습 완료(검증 통과)한 날짜. 연속 학습의 유일한 기준."""
     days: set[str] = set()
     for r in _verifies().values():
         if not r.get("ok"):
             continue
-        ts = r.get("done_at") or r.get("at") or ""
-        d = _day_of(ts)
+        d = _day_of(r.get("done_at") or r.get("at") or "")
         if d:
             days.add(d)
     return days
@@ -127,7 +185,7 @@ def streak() -> dict:
 
 
 def memorized(vid: str, n_segs: int) -> dict:
-    """진행률 표시용. 문장별 '통과 개수'는 더 이상 쓰지 않는다."""
+    """진행률 표시용."""
     if n_segs <= 0:
         return {"pct": 0.0, "done": 0, "total": 0, "tried": 0}
     best = best_scores(vid)
@@ -139,7 +197,7 @@ def memorized(vid: str, n_segs: int) -> dict:
 # ---------------------------------------------------------------- XP / level
 def xp_total() -> int:
     xp = sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts())
-    xp += 120 * completed_count()          # 학습 완료 1편 = 120 XP
+    xp += 120 * completed_count()
     return int(xp)
 
 
@@ -157,43 +215,6 @@ def level_info() -> dict:
             "next": (lv + 1) * XP_PER_LEVEL - xp}
 
 
-# ---------------------------------------------------------------- 학습 완료 검증
-VERIFY = DATA / "verify.json"
-
-
-def record_verify(vid: str, result: dict) -> dict:
-    """3단계 검증 결과 저장. 한 번 통과하면 유지된다."""
-    d = _verifies()
-    prev = d.get(vid) or {}
-    passed = bool(result.get("passed"))
-    rec = {
-        "ok": passed or bool(prev.get("ok")),
-        "done_at": (prev.get("done_at") or _now()) if (passed or prev.get("ok")) else "",
-        "score": round(max(float(result.get("score", 0)), float(prev.get("score", 0))), 1),
-        "at": _now(),
-        "tries": int(prev.get("tries", 0)) + 1,
-        "headline": result.get("headline", ""),
-        "stages": {k: {"passed": bool(v.get("passed")), "hit": v.get("hit"), "total": v.get("total"),
-                       "avg": v.get("avg"), "score": v.get("score")}
-                   for k, v in (result.get("stages") or {}).items()},
-    }
-    d[vid] = rec
-    _save(VERIFY, d)
-    return {"record": rec, "first_clear": passed and not prev.get("ok")}
-
-
-def verify_of(vid: str) -> dict:
-    return _verifies().get(vid, {})
-
-
-def is_complete(vid: str) -> bool:
-    return bool((_verifies().get(vid) or {}).get("ok"))
-
-
-def completed_count() -> int:
-    return len([1 for r in _verifies().values() if r.get("ok")])
-
-
 # ---------------------------------------------------------------- 현황
 def today_focus(videos: dict) -> dict | None:
     if not videos:
@@ -207,10 +228,10 @@ def today_focus(videos: dict) -> dict | None:
         open_v = [v for v in videos.values() if not is_complete(v["id"])]
         picked = (open_v or list(videos.values()))[0]
     n = len(picked.get("segs", []))
-    m = memorized(picked["id"], n)
     n_today = len({r.get("idx") for r in last_today if r.get("vid") == picked["id"]})
     return {"id": picked["id"], "title": picked.get("title", ""),
-            "yt": picked.get("yt", ""), "segs": n, "memorized": m,
+            "yt": picked.get("yt", ""), "segs": n,
+            "memorized": memorized(picked["id"], n),
             "tried_today": n_today, "complete": is_complete(picked["id"]),
             "verify": verify_of(picked["id"])}
 
@@ -223,10 +244,14 @@ def progress(videos: dict) -> dict:
 
 # ---------------------------------------------------------------- notes
 def _notes() -> dict:
-    n = _load(NOTES, {})
+    n = _load(_p("notes.json"), {})
     n.setdefault("sentences", {})
     n.setdefault("words", {})
     return n
+
+
+def _save_notes(n: dict) -> None:
+    _save(_p("notes.json"), n)
 
 
 def notes() -> dict:
@@ -243,7 +268,7 @@ def toggle_sentence(vid: str, idx: int, seg: dict, video: dict | None = None,
     key = f"{vid}:{int(idx)}"
     if key in n["sentences"]:
         n["sentences"].pop(key)
-        _save(NOTES, n)
+        _save_notes(n)
         return {"ok": True, "bookmarked": False, "key": key}
     n["sentences"][key] = {
         "key": key, "vid": vid, "idx": int(idx),
@@ -252,7 +277,7 @@ def toggle_sentence(vid: str, idx: int, seg: dict, video: dict | None = None,
         "title": (video or {}).get("title", ""), "yt": (video or {}).get("yt", ""),
         "note": (note or "")[:300], "created": _now(),
     }
-    _save(NOTES, n)
+    _save_notes(n)
     return {"ok": True, "bookmarked": True, "key": key}
 
 
@@ -265,15 +290,15 @@ def toggle_word(word: str, meaning: str = "", ctx: str = "", vid: str = "",
     if key in n["words"]:
         if meaning.strip():
             n["words"][key]["meaning"] = meaning.strip()[:200]
-            _save(NOTES, n)
+            _save_notes(n)
             return {"ok": True, "bookmarked": True, "key": key, "updated": True}
         n["words"].pop(key)
-        _save(NOTES, n)
+        _save_notes(n)
         return {"ok": True, "bookmarked": False, "key": key}
     n["words"][key] = {"word": key, "meaning": meaning.strip()[:200],
                        "ctx": (ctx or "")[:200], "vid": vid, "idx": int(idx),
                        "count": 1, "created": _now()}
-    _save(NOTES, n)
+    _save_notes(n)
     return {"ok": True, "bookmarked": True, "key": key}
 
 
@@ -282,19 +307,19 @@ def word_note(word: str) -> dict | None:
     return _notes()["words"].get(key)
 
 
-# ---------------------------------------------------------------- 사전
+# ---------------------------------------------------------------- 사전 (공용 캐시)
 _CACHE_TTL = 60 * 60 * 24 * 30
 
 
 def _dict_lookup(word: str) -> dict | None:
     """dictionaryapi.dev (영영 정의). 실패하면 None — 뜻을 지어내지 않는다."""
-    cache = _load(WCACHE, {})
+    cache = _load(DATA / "wordcache.json", {})
     c = cache.get(word.lower())
     if c and time.time() - c.get("at", 0) < _CACHE_TTL:
         return c.get("data")
     try:
         url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
-        req = urllib.request.Request(url, headers={"User-Agent": "Langclip/3.8"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Langclip/4.2"})
         with urllib.request.urlopen(req, timeout=5) as r:
             raw = json.loads(r.read().decode("utf-8"))
         entry = raw[0] if isinstance(raw, list) and raw else {}
@@ -316,7 +341,7 @@ def _dict_lookup(word: str) -> dict | None:
     cache[word.lower()] = {"at": time.time(), "data": data}
     if len(cache) > 3000:
         cache = dict(list(cache.items())[-3000:])
-    _save(WCACHE, cache)
+    _save(DATA / "wordcache.json", cache)
     return data
 
 

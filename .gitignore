@@ -1,0 +1,29 @@
+# --- 실행 데이터 (기기마다 다름, 코드 아님)
+data/
+!data/.gitkeep
+*.log
+
+# --- 버전 백업 스냅샷 (version.py 가 만든다)
+backups/
+
+# --- 비밀
+.env
+admin_token.txt
+
+# --- 이전 배포물
+*.tgz
+*.zip
+*.bundle
+
+# --- Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# --- OS / 편집기
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
