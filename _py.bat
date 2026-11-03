@@ -1,10 +1,7 @@
 @echo off
-REM Internal helper. Picks the project virtualenv if it exists, else system python.
-REM Used by start.bat / public.bat / tunnel.bat so "python" is never ambiguous.
+REM Internal helper. Sets PY to the project virtualenv python if it exists.
+REM No parenthesized blocks on purpose: cmd chokes on ")" inside if-blocks.
 set "PY=python"
-set "PYNOTE=system python"
-if exist "%~dp0.venv\Scripts\python.exe" (
-  set "PY=%~dp0.venv\Scripts\python.exe"
-  set "PYNOTE=project venv (.venv)"
-)
+if not exist "%~dp0.venv\Scripts\python.exe" exit /b 0
+set "PY=%~dp0.venv\Scripts\python.exe"
 exit /b 0
