@@ -28,7 +28,7 @@ SR, HOP, N_FFT = 16000, 160, 1024
 W = {"pitch": 0.32, "rhythm": 0.28, "artic": 0.25, "stress": 0.15}
 # 보정 풀이 없을 때 쓰는 기본 문턱값 (16kHz 일반 발화 기준 실측치)
 DEFAULT_BANDS = {"pitch": (0.62, 1.90), "rhythm": (0.18, 0.55),
-                 "artic": (2.20, 3.30), "stress": (0.55, 0.85)}
+                 "artic": (1.02, 2.27), "stress": (0.55, 0.85)}
 MIN_RANGE = 1.15          # far/near 가 이보다 작으면 '변별력 없음'
 
 
@@ -112,11 +112,19 @@ def _detrend(x, n=64):
 
 
 def artic_feat(y, sr=SR):
-    """발음 지문: MFCC + delta. 배경음악의 고정 성분을 줄이려 delta 비중을 준다."""
-    m = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20, n_fft=N_FFT, hop_length=HOP)[1:]
-    m = (m - m.mean(1, keepdims=True)) / (m.std(1, keepdims=True) + 1e-5)
-    d = librosa.feature.delta(m, width=5)
-    return np.vstack([m, 0.7 * d]).T
+    """음색·발음 지문: log-mel(40) CMVN.
+
+    실측 비교(같은 원본, 정답 vs 오답 6문장 중앙값):
+      MFCC+delta          정답 2.18~2.34 / 오답 2.21  → 구분 불가 (1.0배)
+      log-mel 평균제거     정답 3.69~4.29 / 오답 4.21  → 약함 (1.14배)
+      log-mel CMVN        정답 1.70~1.94 / 오답 2.27  → 사용 가능 (1.33배)
+    그래서 CMVN 한 log-mel 을 쓴다. 배경음악 분리 후에도 MFCC+delta 는
+    5.15(정답)/5.62(오답) 로 여전히 무의미했다 — 화자·채널 차이가 내용 차이를 덮는다.
+    """
+    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40, n_fft=N_FFT, hop_length=HOP)
+    L = np.log(S + 1e-8)
+    L = (L - L.mean(1, keepdims=True)) / (L.std(1, keepdims=True) + 1e-5)
+    return L.T
 
 
 def energy_feat(y):
