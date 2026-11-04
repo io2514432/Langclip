@@ -34,7 +34,8 @@
   <symbol id="i-right" viewBox="0 0 24 24"><path d="M9.4 5.4 16 12l-6.6 6.6"/></symbol>
   <symbol id="i-skip" viewBox="0 0 24 24"><path d="M5.5 5.2 15 12l-9.5 6.8z"/><path d="M18.6 5v14"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16.4V4.6"/><path d="M8.2 8.2 12 4.4l3.8 3.8"/><path d="M4.6 15.4v3.2a1.8 1.8 0 0 0 1.8 1.8h11.2a1.8 1.8 0 0 0 1.8-1.8v-3.2"/></symbol>
-  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.2M8 7.4v9.2M12 4.6v14.8M16 8.6v6.8M20.8 10.8v2.4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4.2v10.6m0 0 4.1-4.1M12 14.8l-4.1-4.1M5 19.4h14"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.2M8 7.4v9.2M12 4.6v14.8M16 8.6v6.8M20.8 10.8v2.4"/></symbol>
   <symbol id="i-head" viewBox="0 0 24 24"><path d="M4.4 14.6v-2.2a7.6 7.6 0 0 1 15.2 0v2.2"/><rect x="2.8" y="13.4" width="4" height="6.2" rx="2"/><rect x="17.2" y="13.4" width="4" height="6.2" rx="2"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.8 10 17.6 19.4 6.6"/></symbol>
   <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12.4 2.8c.4 3.3 2.6 4.6 3.9 6.6a6.9 6.9 0 0 1 1.1 3.8c0 3.9-2.8 6.6-6.4 6.6S4.9 17 4.9 13.2c0-2.4 1.2-4.2 2.9-5.6.1 1.5.7 2.5 1.7 2.9-.6-3.4.6-6.2 2.9-7.7z"/><path d="M12.2 20c1.6 0 2.8-1.2 2.8-2.8 0-1.9-1.9-2.6-2.3-4.6-1.5 1-2.3 2.2-2.3 3.7 0 1.9 1 3.7 1.8 3.7z"/></symbol>
@@ -227,6 +228,11 @@
                 <canvas class="mix-cv" data-k="both"></canvas>
               </div>
               <span class="mix-t" data-k="both">0.0s</span>
+            </div>
+
+            <div class="mix-dl">
+              <button class="dl-btn" id="dl-take" disabled><svg class="ic xs"><use href="#i-down"/></svg>내 목소리 저장</button>
+              <span class="dl-hint" id="dl-hint"></span>
             </div>
           </div>
 

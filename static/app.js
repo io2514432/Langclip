@@ -908,8 +908,16 @@ async function beginTake() {
       let sum = 0;
       for (let i = 0; i < SH.buf.length; i++) sum += SH.buf[i] * SH.buf[i];
       const rms = Math.sqrt(sum / SH.buf.length);
-      SH.user.push({ t: Math.min(SH.dur, el), a: Math.min(1, rms * 7.5) });
-      if (SH.user.length > 900) SH.user.shift();
+      // 고정 시간 버킷: 화면 주사율(60/120/144Hz)과 무관하게 폭 전체가 유지된다.
+      // 예전엔 900개를 넘으면 앞을 shift 해서 파형 앞부분이 사라졌다.
+      const amp = Math.min(1, rms * 7.5);
+      const bw = SH.dur / 320;
+      const last = SH.user[SH.user.length - 1];
+      if (last && Math.floor(last.t / bw) === Math.floor(Math.min(SH.dur, el) / bw)) {
+        if (amp > last.a) last.a = amp;
+      } else {
+        SH.user.push({ t: Math.min(SH.dur, el), a: amp });
+      }
     }
 
     drawWave();
@@ -1154,6 +1162,74 @@ function renderVerifyResult() {
 }
 
 /* ================= 결과 ================= */
+function encodeWav16(x, sr) {
+  const len = x.length;
+  const buf = new ArrayBuffer(44 + len * 2);
+  const v = new DataView(buf);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + len * 2, true); str(8, "WAVE");
+  str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, "data"); v.setUint32(40, len * 2, true);
+  let o = 44;
+  for (let i = 0; i < len; i++, o += 2) {
+    const s = Math.max(-1, Math.min(1, x[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+function takeFileName() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  const vid = (S.cur && S.cur.id) || "video";
+  const idx = S.idx + 1;
+  const seg = (S.cur && S.cur.segs && S.cur.segs[S.idx]) || {};
+  const a = seg.start != null ? Number(seg.start).toFixed(1) : "0";
+  const b = seg.end != null ? Number(seg.end).toFixed(1) : "0";
+  return `langclip_${vid}_s${String(idx).padStart(2, "0")}_${a}-${b}s_${stamp}.wav`;
+}
+
+async function saveTake() {
+  const btn = $("#dl-take");
+  if (!S.takeBlob || !S.takeBlob.size) return toast("저장할 녹음이 없습니다");
+  if (btn) btn.disabled = true;
+  try {
+    const ctx = SH.actx || (SH.actx = new (window.AudioContext || window.webkitAudioContext)());
+    const buf = await ctx.decodeAudioData(await S.takeBlob.arrayBuffer());
+    const ch = buf.numberOfChannels;
+    const mix = new Float32Array(buf.length);
+    for (let c = 0; c < ch; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < d.length; i++) mix[i] += d[i] / ch;
+    }
+    const mono = ctx.createBuffer(1, mix.length, buf.sampleRate);
+    mono.copyToChannel(mix, 0);
+    const SR16 = 16000;
+    const frames = Math.max(1, Math.ceil(mix.length * SR16 / buf.sampleRate));
+    const off = new OfflineAudioContext(1, frames, SR16);
+    const src = off.createBufferSource();
+    src.buffer = mono; src.connect(off.destination); src.start();
+    const out = await off.startRendering();
+    const blob = encodeWav16(out.getChannelData(0), SR16);
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = takeFileName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    const hint = $("#dl-hint");
+    if (hint) hint.textContent = `${(blob.size / 1024).toFixed(0)}KB 저장됨`;
+    toast("내 목소리를 WAV로 저장했습니다", 2600);
+  } catch (e) {
+    toast("저장 실패: " + (e && e.message ? e.message : e), 4000);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function renderResult(r) {
   const total = Math.round(r.total);
   $("#axis-card").style.display = "";
@@ -1193,6 +1269,13 @@ function renderResult(r) {
   MIX.peaks = {};
   $("#mix-hint").textContent = (S.cur && S.cur.audio) ? "원본 음성 연결됨" : "영상 구간으로 재생";
   initMixUI();
+  const dl = $("#dl-take");
+  if (dl) {
+    dl.disabled = !(S.takeBlob && S.takeBlob.size);
+    dl.onclick = saveTake;
+  }
+  const dh = $("#dl-hint");
+  if (dh) dh.textContent = (S.takeBlob && S.takeBlob.size) ? "방금 녹음한 내 목소리 (16kHz WAV)" : "";
 }
 
 function gradeOf(t) {

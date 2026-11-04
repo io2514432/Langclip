@@ -749,3 +749,12 @@ body.play-focus #s-play,body.play-focus #s-sync{height:100%}
 .mix-t{flex:0 0 34px;text-align:right;font-size:8.5px;font-weight:800;color:#8AA5BC;
   font-variant-numeric:tabular-nums}
 .listen-card .card-row{margin-bottom:2px}
+
+/* 내 목소리 저장 */
+.mix-dl{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.dl-btn{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;color:var(--sky-d);font-size:11.5px;font-weight:700;cursor:pointer}
+.dl-btn:hover{border-color:var(--sky);background:var(--bg)}
+.dl-btn:disabled{opacity:.45;cursor:default}
+.dl-btn .ic{width:13px;height:13px}
+.dl-hint{font-size:10.5px;color:var(--ink-3)}
