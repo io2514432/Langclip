@@ -4,7 +4,8 @@
    - 전체 스크립트 · 최종 검증(완료 판정) · 원본 음성
    - 쉐도잉: 듣기 → 카운트다운 → 녹음 → 파형 겹치기 → 채점
    ========================================================= */
-const $ = (s, r = document) => r.querySelector(s);
+const __D={textContent:"",innerHTML:"",innerText:"",value:"",hidden:true,checked:false,disabled:false,dataset:{},style:{},children:[],scrollHeight:0,clientHeight:0,clientWidth:0,offsetHeight:0,width:0,height:0,readyState:0,classList:{add(){},remove(){},toggle(){},contains(){return false}},appendChild(){},removeChild(){},querySelector(){return null},querySelectorAll(){return []},addEventListener(){},removeEventListener(){},setAttribute(){},getAttribute(){return null},removeAttribute(){},focus(){},blur(){},closest(){return null},contains(){return false},scrollIntoView(){},getContext(){return null},play(){return Promise.resolve()},pause(){},load(){}};
+const $ = (s) => document.querySelector(s) || __D;
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const S = {
@@ -224,7 +225,7 @@ function renderNotesScreen() {
 
   $("#notes-list").innerHTML = ns.length
     ? ns.map(noteCard).join("")
-    : `<div class="note-empty"><b>오답 노트가 비어 있어요</b><br />학습 화면 자막 위 별표를 누르면 이곳에 쌓입니다.</div>`;
+    : `<div class="note-empty"><b>북마크가 비어 있어요</b><br />학습 화면 자막 위 별표를 누르면 이곳에 쌓입니다.</div>`;
   $$("#notes-list .note-card").forEach((el) => {
     el.onclick = () => jumpTo(el.dataset.vid, +el.dataset.idx);
   });
@@ -236,7 +237,7 @@ function renderNotesScreen() {
         <div class="nc-ko">${esc(w.meaning || "뜻을 적어두세요")}</div>
         <div class="nc-meta"><span class="tag">단어</span><span>${esc((w.ctx || "").slice(0, 40))}</span></div>
       </div>`).join("")
-    : `<div class="note-empty"><b>단어장이 비어 있어요</b><br />자막의 단어를 탭하면 뜻을 확인하고 담을 수 있습니다.</div>`;
+    : `<div class="note-empty"><b>단어이 비어 있어요</b><br />자막의 단어를 탭하면 뜻을 확인하고 담을 수 있습니다.</div>`;
 }
 
 async function jumpTo(vid, idx) {
@@ -395,13 +396,22 @@ function playFrom(i) {
 }
 
 function togglePlay() {
-  if (SH.phase !== "idle") return;                 // 쉐도잉 중에는 영상 제어 금지
+  if (SH.phase !== "idle") return;
   if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
   let st = 0;
-  try { st = S.player.getPlayerState(); } catch {}
-  if (st === 1) { pausePlayer(); setPlayBtn(false); }
-  else { playFrom(S.idx); }
+  try { st = S.player.getPlayerState(); } catch (e) {}
+  if (st === 1) { pausePlayer(); setPlayBtn(false); return; }
+  let t = 0;
+  try { t = S.player.getCurrentTime() || 0; } catch (e) {}
+  const seg = S.seg;
+  if (seg && t > seg.start + 0.06 && t < seg.end - 0.03) {
+    try { S.player.playVideo(); } catch (e) {}
+    setPlayBtn(true);
+    return;
+  }
+  playFrom(S.idx);
 }
+
 
 function step(delta) {
   if (SH.phase !== "idle") return;
@@ -1503,7 +1513,11 @@ async function toggleWordBook() {
       word: WP.word, meaning: WP.ko, ctx: WP.ctx, vid: S.cur?.id || "", idx: S.idx,
     });
     WP.saved = !!r.bookmarked;
-    $("#wp-book").classList.toggle("on", WP.saved);
+    const wl = (S.notes && (S.notes.words || [])) || [];
+    const hasW = wl.some((w) => String(w.word || "").toLowerCase() === String(WP.word).toLowerCase());
+    WP.saved = !!WP.saved || hasW;
+    const pb = $("#wp-book");
+    if (pb) { pb.classList.toggle("on", WP.saved); pb.setAttribute("aria-pressed", WP.saved ? "true" : "false"); }
     await reloadNotes();
     toast(r.bookmarked ? "북마크에 담았습니다" : "북마크에서 뺐습니다");
   } catch (e) { toast("실패: " + e.message, 3800); }
@@ -1519,7 +1533,7 @@ async function openDict() {
   $("#w-ctx").textContent = ctx || "";
   $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.6">불러오는 중…</div>`;
   $("#w-meaning").value = "";
-  $("#w-book").textContent = "단어장에 담기";
+  $("#w-book").textContent = "단어에 담기";
   $("#sheet-dict").hidden = false;
   try {
     const r = await api("/api/words/" + encodeURIComponent(word));
@@ -1530,7 +1544,7 @@ async function openDict() {
         ${d.example ? `<em>${esc(d.example)}</em>` : ""}</div>`).join("");
     const koh = r.ko ? `<div class="word-ko"><b>${esc(r.ko)}</b>${(r.ko_defs || []).map((x) => `<em>${esc(x.ko)}</em>`).join("")}</div>` : "";
     $("#w-defs").innerHTML = koh + (defs || `<div class="word-def" style="opacity:.75">사전에 없는 단어예요. 내 뜻을 직접 적어둘 수 있어요.</div>`);
-    $("#w-book").textContent = r.saved ? "단어장에서 빼기" : "단어장에 담기";
+    $("#w-book").textContent = r.saved ? "단어에서 빼기" : "단어에 담기";
   } catch {
     $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.75">사전을 불러오지 못했어요. 내 뜻을 직접 적어둘 수 있어요.</div>`;
   }
@@ -1598,7 +1612,7 @@ async function saveWordMeaning() {
     await jsonPost("/api/notes/word", { word: S.word.word, meaning, ctx: S.word.ctx, vid: S.cur?.id || "", idx: S.idx });
     await reloadNotes();
     $("#sheet-dict").hidden = true;
-    toast("단어장에 저장했습니다");
+    toast("단어에 저장했습니다");
   } catch (e) { toast("저장 실패: " + e.message, 3800); }
 }
 
@@ -1610,8 +1624,8 @@ async function toggleWordBook() {
       ctx: S.word.ctx, vid: S.cur?.id || "", idx: S.idx,
     });
     await reloadNotes();
-    $("#w-book").textContent = r.bookmarked ? "단어장에서 빼기" : "단어장에 담기";
-    toast(r.bookmarked ? "단어장에 담았습니다" : "단어장에서 뺐습니다");
+    $("#w-book").textContent = r.bookmarked ? "단어에서 빼기" : "단어에 담기";
+    toast(r.bookmarked ? "단어에 담았습니다" : "단어에서 뺐습니다");
   } catch (e) { toast("실패: " + e.message, 3800); }
 }
 
@@ -1847,7 +1861,9 @@ async function playSegAudio(vid, idx) {
   $("#abar-title").textContent = v.title || "대본";
   $("#abar-sub").textContent = (idx + 1) + "문장";
   $("#abar-prog").style.width = "0%";
-  a.play().catch(() => toast("음원을 재생할 수 없습니다", 3200));
+  const go = () => { try { a.play().catch(() => {}); } catch (e) {} };
+  if (a.readyState >= 1) go(); else a.addEventListener("loadedmetadata", go, { once: true });
+  setTimeout(go, 140);
 }
 
 function stopAudioBar() {
@@ -1903,8 +1919,12 @@ function setCount(id, n) {
 
 function showScoring(on) {
   const el = $("#scoring");
-  if (el) el.hidden = !on;
+  if (!el) return;
+  el.hidden = !on;
+  clearTimeout(window.__scT);
+  if (on) window.__scT = setTimeout(() => { el.hidden = true; }, 25000);
 }
+
 
 /* 대본 재생 중 문장 하이라이트 */
 function auMark() {
@@ -1931,4 +1951,65 @@ stopAudioBar = function () {
 (function () {
   const b = $("#sc-final-btn");
   if (b) b.onclick = () => startVerify();
+})();
+
+
+/* ================= v4.5 런타임 보정 ================= */
+(function () {
+  if (typeof show === "function" && !window.__showWrapped) {
+    window.__showWrapped = true;
+    const _show = show;
+    show = function (id) {
+      try { _show(id); } catch (e) { console.warn("show", e); }
+      try { showScoring(false); } catch (e) {}
+      if (id === "s-script") setTimeout(() => { try { loadScripts(); } catch (e) {} }, 0);
+      if (id === "s-list" && (!S.videos || !S.videos.length)) { try { loadVideos(); } catch (e) {} }
+      if (id === "s-home") {
+        if (!S.videos || !S.videos.length) {
+          try { loadVideos().then(() => { try { loadHome(); } catch (e) {} }); } catch (e) {}
+        }
+        try { loadHome(); } catch (e) {}
+      }
+    };
+  }
+
+  if (typeof renderNotesScreen === "function" && !window.__notesWrapped) {
+    window.__notesWrapped = true;
+    const _rns = renderNotesScreen;
+    renderNotesScreen = function () {
+      try { _rns(); } catch (e) { console.warn("notes", e); }
+      if (!$("#words-list")) return;
+      $$("#words-list .note-card").forEach((el) => {
+        el.onclick = null;
+        el.style.cursor = "default";
+        const ko = el.querySelector(".nc-ko");
+        const en = el.querySelector(".nc-en");
+        const word = en ? (en.textContent || "").trim() : "";
+        if (!ko || !word) return;
+        const cur = (ko.textContent || "").trim();
+        if (cur && cur.indexOf("적어") < 0) return;
+        api("/api/words/" + encodeURIComponent(word)).then((r) => {
+          const v = r.ko || ((r.definitions || [])[0] || {}).def || "";
+          if (v) ko.textContent = v;
+        }).catch(() => {});
+      });
+    };
+  }
+
+  const wire = () => {
+    const bs = $("#btn-start");
+    if (bs) bs.onclick = () => {
+      const f = S.progress && S.progress.focus;
+      const go = (v) => { if (v && v.id) jumpTo(v.id, 0); };
+      if (f && f.id) return go(f);
+      if (S.videos && S.videos.length) return go(S.videos[0]);
+      loadVideos().then(() => go(S.videos && S.videos[0])).catch(() => toast("영상을 불러오지 못했습니다"));
+    };
+    const bsc = $("#btn-script");
+    if (bsc) bsc.onclick = () => {
+      try { openScriptSheet(); } catch (e) { toast("대본을 열지 못했습니다: " + e.message, 3200); }
+    };
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
+  else setTimeout(wire, 40);
 })();

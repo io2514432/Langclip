@@ -15,10 +15,10 @@
 <svg class="spr" aria-hidden="true" focusable="false">
   <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6.6 3.9h10.8c.6 0 1 .4 1 1v15.2l-6.4-4.3-6.4 4.3V4.9c0-.6.4-1 1-1z"/></symbol>
     <symbol id="i-mark" viewBox="0 0 32 32">
-    <rect x="1" y="1" width="30" height="30" rx="9" fill="#0095F6"/>
-    <rect x="8.6" y="13.2" width="2.9" height="5.6" rx="1.45" fill="#FFFFFF"/>
-    <rect x="14.55" y="9.4" width="2.9" height="13.2" rx="1.45" fill="#FFFFFF"/>
-    <rect x="20.5" y="11.6" width="2.9" height="8.8" rx="1.45" fill="#FFFFFF"/>
+    <path d="M16 4.4c7.3 0 13.2 4.6 13.2 10.3S23.3 25 16 25c-1.3 0-2.6-.14-3.8-.4l-5.2 2.3 1.2-5C5.4 20 3 17.4 3 14.7 3 9 8.7 4.4 16 4.4z" fill="#0095F6"/>
+    <circle cx="12.1" cy="14.4" r="1.75" fill="#FFFFFF"/>
+    <circle cx="19.9" cy="14.4" r="1.75" fill="#FFFFFF"/>
+    <path d="M13.5 18q2.5 2.1 5 0" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/>
   </symbol>
 
   <symbol id="i-script" viewBox="0 0 24 24"><path d="M7 3.5h7.5L19 8v12.5H7z"/><path d="M14.2 3.7V8H18.6"/><path d="M9.8 12h6.2M9.8 15.4h6.2M9.8 18.8h3.6"/></symbol>
@@ -74,7 +74,7 @@
           </div>
 
           <div class="sec-title">
-            오답 노트 <span class="pill" id="note-count">0</span>
+            북마크 <span class="pill" id="note-count">0</span>
             <button class="more" id="note-more">전체</button>
           </div>
           <div id="note-preview"></div>
@@ -258,10 +258,10 @@
 
       <section class="screen" id="s-notes">
         <div class="scroll">
-          <div class="sec-title" style="margin-top:14px">오답 노트 <span class="pill" id="n-count-s">0</span></div>
+          <div class="sec-title" style="margin-top:14px">문장 <span class="pill" id="n-count-s">0</span></div>
           <div id="notes-list"></div>
 
-          <div class="sec-title">단어장 <span class="pill" id="n-count-w">0</span></div>
+          <div class="sec-title">단어 <span class="pill" id="n-count-w">0</span></div>
           <div id="words-list"></div>
         </div>
       </section>
@@ -427,7 +427,7 @@ Sure. What size would you like?
           <input id="w-meaning" placeholder="내 뜻을 적어두세요" maxlength="200" />
           <button id="w-save">저장</button>
         </div>
-        <button class="btn ghost sm" id="w-book">단어장에 담기</button>
+        <button class="btn ghost sm" id="w-book">단어에 담기</button>
         <button class="btn text" data-close>닫기</button>
       </div>
     </div>

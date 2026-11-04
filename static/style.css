@@ -1010,3 +1010,16 @@ button{box-shadow:none}
 .vf-step{border-radius:10px}
 .vf-step b{background:none;color:var(--mute);font-weight:800}
 .vf-step.on b{color:var(--brand)}
+
+
+/* ================= v4.5 정리 ================= */
+.note-card .tag,.note-card .dur,.note-card .nc-time,.note-card .nc-badge{display:none!important}
+.note-card .nc-en{display:block!important;overflow:visible!important;white-space:normal!important;
+  -webkit-line-clamp:unset!important;text-overflow:clip!important;max-height:none!important}
+.note-card .nc-ko{display:block!important;overflow:visible!important;white-space:normal!important;
+  -webkit-line-clamp:unset!important;max-height:none!important;margin-top:4px}
+#words-list .note-card{cursor:default}
+#words-list .note-card:active{transform:none!important;background:#fff!important}
+.wp-book.on{color:#FFB800!important}
+.wp-book.on .ic{fill:#FFB800!important;stroke:#FFB800!important}
+.star.on .ic{fill:#FFB800!important;stroke:#FFB800!important}
