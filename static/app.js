@@ -45,6 +45,8 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart
 const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 
 function show(id) {
+  if (id === "s-script") setTimeout(loadScripts, 0);
+  if (id !== "s-play") closeWord();
   $$(".screen").forEach((el) => el.classList.toggle("is-active", el.id === id));
   $$(".tab").forEach((t) => t.classList.toggle("is-on", t.dataset.tab === id));
   const sc = $("#" + id + " .scroll");
@@ -1462,17 +1464,65 @@ function initMixUI() {
 }
 
 /* ================= 단어 ================= */
+/* ---------- 단어 팝업 (작은 검은 박스) ---------- */
+const WP = { word: "", ctx: "", ko: "", saved: false, seq: 0 };
+
 async function openWord(word, ctx) {
   if (!word) return;
   if (performance.now() < S.lockUntil) return;
   if (SH.phase !== "idle") return;
+  const pop = $("#word-pop"); if (!pop) return;
+  const seq = ++WP.seq;
   S.word = { word, ctx };
+  WP.word = word; WP.ctx = ctx || ""; WP.ko = ""; WP.saved = false;
+  $("#wp-word").textContent = word;
+  $("#wp-ko").textContent = "…";
+  $("#wp-book").classList.remove("on");
+  pop.hidden = false;
+  try {
+    const r = await api("/api/words/" + encodeURIComponent(word));
+    if (seq !== WP.seq) return;
+    const d = (r.definitions || [])[0];
+    WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning : (d ? d.def : "");
+    WP.saved = !!(r.saved && r.saved.meaning);
+    $("#wp-ko").textContent = WP.ko || "뜻을 찾지 못했어요";
+    $("#wp-book").classList.toggle("on", !!WP.saved);
+  } catch {
+    if (seq !== WP.seq) return;
+    $("#wp-ko").textContent = "뜻을 불러오지 못했어요";
+  }
+}
+
+function closeWord() {
+  const pop = $("#word-pop");
+  if (pop) pop.hidden = true;
+}
+
+async function toggleWordBook() {
+  if (!WP.word) return;
+  try {
+    const r = await jsonPost("/api/notes/word", {
+      word: WP.word, meaning: WP.ko, ctx: WP.ctx, vid: S.cur?.id || "", idx: S.idx,
+    });
+    WP.saved = !!r.bookmarked;
+    $("#wp-book").classList.toggle("on", WP.saved);
+    await reloadNotes();
+    toast(r.bookmarked ? "북마크에 담았습니다" : "북마크에서 뺐습니다");
+  } catch (e) { toast("실패: " + e.message, 3800); }
+}
+
+async function openDict() {
+  const word = WP.word;
+  if (!word) return;
+  const ctx = WP.ctx;
+  closeWord();
   $("#w-word").textContent = word;
   $("#w-phon").textContent = "";
   $("#w-ctx").textContent = ctx || "";
-  $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.6">뜻을 불러오는 중…</div>`;
+  $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.6">불러오는 중…</div>`;
   $("#w-meaning").value = "";
-  $("#sheet-word").hidden = false;
+  $("#w-book").textContent = "단어장에 담기";
+  $("#sheet-dict").hidden = false;
   try {
     const r = await api("/api/words/" + encodeURIComponent(word));
     $("#w-phon").textContent = r.phonetic || "";
@@ -1480,11 +1530,64 @@ async function openWord(word, ctx) {
     const defs = (r.definitions || []).map((d) => `
       <div class="word-def"><i>${esc(d.pos || "")}</i>${esc(d.def)}
         ${d.example ? `<em>${esc(d.example)}</em>` : ""}</div>`).join("");
-    $("#w-defs").innerHTML = defs || `<div class="word-def" style="opacity:.75">영영 사전 결과가 없습니다. 내 뜻을 직접 적어 저장해보세요.</div>`;
+    $("#w-defs").innerHTML = defs || `<div class="word-def" style="opacity:.75">사전에 없는 단어예요. 내 뜻을 직접 적어둘 수 있어요.</div>`;
     $("#w-book").textContent = r.saved ? "단어장에서 빼기" : "단어장에 담기";
   } catch {
-    $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.75">뜻을 불러오지 못했습니다. 직접 적어 저장할 수 있어요.</div>`;
+    $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.75">사전을 불러오지 못했어요. 내 뜻을 직접 적어둘 수 있어요.</div>`;
   }
+}
+
+/* ================= 대본 ================= */
+const SCR = { q: "", vid: "" };
+const SCRC = {};
+
+async function scrVideo(id) {
+  if (!id) return null;
+  if (SCRC[id]) return SCRC[id];
+  try { SCRC[id] = await api("/api/videos/" + id); } catch { SCRC[id] = null; }
+  return SCRC[id];
+}
+
+async function loadScripts() {
+  if (!S.videos || !S.videos.length) { try { await loadVideos(); } catch {} }
+  if (!SCR.vid) SCR.vid = S.cur?.id || (S.videos[0] && S.videos[0].id) || "";
+  renderPick();
+  await renderScript();
+}
+
+function renderPick() {
+  const box = $("#scr-pick");
+  if (!box) return;
+  const list = S.videos || [];
+  box.innerHTML = list.map((v) =>
+    `<button class="scr-chip${v.id === SCR.vid ? " on" : ""}" data-vid="${esc(v.id)}">${esc(v.title || "제목 없음")}</button>`
+  ).join("");
+  $$("#scr-pick .scr-chip").forEach((b) => {
+    b.onclick = () => { SCR.vid = b.dataset.vid; renderPick(); renderScript(); };
+  });
+}
+
+async function renderScript() {
+  const box = $("#scr-body");
+  if (!box) return;
+  if (!SCR.vid) { box.innerHTML = `<div class="scr-empty">영상이 없습니다</div>`; return; }
+  const v = await scrVideo(SCR.vid);
+  if (!v) { box.innerHTML = `<div class="scr-empty">대본을 불러오지 못했습니다</div>`; return; }
+  if (SCR.vid !== v.id) return;
+  const q = (SCR.q || "").trim().toLowerCase();
+  const segs = (v.segs || []).map((s, i) => ({ s, i })).filter(({ s }) => {
+    if (!q) return true;
+    return ((s.en || s.text || "") + " " + (s.ko || "")).toLowerCase().indexOf(q) >= 0;
+  });
+  if (!segs.length) { box.innerHTML = `<div class="scr-empty">검색 결과가 없습니다</div>`; return; }
+  box.innerHTML = `<div class="scr-vt">${esc(v.title || "")} · ${segs.length}문장</div>` + segs.map(({ s, i }) => `
+    <button class="scr-seg" data-i="${i}">
+      <div class="en"><span class="n">${i + 1}</span>${esc(s.en || s.text || "")}</div>
+      ${s.ko ? `<div class="ko">${esc(s.ko)}</div>` : ""}
+    </button>`).join("");
+  $$("#scr-body .scr-seg").forEach((b) => {
+    b.onclick = () => jumpTo(SCR.vid, +b.dataset.i);
+  });
 }
 
 async function saveWordMeaning() {
@@ -1494,7 +1597,7 @@ async function saveWordMeaning() {
   try {
     await jsonPost("/api/notes/word", { word: S.word.word, meaning, ctx: S.word.ctx, vid: S.cur?.id || "", idx: S.idx });
     await reloadNotes();
-    $("#sheet-word").hidden = true;
+    $("#sheet-dict").hidden = true;
     toast("단어장에 저장했습니다");
   } catch (e) { toast("저장 실패: " + e.message, 3800); }
 }
@@ -1583,6 +1686,16 @@ function bind() {
     jumpTo(f.id, 0);
   };
   $("#note-more").onclick = () => show("s-notes");
+  $("#wp-book").onclick = toggleWordBook;
+  $("#wp-more").onclick = openDict;
+  $("#scr-q").oninput = () => { SCR.q = $("#scr-q").value; renderScript(); };
+  document.addEventListener("pointerdown", (e) => {
+    const pop = $("#word-pop");
+    if (!pop || pop.hidden) return;
+    if (pop.contains(e.target)) return;
+    if (e.target.closest && e.target.closest("#sub-en .w")) return;
+    closeWord();
+  }, true);
 
   $("#btn-back").onclick = () => {
     if (SH.phase !== "idle") {
