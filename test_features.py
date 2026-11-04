@@ -168,25 +168,8 @@ def main_test() -> None:
     print(f"  ✓ Range bytes=0-1023 → 206 {r.headers['content-range']}")
     ok += 1
 
-    # 3) offset 자동 캘리브레이션
-    est = c.post("/api/videos/vt1/calibrate", json={"apply": False}).json()
-    err = abs(est["offset"] - TRUE_OFFSET)
-    assert err <= 0.12, est
-    assert est["curve"], "curve 누락"
-    print(f"  ✓ calibrate  제안 offset={est['offset']}s (정답 {TRUE_OFFSET}s, 오차 {err:.3f}s) "
-          f"conf={est['confidence']} peak={est['peak']}")
-    ok += 1
-
-    # 3b) 적용
-    est2 = c.post("/api/videos/vt1/calibrate", json={"apply": True}).json()
-    assert est2["applied"] and abs(est2["offset"] - TRUE_OFFSET) <= 0.15
-    saved = json.loads(main.DB.read_text("utf-8"))["audios"]["a1"]["offset"]
-    assert abs(saved - TRUE_OFFSET) <= 0.15, saved
-    print(f"  ✓ calibrate apply → 저장된 offset={saved}s")
-    ok += 1
-
     # 4) 음향 채점 (로컬)
-    off = saved
+    off = TRUE_OFFSET
     t0 = max(0.0, SEGS[0][0] - off)
     t1 = max(t0 + 0.2, SEGS[0][1] - off)
     take = audio[int(t0 * SR):int(t1 * SR)] + 0.002 * np.random.default_rng(1).standard_normal(
@@ -234,11 +217,6 @@ def main_test() -> None:
               f"(전체 파일 다운로드 없음)")
         ok += 1
 
-        # 원격에서도 캘리브레이션
-        r4 = c.post("/api/videos/vt1/calibrate", json={"apply": False}).json()
-        assert abs(r4["offset"] - TRUE_OFFSET) <= 0.2, r4
-        print(f"  ✓ remote calibrate offset={r4['offset']}s conf={r4['confidence']}")
-        ok += 1
     finally:
         srv.shutdown()
         main.storage = loc

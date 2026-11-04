@@ -267,7 +267,6 @@ def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
     return _to_mono(y)
 
 
-# ------------------------------------------------ offset 캘리브레이션 util
 def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
     parts: list[np.ndarray] = []
     with storage.open(key) as f:
@@ -286,17 +285,6 @@ def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
     if not parts:
         raise ValueError("오디오가 비어 있습니다")
     return np.log(np.concatenate(parts) + 1e-6)
-
-
-def segment_activity(segs: list[dict], t_end: float, hop: float = CAL_HOP) -> np.ndarray:
-    n = max(2, int(math.ceil(max(t_end, hop) / hop)) + 1)
-    a = np.zeros(n, np.float32)
-    for s in segs:
-        i0 = int(round(max(0.0, float(s["start"])) / hop))
-        i1 = int(round(max(0.0, float(s["end"])) / hop))
-        i0 = min(i0, n - 1)
-        a[i0:min(max(i1, i0 + 1), n)] = 1.0
-    return a
 
 
 def _smooth(x: np.ndarray, k: int) -> np.ndarray:
@@ -341,58 +329,6 @@ def _parabolic(rows: list[tuple[int, float]], L: int, hop: float) -> float:
     if abs(d) < 1e-9:
         return float(L) * hop
     return (L + max(-0.5, min(0.5, 0.5 * (rm - rp) / d))) * hop
-
-
-def best_offset(env: np.ndarray, act: np.ndarray, hop: float,
-                lo: float, hi: float, smooth_s: float = CAL_SMOOTH,
-                min_overlap_s: float = CAL_MIN_OVERLAP) -> dict:
-    """오디오 엔벨로프 ↔ 자막 활동신호의 정규화 상호상관으로 offset 탐색.
-
-    offset = "영상 0초에 대응하는 오디오 시각" 이므로
-    영상 인덱스 i 는 오디오 인덱스 (i - L) 과 짝이 된다(L = offset / hop).
-    """
-    raw_e = np.asarray(env, float)
-    raw_a = np.asarray(act, float)
-    k = max(1, int(round(smooth_s / hop)))
-    e, a = _smooth(raw_e, k), _smooth(raw_a, k)
-
-    Na, Ne = len(a), len(e)
-    mo = max(int(round(min_overlap_s / hop)), int(round(0.35 * min(Na, Ne))))
-    rows = _xcorr_scan(a, e, int(math.floor(lo / hop)), int(math.ceil(hi / hop)), mo)
-    if not rows:
-        raise ValueError("자막 구간과 오디오가 충분히 겹치지 않습니다")
-
-    r_best, L_best = max((r, L) for L, r in rows)
-    offset = _parabolic(rows, L_best, hop)
-
-    ke = max(1, int(round(0.04 / hop)))
-    de = np.clip(np.diff(_smooth(raw_e, ke), prepend=0.0), 0, None)
-    da = np.clip(np.diff(_smooth(raw_a, ke), prepend=0.0), 0, None)
-    span = max(2, int(round(0.3 / hop)))
-    fine = _xcorr_scan(da, de, L_best - span, L_best + span,
-                       max(4, int(round(0.3 / hop))))
-    if fine:
-        rf, Lf = max((r, L) for L, r in fine)
-        if rf >= 0.20:
-            offset = _parabolic(fine, Lf, hop)
-
-    far = [r for L, r in rows if abs(L - L_best) > 0.5 / hop]
-    second = max(far) if far else -1.0
-    contrast = r_best - second
-    conf = (max(0.0, min(1.0, (r_best - 0.10) / 0.35))
-            * max(0.0, min(1.0, contrast / 0.08)))
-
-    step = max(1, len(rows) // 120)
-    return {
-        "offset": round(float(offset), 3),
-        "lag_frames": L_best,
-        "peak": round(float(r_best), 3),
-        "second": round(float(second), 3),
-        "contrast": round(float(contrast), 3),
-        "confidence": round(float(conf), 2),
-        "n_lags": len(rows),
-        "curve": [[round(L * hop, 2), round(float(r), 3)] for L, r in rows[::step]],
-    }
 
 
 # --------------------------------------------------------------- transcript
@@ -512,37 +448,6 @@ def video_public(v: dict, d: dict) -> dict:
             "verify": prog.verify_of(v["id"])}
 
 
-DEMO_VIDEO_IDS = ("vdemo0001", "vdemo0002")
-DEMO_AUDIO_IDS = ("ademo0001",)
-
-
-def drop_demo() -> dict:
-    """과거 버전이 만든 데모(토끼) 영상/음원을 기동 시 1회 제거한다. 멱등."""
-    d = db()
-    removed = []
-    for vid in list(d["videos"]):
-        if vid in DEMO_VIDEO_IDS:
-            d["videos"].pop(vid, None)
-            removed.append(vid)
-    for aid in list(d["audios"]):
-        if aid in DEMO_AUDIO_IDS:
-            a = d["audios"].pop(aid, None)
-            removed.append(aid)
-            if a:
-                try:
-                    storage.delete(a.get("key", ""))
-                except Exception:
-                    pass
-    if removed:
-        for v in d["videos"].values():
-            if v.get("audio_id") in DEMO_AUDIO_IDS:
-                v["audio_id"] = None
-        save_db(d)
-    return {"removed": removed}
-
-
-if not PUBLIC:
-    drop_demo()
 
 
 # --------------------------------------------------------------- API
@@ -810,78 +715,6 @@ def link_audio(vid: str, payload: dict, request: Request):
 
 
 # ---- offset 자동 캘리브레이션
-@app.post("/api/videos/{vid}/calibrate")
-def calibrate(vid: str, payload: dict | None = Body(default=None), request: Request = None):
-    require_admin(request)
-    """자막 타임스탬프와 원본 음원 엔벨로프의 상호상관으로 offset 을 추정."""
-    p = dict(payload or {})
-    d = db()
-    v = d["videos"].get(vid) or get_video(vid)
-    if not v["segs"]:
-        raise HTTPException(422, "문장이 없어 정렬 기준을 만들 수 없습니다")
-
-    aid = p.get("audio_id") or v.get("audio_id")
-    if not aid:
-        raise HTTPException(422, "이 영상에 연결된 원본 음원이 없습니다. 먼저 오디오를 연결하세요.")
-    a = d["audios"].get(aid)
-    if not a:
-        raise HTTPException(404, "오디오를 찾을 수 없습니다")
-    if not storage.exists(a["key"]):
-        raise HTTPException(404, "오디오 파일이 저장소에 없습니다")
-
-    hop = max(0.005, float(p.get("step_ms") or CAL_HOP * 1000) / 1000.0)
-    smooth = float(p.get("smooth_s", CAL_SMOOTH))
-    min_ov = float(p.get("min_overlap_s", CAL_MIN_OVERLAP))
-
-    try:
-        env = audio_envelope(a["key"], hop)
-    except FileNotFoundError:
-        raise HTTPException(404, "오디오 파일이 저장소에 없습니다")
-    except Exception as ex:
-        raise HTTPException(422, f"음원을 읽지 못했습니다: {ex}")
-
-    audio_dur = len(env) * hop
-    video_end = max(float(s["end"]) for s in v["segs"])
-    act = segment_activity(v["segs"], video_end, hop)
-
-    lo_d = -(audio_dur - min_ov)
-    hi_d = video_end - min_ov
-    srch = p.get("search_s")
-    if isinstance(srch, (list, tuple)) and len(srch) == 2:
-        lo_d, hi_d = max(lo_d, float(srch[0])), min(hi_d, float(srch[1]))
-    if hi_d <= lo_d:
-        lo_d, hi_d = -(audio_dur - min_ov), max(hop, video_end - min_ov)
-
-    try:
-        est = best_offset(env, act, hop, lo_d, hi_d, smooth, min_ov)
-    except ValueError as ex:
-        raise HTTPException(422, str(ex))
-
-    off_prev = float(a.get("offset", 0.0))
-    applied = bool(p.get("apply"))
-    if applied:
-        a["offset"] = float(est["offset"])
-        d["audios"][aid] = a
-        if p.get("link") or aid != v.get("audio_id"):
-            v["audio_id"] = aid
-            d["videos"][vid] = v
-        save_db(d)
-
-    note = None
-    if est["confidence"] < 0.35:
-        note = ("상관이 약합니다(문장 사이 여백이 적거나 음원이 짧음). "
-                "제안값을 참고하되 원본 듣기로 한 번 확인하세요.")
-    return {"ok": True, "video_id": vid, "audio_id": aid,
-            "offset": est["offset"], "offset_prev": off_prev, "applied": applied,
-            "confidence": est["confidence"], "peak": est["peak"],
-            "second": est["second"], "contrast": est["contrast"],
-            "method": "envelope_xcorr", "step_ms": round(hop * 1000, 1),
-            "search": [round(lo_d, 2), round(hi_d, 2)],
-            "audio_dur": round(audio_dur, 2), "video_dur": round(video_end, 2),
-            "n_lags": est["n_lags"], "curve": est["curve"], "note": note}
-
-
-# ---- 미디어 서빙 (HTTP Range 지원)
 def _range_response(path: Path, mime: str, request: Request) -> StreamingResponse | FileResponse:
     total = path.stat().st_size
     rng = request.headers.get("range")
