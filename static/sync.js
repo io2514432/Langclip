@@ -147,10 +147,9 @@
     const lab = tap.querySelector("span");
     if (k === 0) lab.textContent = "첫 문장 끝";
     else if (k >= ST.need - 1) lab.textContent = "마지막 문장 전";
-    else lab.textContent = "문장 끝 찍기";
+    else lab.textContent = "이 지점에서 문장 끊기";
 
     const next = ST.items[k + 1];
-    $("#sync-hint").textContent = next
       ? `다음 문장: ${(next.en || "").slice(0, 40)}${(next.en || "").length > 40 ? "…" : ""}`
       : "영상은 계속 재생됩니다 · 멈추지 않고 찍으세요";
   }

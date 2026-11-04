@@ -162,11 +162,9 @@ function renderHome() {
   const f = p.focus;
   const st = p.streak || { days: 0, week: [] };
 
-  $("#head-streak-n").textContent = `${st.days}일`;
-  $("#streak-days").textContent = `연속 학습 ${st.days}일`;
-  $("#streak-sub").textContent = st.today_done
-    ? "오늘 검증 완료"
-    : (st.days ? "오늘 검증하면 이어져요" : "첫 쇼츠를 완료해보세요");
+  setStreak(st.days);
+  
+  
 
   $("#week").innerHTML = (st.week || []).map((d) => `
     <div class="wday ${d.done ? "done" : ""} ${d.is_today ? "today" : ""} ${d.is_future ? "future" : ""}">
@@ -178,8 +176,6 @@ function renderHome() {
     $("#focus-t").textContent = "오늘의 쇼츠";
     $("#focus-s").textContent = `「${f.title}」 · 문장 ${f.segs}개`;
     const done = !!f.complete;
-    $("#today-state").textContent = done ? "오늘 검증 완료" : "아직 검증 전";
-    $("#today-state").className = "today-state " + (done ? "ok" : "");
     $("#btn-start").disabled = false;
     $("#btn-start").textContent = done ? "다시 연습하기" : "학습 시작하기";
     $("#fan").innerHTML = [0, 1, 2].map((i) => `
@@ -190,15 +186,13 @@ function renderHome() {
   } else {
     $("#focus-t").textContent = "오늘의 쇼츠";
     $("#focus-s").textContent = "등록된 영상이 없습니다";
-    $("#today-state").textContent = "추가 탭에서 첫 쇼츠를 등록하세요";
-    $("#today-state").className = "today-state";
     $("#btn-start").disabled = true;
     $("#btn-start").textContent = "시작하기";
     $("#fan").innerHTML = `<div class="fan-item"></div><div class="fan-item"></div><div class="fan-item"></div>`;
   }
 
   const ns = S.notes.sentences || [];
-  $("#note-count").textContent = ns.length;
+  setCount("note-count", ns.length);
   const box = $("#note-preview");
   if (!ns.length) {
     box.innerHTML = `<div class="note-empty"><b>아직 저장한 문장이 없습니다</b><br />학습 중 자막 위 별표를 누르면 어려운 문장이 여기에 모입니다.</div>`;
@@ -225,8 +219,8 @@ const noteCard = (n) => `
 function renderNotesScreen() {
   const ns = S.notes.sentences || [];
   const nw = S.notes.words || [];
-  $("#n-count-s").textContent = ns.length;
-  $("#n-count-w").textContent = nw.length;
+  setCount("n-count-s", ns.length);
+  setCount("n-count-w", nw.length);
 
   $("#notes-list").innerHTML = ns.length
     ? ns.map(noteCard).join("")
@@ -260,7 +254,7 @@ async function loadVideos() {
 
 function renderVideos() {
   const box = $("#vlist");
-  $("#v-count").textContent = S.videos.length;
+  setCount("v-count", S.videos.length);
   if (!S.videos.length) {
     box.innerHTML = `<div class="note-empty"><b>아직 영상이 없습니다</b><br />아래 <b>추가</b>에서 쇼츠 주소와 대본을 넣어주세요.</div>`;
     return;
@@ -419,7 +413,7 @@ function step(delta) {
 function setSubClass() {
   const v = $("#vsub");
   v.className = "vsub" + (S.sub === "both" ? "" : S.sub === "ko" ? " hide-en" : S.sub === "en" ? " hide-ko" : " hide-en hide-ko");
-  $("#sub-lab").textContent = { both: "둘 다", ko: "한글만", en: "영어만", off: "끔" }[S.sub];
+  $("#sub-lab").textContent = { both: "한/영 자막", ko: "한글 자막", en: "영어 자막", off: "자막 끔" }[S.sub];
   $("#btn-sub").classList.toggle("on", S.sub !== "both");
   const star = $("#btn-star");
   if (star) star.hidden = S.sub === "off";
@@ -447,7 +441,7 @@ async function toggleStar() {
     const r = await jsonPost("/api/notes/sentence", { vid: S.cur.id, idx: S.idx });
     await reloadNotes();
     $("#btn-star").classList.toggle("on", r.bookmarked);
-    toast(r.bookmarked ? "오답 노트에 저장했습니다" : "오답 노트에서 삭제했습니다");
+    toast(r.bookmarked ? "북마크에 저장했습니다" : "북마크에서 삭제했습니다");
   } catch (e) { toast("저장 실패: " + e.message, 3800); }
 }
 
@@ -468,10 +462,8 @@ function openScriptSheet() {
     b.onclick = () => { $("#sheet-script").hidden = true; playFrom(+b.dataset.i); };
   });
   const vf = S.cur.verify || {};
-  const stEl = $("#sc-final-state");
   stEl.textContent = S.cur.complete ? "통과" : (vf.tries ? `${vf.score}점 · 재도전` : "미응시");
   stEl.className = S.cur.complete ? "on" : "";
-  $("#sc-final-btn").textContent = S.cur.complete ? "검증 다시 하기" : "검증 시작";
   $("#sc-audio").hidden = !S.admin;
   renderAudioState();
   $("#sheet-script").hidden = false;
@@ -862,7 +854,10 @@ async function beginTake() {
     SH.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-  } catch (e) {
+  } finally {
+    showScoring(false);
+  }
+  if (false) {
     const wasFinal = FN.on;
     FN.on = false;
     closeWave();
@@ -963,6 +958,7 @@ function onTakeStop() {
 async function submitScore() {
   const fd = new FormData();
   fd.append("take", S.takeBlob, "take.webm");
+  showScoring(true);
   try {
     const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}/score`, { method: "POST", body: fd });
     S.lastResult = r;
@@ -1028,7 +1024,7 @@ function finishRead() {
 }
 
 function stepBar() {
-  const steps = [["read", "가림 낭독"], ["recall", "가림 복창"], ["spot", "스팟 체크"]];
+  const steps = [["read", "가림 낭독"], ["recall", "백지 테스트"], ["spot", "스팟 체크"]];
   const order = steps.map(([k]) => k);
   const cur = order.indexOf(VF.stage);
   $("#vf-steps").innerHTML = steps.map(([k, label], i) => {
@@ -1046,7 +1042,7 @@ function renderVerify() {
   if (VF.stage === "done") return renderVerifyResult();
 }
 
-/* 2단계: 한국어만 보고 영어 복창 */
+/* 2단계: 백지 테스트 */
 function renderRecall() {
   const segs = S.cur.segs;
   $("#vf-body").innerHTML = `
@@ -1275,8 +1271,7 @@ function renderResult(r) {
     dl.disabled = !(S.takeBlob && S.takeBlob.size);
     dl.onclick = saveTake;
   }
-  const dh = $("#dl-hint");
-  if (dh) dh.textContent = (S.takeBlob && S.takeBlob.size) ? "방금 녹음한 내 목소리 (16kHz WAV)" : "";
+  
 }
 
 function gradeOf(t) {
@@ -1592,6 +1587,7 @@ async function renderScript() {
   $$("#scr-body .scr-seg").forEach((b) => {
     b.onclick = () => playSegAudio(SCR.vid, +b.dataset.i);
   });
+  auMark();
 }
 
 async function saveWordMeaning() {
@@ -1622,7 +1618,7 @@ async function toggleWordBook() {
 async function reloadNotes() {
   try { S.notes = await api("/api/notes"); } catch {}
   renderNotesScreen();
-  $("#note-count").textContent = (S.notes.sentences || []).length;
+  setCount("note-count", (S.notes.sentences || []).length);
 }
 
 /* ================= 추가(+) · 제목 자동 ================= */
@@ -1734,7 +1730,6 @@ function bind() {
   $("#btn-verify-close").onclick = () => { VF.on = false; show("s-play"); startTick(); };
 
 
-  $("#sc-final-btn").onclick = startVerify;
   $("#sc-audio-btn").onclick = openAudioSheet;
   $("#sc-audio-unlink").onclick = unlinkAudio;
   $("#au-save").onclick = saveAudio;
@@ -1826,8 +1821,6 @@ function auSync() {
   const pr = Math.min(100, Math.max(0, ((t - AU.start) / d) * 100));
   const pb = $("#abar-prog");
   if (pb) pb.style.width = pr + "%";
-  const sb = $("#abar-sub");
-  if (sb) sb.textContent = (AU.idx + 1) + "문장 · " + fmt(Math.max(0, t - AU.start)) + " / " + fmt(d);
 }
 
 async function playSegAudio(vid, idx) {
@@ -1882,3 +1875,54 @@ $("#abar-loop").onclick = toggleAuLoop;
 $("#abar-x").onclick = stopAudioBar;
 $("#wp-x").onclick = closeWord;
 window.addEventListener("resize", () => { if ($("#s-play").classList.contains("is-active")) fitSub(); });
+
+
+/* ================= v4.4 UI 유틸 ================= */
+function setStreak(days) {
+  const n = Number(days) || 0;
+  const badge = $("#head-streak");
+  const num = $("#head-streak-n");
+  if (num) num.textContent = n + "일";
+  if (badge) badge.classList.toggle("on", n > 0);
+  const b = $("#streak-days");
+  if (b) b.textContent = "연속 학습 " + n + "일";
+  const sub = $("#streak-sub");
+  if (sub) {
+    if (n > 0) { sub.hidden = false; sub.textContent = n + "일째 연속 학습 중"; }
+    else { sub.hidden = true; sub.textContent = ""; }
+  }
+}
+
+function setCount(id, n) {
+  const el = $("#" + id);
+  if (!el) return;
+  const v = Number(n) || 0;
+  el.textContent = v;
+  el.classList.toggle("zero", v === 0);
+}
+
+function showScoring(on) {
+  const el = $("#scoring");
+  if (el) el.hidden = !on;
+}
+
+/* 대본 재생 중 문장 하이라이트 */
+function auMark() {
+  $$("#scr-body .scr-seg").forEach((b) => {
+    b.classList.toggle("on", AU.on && Number(b.dataset.i) === AU.idx);
+  });
+  const p = $("#abar-play");
+  if (p) p.classList.toggle("playing", !!(AU.a && !AU.a.paused));
+}
+
+window.auSyncOld = auSync;
+auSync = function () {
+  window.auSyncOld.apply(this, arguments);
+  auMark();
+};
+
+window.auStopOld = stopAudioBar;
+stopAudioBar = function () {
+  window.auStopOld.apply(this, arguments);
+  auMark();
+};
