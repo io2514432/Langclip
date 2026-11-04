@@ -45,9 +45,21 @@ def ratio(a: str, b: str) -> float:
 
 def pct(a: str, b: str) -> int:
     """0~100 정수 유사도. 완전히 같으면 100."""
-    if norm(a) == norm(b):
+    A, B = norm(a), norm(b)
+    if A == B:
         return 100
-    return int(round(100 * ratio(a, b)))
+    if not A:
+        return 0
+    base = 100.0 * ratio(a, b)
+    wa, wb = A.split(), B.split()
+    pool = list(wb)
+    hit = 0
+    for w in wa:
+        if w in pool:
+            pool.remove(w)
+            hit += 1
+    wordpct = 100.0 * hit / max(1, len(wa))
+    return int(round(0.45 * base + 0.55 * wordpct))
 
 
 def hint_of(text: str) -> str:
