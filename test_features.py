@@ -172,8 +172,9 @@ def main_test() -> None:
     off = TRUE_OFFSET
     t0 = max(0.0, SEGS[0][0] - off)
     t1 = max(t0 + 0.2, SEGS[0][1] - off)
-    take = audio[int(t0 * SR):int(t1 * SR)] + 0.002 * np.random.default_rng(1).standard_normal(
-        int((t1 - t0) * SR)).astype(np.float32)
+    take = audio[int(t0 * SR):int(t1 * SR)]
+    # 잡음은 실제로 잘라낸 길이에 맞춘다 (반올림 때문에 1프레임 어긋나면 브로드캐스트 실패)
+    take = take + 0.002 * np.random.default_rng(1).standard_normal(len(take)).astype(np.float32)
     r = c.post("/api/videos/vt1/segments/0/score",
                files={"take": ("take.wav", wav_bytes(take), "audio/wav")}).json()
     assert r["mode"] == "acoustic", r
