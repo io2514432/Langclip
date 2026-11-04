@@ -1926,3 +1926,9 @@ stopAudioBar = function () {
   window.auStopOld.apply(this, arguments);
   auMark();
 };
+
+/* 백지 테스트 진입 (대본 시트) */
+(function () {
+  const b = $("#sc-final-btn");
+  if (b) b.onclick = () => startVerify();
+})();

@@ -44,7 +44,8 @@ def ratio(a: str, b: str) -> float:
 
 
 def pct(a: str, b: str) -> int:
-    """0~100 정수 유사도. 완전히 같으면 100."""
+    """0~100 유사도. 관사 하나·시제 하나 틀렸다고 0점이 되지 않도록
+    글자 유사도(45%) + 단어 일치율(55%)로 부분점수를 준다."""
     A, B = norm(a), norm(b)
     if A == B:
         return 100
@@ -60,7 +61,6 @@ def pct(a: str, b: str) -> int:
             hit += 1
     wordpct = 100.0 * hit / max(1, len(wa))
     return int(round(0.45 * base + 0.55 * wordpct))
-
 
 def hint_of(text: str) -> str:
     """첫 글자 힌트: 'Hi, can I get a latte please?' → 'H, c I g a l p?'"""
