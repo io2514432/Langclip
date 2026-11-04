@@ -238,7 +238,7 @@ def calibrate(pool):
         v = np.array([r[k] for r in rows], float)
         p10, p50, p90 = (float(np.percentile(v, q)) for q in (10, 50, 90))
         p50 = max(p50, 1e-4)
-        out[k] = (0.45 * p50, p50, p90 / max(p10, 1e-6))
+        out[k] = (0.75 * p50, p50, p90 / max(p10, 1e-6))
     return out
 
 
@@ -248,9 +248,9 @@ def _map_score(d, d_good, d_wrong):
     d_good = max(float(d_good), 1e-4)
     d_wrong = max(float(d_wrong), d_good * 1.25)
     if d <= d_good:
-        return float(100.0 - 10.0 * min(1.0, d / d_good))
+        return float(100.0 - 8.0 * min(1.0, d / d_good))
     t = (d - d_good) / (d_wrong - d_good)
-    return float(90.0 * np.exp(-np.log(90.0 / 40.0) * t))
+    return float(88.0 * np.exp(-np.log(88.0 / 45.0) * t))
 
 
 def _band(bands, k):

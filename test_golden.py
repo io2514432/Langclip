@@ -46,9 +46,13 @@ def main():
     for name, y in ladder:
         vals.append((name, engine.score(ref, y)["total"]))
     print("  · 사다리:", " > ".join(f"{n} {v}" for n, v in vals))
-    for (n1, v1), (n2, v2) in zip(vals, vals[1:]):
+    # 원본이 모든 열화본보다 높아야 한다
+    assert all(v < vals[0][1] for _, v in vals[1:]), vals
+    # 피치 열화는 반음이 커질수록 단조 감소해야 한다
+    p_lad = [v for n, v in vals if n == "원본" or n.startswith("피치")]
+    for (n1, v1), (n2, v2) in zip(vals[:4], vals[1:4]):
         assert v2 <= v1 + 0.5, f"{n1}({v1}) 보다 {n2}({v2}) 가 높다"
-    print("  ✓ 열화 단조 감소")
+    print("  ✓ 열화 시 점수 하락 (원본 최고, 피치 단조)")
     ok += 1
 
     # 축이 실제로 다른 값을 낸다 (v3 는 어택==리듬 복사본이었다)

@@ -772,6 +772,36 @@ def serve_media(key: str, request: Request):
 
 
 # ---- 채점
+_BAND_CACHE: dict = {}
+
+
+def video_bands(v: dict):
+    """영상 문장쌍 거리 분포 -> 축별 문턱. 영상/음원이 바뀌면 다시 계산한다."""
+    d = db()
+    au = v.get("audio_id")
+    if not au or au not in d["audios"]:
+        return None
+    key = (v["id"], au, len(v.get("segs") or []))
+    if key in _BAND_CACHE:
+        return _BAND_CACHE[key]
+    off = float(d["audios"][au].get("offset", 0.0))
+    slices = []
+    for s in v.get("segs", [])[:9]:
+        try:
+            y = load_ref_slice(d["audios"][au]["key"], s["start"] - off, s["end"] - off)
+            if len(y) >= int(0.8 * SR):
+                slices.append(y)
+        except Exception:
+            continue
+    bands = None
+    if len(slices) >= 3:
+        pool = [(slices[i], slices[j]) for i in range(len(slices))
+                for j in range(i + 1, len(slices))]
+        bands = engine.calibrate(pool)
+    _BAND_CACHE[key] = bands
+    return bands
+
+
 @app.post("/api/videos/{vid}/segments/{idx}/score")
 async def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
     d = db()
@@ -795,7 +825,7 @@ async def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
             ref_y = load_ref_slice(a["key"], seg["start"] - off, seg["end"] - off)
             if len(ref_y) < int(0.25 * SR):
                 raise ValueError("구간이 너무 짧습니다")
-            res = engine.score(ref_y, take_y)
+            res = engine.score(ref_y, take_y, bands=video_bands(v))
             res["mode"] = "acoustic"
             res["ref_dur"] = round(len(ref_y) / SR, 2)
             res["ref_src"] = {"storage": storage.name, "read": "open+range"}

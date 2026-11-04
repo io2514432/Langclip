@@ -1255,16 +1255,12 @@ function renderResult(r) {
   });
 
   const note = $("#mode-note");
-  note.classList.add("show");
-  note.innerHTML = acoustic
-    ? `원본 음성과 <b>직접 비교</b>한 4축 채점입니다.`
-    : `원본 음성이 연결되지 않아 <b>발화 길이</b>로만 채점했습니다. 대본 시트에서 음성을 연결하면 정밀 채점됩니다.`;
+  note.classList.remove("show");
+  note.innerHTML = "";
 
-  const g = gradeOf(total);
-  $("#grade").textContent = g.label;
-  $("#grade").style.color = g.color;
-  $("#verdict").textContent = g.verdict;
-  $("#coach").innerHTML = coaching(r, acoustic);
+  $("#grade").textContent = "";
+  $("#verdict").textContent = "";
+  $("#coach").innerHTML = "";
 
   MIX.peaks = {};
   $("#mix-hint").textContent = (S.cur && S.cur.audio) ? "원본 음성 연결됨" : "영상 구간으로 재생";
