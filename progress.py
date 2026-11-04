@@ -348,8 +348,88 @@ def _dict_lookup(word: str) -> dict | None:
 def lookup(word: str) -> dict:
     mine = word_note(word)
     d = _dict_lookup(word)
+    defs = (d or {}).get("definitions", [])
+    ko, ko_src = _ko_of(word)
+    ko_defs = []
+    for item in defs[:2]:
+        t = _translate(item.get("def", ""), maxlen=120)
+        if t:
+            ko_defs.append({"pos": item.get("pos", ""), "ko": t, "en": item.get("def", "")})
     return {"word": word, "saved": mine,
             "phonetic": (d or {}).get("phonetic", ""),
-            "definitions": (d or {}).get("definitions", []),
+            "definitions": defs,
+            "ko": ko, "ko_defs": ko_defs, "ko_source": ko_src,
             "online": bool(d and d.get("found")),
             "source": "dictionaryapi.dev" if (d and d.get("found")) else None}
+
+
+# ---------------------------------------------------------------- 한글 뜻
+KO_PATH = DATA / "ko_cache.json"
+_KO: dict[str, str] = {}
+
+
+def _ko_load() -> None:
+    if _KO:
+        return
+    try:
+        _KO.update(json.loads(KO_PATH.read_text(encoding="utf-8")))
+    except Exception:
+        pass
+
+
+def _ko_store() -> None:
+    try:
+        KO_PATH.parent.mkdir(parents=True, exist_ok=True)
+        keep = dict(list(_KO.items())[-4000:])
+        KO_PATH.write_text(json.dumps(keep, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _http_json(url: str, timeout: float = 4.0):
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Langclip/4.3)", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def _translate(text: str, maxlen: int = 80) -> str:
+    """영어 -> 한국어 (구글 무료 엔드포인트 우선, 실패 시 MyMemory)."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = t[:maxlen]
+    q = urllib.parse.quote(t, safe="")
+    try:
+        d = _http_json("https://translate.googleapis.com/translate_a/single"
+                       "?client=gtx&sl=en&tl=ko&dt=t&q=" + q)
+        out = "".join(x[0] for x in d[0] if x and x[0]).strip()
+        if out and out.lower() != t.lower():
+            return out
+    except Exception:
+        pass
+    try:
+        d = _http_json("https://api.mymemory.translated.net/get?q=" + q + "&langpair=en|ko")
+        out = ((d or {}).get("responseData") or {}).get("translatedText") or ""
+        out = out.strip()
+        if out and out.lower() != t.lower() and "MYMEMORY" not in out.upper():
+            return out
+    except Exception:
+        pass
+    return ""
+
+
+def _ko_of(word: str) -> tuple[str, str | None]:
+    """단어의 한글 뜻. 캐시 우선, 없으면 번역 후 저장."""
+    w = (word or "").strip().lower()
+    if not w:
+        return "", None
+    _ko_load()
+    if w in _KO:
+        return _KO[w], "cache"
+    ko = _translate(w, maxlen=40)
+    if ko:
+        _KO[w] = ko
+        _ko_store()
+        return ko, "translate"
+    return "", None

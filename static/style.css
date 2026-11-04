@@ -815,3 +815,67 @@ body.play-focus #s-play,body.play-focus #s-sync{height:100%}
 
 /* ===== 자막 위치 ===== */
 .vsub{bottom:158px;z-index:7;max-height:44%;overflow:hidden}
+
+
+/* ===== v4.3 : 학습 화면 꽉 채우기 · 자막 · 음성바 ===== */
+body.play-focus .stage{padding:0;min-height:0;height:100dvh;background:#050B12}
+body.play-focus .phone{width:min(var(--w),100vw);height:100dvh;max-height:100dvh;
+  border:0;border-radius:0;box-shadow:none}
+body.play-focus .screens{height:100%}
+body.play-focus #s-play,body.play-focus #s-sync{height:100%}
+
+/* 자막: 감싸는 박스 제거 + 단어 박스만 */
+.vsub{overflow:visible;max-height:none;bottom:150px;z-index:7}
+.sub-en{display:flex;flex-wrap:wrap;gap:.12em .18em;justify-content:center;
+  background:none;border:0;box-shadow:none;backdrop-filter:none;padding:0;
+  font-size:26px;line-height:1.18;max-height:none;overflow:visible}
+.sub-en .w{display:inline-block;background:rgba(10,14,20,.62);border-radius:.26em;
+  padding:.09em .26em;font-size:1em;font-weight:750;line-height:1.16;color:#fff;
+  letter-spacing:-.012em;text-shadow:0 1px 3px rgba(0,0,0,.35);transition:background .12s,transform .12s}
+.sub-en .w:active{background:rgba(255,107,74,.78);transform:scale(.97)}
+.sub-ko{margin-top:.12em;background:none;border:0;box-shadow:none;padding:0;
+  font-size:13px;font-weight:650;color:rgba(255,255,255,.86);text-align:center;
+  text-shadow:0 2px 8px rgba(0,0,0,.92),0 0 2px rgba(0,0,0,.8);line-height:1.45}
+
+/* 문장 북마크(별) : 잘리지 않게 */
+.star{top:-32px;right:0;width:30px;height:30px;border-radius:10px;
+  background:rgba(10,22,34,.72);color:#EAF7FF;z-index:9}
+
+/* 하단 컨트롤 */
+.vbottom{padding:0 14px calc(14px + env(safe-area-inset-bottom,0px))}
+
+/* 단어 팝업 닫기 */
+.word-pop{position:fixed}
+.wp-x{flex:0 0 auto;width:22px;height:22px;margin-left:2px;border:0;border-radius:50%;
+  background:rgba(255,255,255,.10);color:rgba(255,255,255,.72);font-size:13px;line-height:1;
+  display:grid;place-items:center;cursor:pointer;font-family:inherit;padding:0}
+.wp-x:active{background:rgba(255,255,255,.2)}
+.wp-ko{font-size:13px;color:rgba(255,255,255,.9)}
+.wp-en{margin-top:2px;font-size:11px;color:rgba(255,255,255,.5);line-height:1.45}
+
+/* 대본 음성 재생바 */
+.abar{position:absolute;left:10px;right:10px;bottom:68px;z-index:60;
+  background:rgba(13,19,28,.95);backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.10);border-radius:16px;
+  box-shadow:0 20px 44px -20px rgba(0,0,0,.85);padding:8px 10px 9px;color:#fff}
+.abar[hidden]{display:none}
+.abar-line{height:3px;border-radius:99px;background:rgba(255,255,255,.16);overflow:hidden}
+.abar-line i{display:block;height:100%;width:0;background:var(--sky);border-radius:99px;
+  transition:width .2s linear}
+.abar-top{display:flex;align-items:center;gap:8px;margin-top:8px}
+.abar-meta{flex:1 1 auto;min-width:0}
+.abar-t{font-size:11.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.abar-s{font-size:9.5px;font-weight:700;color:rgba(159,194,216,.85);margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.abar-btn{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:9px;padding:0;
+  background:rgba(255,255,255,.09);color:#DCEFFB;display:grid;place-items:center;cursor:pointer}
+.abar-btn:active{transform:scale(.94)}
+.abar-btn .ic{width:15px;height:15px}
+.abar-play{width:34px;height:34px;background:var(--sky);color:#04121E}
+.abar-loop.on{background:var(--sky);color:#04121E}
+.abar-x{font-size:16px;line-height:1;font-family:inherit;color:rgba(255,255,255,.66)}
+body.has-audio .scroll{padding-bottom:104px}
+
+.word-ko{margin:0 0 10px;padding:9px 11px;background:#EAF7FF;border-radius:10px}
+.word-ko b{display:block;font-size:14px;font-weight:800;color:#0B5F86;letter-spacing:-.2px}
+.word-ko em{display:block;font-style:normal;font-size:11.5px;line-height:1.55;color:#3A6B85;margin-top:3px}

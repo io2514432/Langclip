@@ -47,6 +47,7 @@ const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 function show(id) {
   if (id === "s-script") setTimeout(loadScripts, 0);
   if (id !== "s-play") closeWord();
+  if (id === "s-play") stopAudioBar();
   $$(".screen").forEach((el) => el.classList.toggle("is-active", el.id === id));
   $$(".tab").forEach((t) => t.classList.toggle("is-on", t.dataset.tab === id));
   const sc = $("#" + id + " .scroll");
@@ -305,6 +306,7 @@ async function deleteVideo(v) {
 /* ================= 플레이어 ================= */
 async function openVideo(v, idx = 0) {
   closeWave(true);
+  stopAudioBar();
   S.cur = v;
   S.idx = Math.max(0, Math.min(idx, (v.segs || []).length - 1));
   S.repeat = false;
@@ -361,6 +363,7 @@ function renderSeg() {
   ko.textContent = s.ko || "";
   ko.style.display = s.ko ? "" : "none";
   $$("#sub-en .w").forEach((w) => { w.onclick = () => openWord(w.dataset.w, w.dataset.ctx); });
+  fitSub();
 
   const marked = (S.notes.sentences || []).some((n) => n.vid === v.id && n.idx === S.idx);
   const star = $("#btn-star");
@@ -1483,7 +1486,7 @@ async function openWord(word, ctx) {
     const r = await api("/api/words/" + encodeURIComponent(word));
     if (seq !== WP.seq) return;
     const d = (r.definitions || [])[0];
-    WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning : (d ? d.def : "");
+    WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning : (r.ko || (d ? d.def : ""));
     WP.saved = !!(r.saved && r.saved.meaning);
     $("#wp-ko").textContent = WP.ko || "뜻을 찾지 못했어요";
     $("#wp-book").classList.toggle("on", !!WP.saved);
@@ -1530,7 +1533,8 @@ async function openDict() {
     const defs = (r.definitions || []).map((d) => `
       <div class="word-def"><i>${esc(d.pos || "")}</i>${esc(d.def)}
         ${d.example ? `<em>${esc(d.example)}</em>` : ""}</div>`).join("");
-    $("#w-defs").innerHTML = defs || `<div class="word-def" style="opacity:.75">사전에 없는 단어예요. 내 뜻을 직접 적어둘 수 있어요.</div>`;
+    const koh = r.ko ? `<div class="word-ko"><b>${esc(r.ko)}</b>${(r.ko_defs || []).map((x) => `<em>${esc(x.ko)}</em>`).join("")}</div>` : "";
+    $("#w-defs").innerHTML = koh + (defs || `<div class="word-def" style="opacity:.75">사전에 없는 단어예요. 내 뜻을 직접 적어둘 수 있어요.</div>`);
     $("#w-book").textContent = r.saved ? "단어장에서 빼기" : "단어장에 담기";
   } catch {
     $("#w-defs").innerHTML = `<div class="word-def" style="opacity:.75">사전을 불러오지 못했어요. 내 뜻을 직접 적어둘 수 있어요.</div>`;
@@ -1586,7 +1590,7 @@ async function renderScript() {
       ${s.ko ? `<div class="ko">${esc(s.ko)}</div>` : ""}
     </button>`).join("");
   $$("#scr-body .scr-seg").forEach((b) => {
-    b.onclick = () => jumpTo(SCR.vid, +b.dataset.i);
+    b.onclick = () => playSegAudio(SCR.vid, +b.dataset.i);
   });
 }
 
@@ -1767,3 +1771,114 @@ window.LangclipApp = {
   S, show, toast, esc, fmt, jsonPost, api, loadHome, loadVideos, openVideo,
   startTick, stopTick, sizeVideo, reloadNotes, mmss, pausePlayer, loadYT, ic,
 };
+
+
+/* ================= 자막 자동 크기 ================= */
+function fitSub() {
+  const box = $("#sub-en");
+  if (!box) return;
+  const plain = box.dataset.plain || "";
+  const st = $("#vstage");
+  const room = Math.max(90, (st ? st.clientHeight : 720) * 0.30);
+  let fs = plain.length <= 22 ? 31
+    : plain.length <= 34 ? 28
+    : plain.length <= 50 ? 25
+    : plain.length <= 72 ? 22
+    : plain.length <= 100 ? 20 : 18;
+  box.style.fontSize = fs + "px";
+  let guard = 0;
+  while (box.scrollHeight > room && fs > 15 && guard++ < 24) {
+    fs -= 1;
+    box.style.fontSize = fs + "px";
+  }
+}
+
+/* ================= 대본 음성 재생바 ================= */
+const AU = { a: null, vid: "", idx: -1, start: 0, end: 0, loop: false, on: false, url: "" };
+const AU_CACHE = {};
+
+function auInit() {
+  if (AU.a) return;
+  const a = new Audio();
+  a.preload = "auto";
+  a.addEventListener("timeupdate", auSync);
+  a.addEventListener("ended", () => { if (AU.loop) { a.currentTime = AU.start; a.play().catch(() => {}); } else stopAudioBar(); });
+  a.addEventListener("play", () => auBtn(true));
+  a.addEventListener("pause", () => auBtn(false));
+  AU.a = a;
+}
+
+function auBtn(on) {
+  const b = $("#abar-play");
+  if (!b) return;
+  b.innerHTML = on ? ic("i-pause") : ic("i-play");
+}
+
+function auSync() {
+  const a = AU.a;
+  if (!a || !AU.on) return;
+  const t = a.currentTime;
+  if (t >= AU.end - 0.05) {
+    if (AU.loop) { a.currentTime = AU.start; }
+    else { stopAudioBar(); return; }
+  }
+  const d = Math.max(0.1, AU.end - AU.start);
+  const pr = Math.min(100, Math.max(0, ((t - AU.start) / d) * 100));
+  const pb = $("#abar-prog");
+  if (pb) pb.style.width = pr + "%";
+  const sb = $("#abar-sub");
+  if (sb) sb.textContent = (AU.idx + 1) + "문장 · " + fmt(Math.max(0, t - AU.start)) + " / " + fmt(d);
+}
+
+async function playSegAudio(vid, idx) {
+  const v = await scrVideo(vid);
+  if (!v) return toast("대본을 불러오지 못했습니다");
+  const s = (v.segs || [])[idx];
+  if (!s) return;
+  const au = v.audio || AU_CACHE[vid];
+  if (!au || !au.url) return toast("이 영상에는 등록된 음원이 없습니다", 3200);
+  auInit();
+  const off = Number(au.offset || 0);
+  AU.vid = vid;
+  AU.idx = idx;
+  AU.url = au.url;
+  AU.start = Math.max(0, Number(s.start || 0) - off);
+  AU.end = Math.max(AU.start + 0.25, Number(s.end || 0) - off);
+  AU.on = true;
+  const a = AU.a;
+  if (a.getAttribute("src") !== au.url) a.src = au.url;
+  try { a.currentTime = AU.start; } catch {}
+  const bar = $("#abar");
+  if (bar) bar.hidden = false;
+  document.body.classList.add("has-audio");
+  $("#abar-title").textContent = v.title || "대본";
+  $("#abar-sub").textContent = (idx + 1) + "문장";
+  $("#abar-prog").style.width = "0%";
+  a.play().catch(() => toast("음원을 재생할 수 없습니다", 3200));
+}
+
+function stopAudioBar() {
+  if (AU.a) { try { AU.a.pause(); } catch {} }
+  AU.on = false;
+  const bar = $("#abar");
+  if (bar) bar.hidden = true;
+  document.body.classList.remove("has-audio");
+}
+
+function toggleSegAudio() {
+  if (!AU.a || !AU.on) return;
+  if (AU.a.paused) { AU.a.play().catch(() => {}); } else { AU.a.pause(); }
+}
+
+function toggleAuLoop() {
+  AU.loop = !AU.loop;
+  const b = $("#abar-loop");
+  if (b) b.classList.toggle("on", AU.loop);
+  toast(AU.loop ? "이 문장을 계속 반복합니다" : "반복을 껐습니다");
+}
+
+$("#abar-play").onclick = toggleSegAudio;
+$("#abar-loop").onclick = toggleAuLoop;
+$("#abar-x").onclick = stopAudioBar;
+$("#wp-x").onclick = closeWord;
+window.addEventListener("resize", () => { if ($("#s-play").classList.contains("is-active")) fitSub(); });
