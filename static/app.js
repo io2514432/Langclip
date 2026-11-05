@@ -484,7 +484,9 @@ function openScriptSheet() {
 
 function renderAudioState() {
   const st = $("#sc-audio-state");
-  if (st === __D) return;              // 이 버전 대본 시트에는 음성 연결 UI가 없다
+  if (!st) return;                     // 음성 연결 UI가 없는 화면이면 건너뛴다
+  const blk = $("#sc-audio-block");
+  if (blk) blk.hidden = !S.admin;
   const au = S.cur && S.cur.audio;
   $("#sc-audio-unlink").hidden = !au;
   $("#sc-audio-btn").textContent = au ? "다른 음성으로 바꾸기" : "음성 파일 넣기";
@@ -1826,9 +1828,12 @@ function bind() {
   if (vfs) vfs.onclick = submitRecall;
 
 
-  $("#sc-audio-btn").onclick = openAudioSheet;
-  $("#sc-audio-unlink").onclick = unlinkAudio;
-  $("#au-save").onclick = saveAudio;
+  const bAud = $("#sc-audio-btn");
+  if (bAud) bAud.onclick = () => { try { openAudioSheet(); } catch (e) { toast("열지 못했습니다: " + e.message, 3200); } };
+  const bAun = $("#sc-audio-unlink");
+  if (bAun) bAun.onclick = unlinkAudio;
+  const bAsv = $("#au-save");
+  if (bAsv) bAsv.onclick = saveAudio;
 
   $("#w-save").onclick = saveWordMeaning;
   $("#w-book").onclick = toggleWordBook;

@@ -56,7 +56,7 @@
       ST.bounds = []; ST.finished = false;
       ST.need = r.items.length > 1 ? r.items.length - 1 : 1;
       show("s-sync");
-      $("#sync-title").textContent = title || "싱크 맞추기";
+      const te = $("#sync-title"); if (te) te.textContent = title || "싱크 맞추기";
       render();
       mount(url);
     } catch (e) {
@@ -112,7 +112,7 @@
     ST.clock = setInterval(() => {
       if (!ST.player || !ST.player.getCurrentTime) return;
       const t = ST.player.getCurrentTime() || 0;
-      $("#sync-clock").textContent = fmtT(t);
+      const ce = $("#sync-clock"); if (ce) ce.textContent = fmtT(t);
     }, 80);
   }
 
@@ -128,20 +128,20 @@
 
   function render() {
     const n = ST.items.length, k = ST.bounds.length;
-    $("#sync-count").textContent = `${Math.min(k, n)} / ${n}`;
+    const cnt = $("#sync-count"); if (cnt) cnt.textContent = `${Math.min(k, n)} / ${n}`;
     const i = Math.min(k, n - 1);
     const it = ST.items[i] || { en: "", ko: "" };
 
-    $("#sync-step").textContent = tipFor(k);
-    $("#sync-en").textContent = it.en || "—";
-    $("#sync-ko").textContent = it.ko || "";
+    const ste = $("#sync-step"); if (ste) ste.textContent = tipFor(k);
+    const ene = $("#sync-en"); if (ene) ene.textContent = it.en || "—";
+    const koe = $("#sync-ko"); if (koe) koe.textContent = it.ko || "";
 
     const done = [];
     for (let j = 0; j < k; j++) {
       const st = j === 0 ? 0 : ST.bounds[j - 1];
       done.push(`<span class="sd-chip"><b>${j + 1}</b>${fmtT(st)}–${fmtT(ST.bounds[j])}</span>`);
     }
-    $("#sync-done").innerHTML = done.length ? done.join("") : `<span class="sd-none">아직 찍은 구간이 없습니다</span>`;
+    const dn = $("#sync-done"); if (dn) dn.innerHTML = done.length ? done.join("") : `<span class="sd-none">아직 찍은 구간이 없습니다</span>`;
 
     const tap = $("#sync-tap");
     const lab = tap.querySelector("span");
@@ -149,10 +149,14 @@
     else if (k >= ST.need - 1) lab.textContent = "마지막 문장 전";
     else lab.textContent = "이 지점에서 문장 끊기";
 
-    const next = ST.items[k + 1];
-    $("#sync-hint").textContent = next
-      ? `다음 문장: ${(next.en || "").slice(0, 40)}${(next.en || "").length > 40 ? "…" : ""}`
-      : "영상은 계속 재생됩니다 · 멈추지 않고 찍으세요";
+    // ※ 이후 화면에서 힌트 영역을 빼냈으므로 없을 수 있다. 없으면 건너뛰긴다.
+    const hintEl = $("#sync-hint");
+    if (hintEl) {
+      const next = ST.items[k + 1];
+      hintEl.textContent = next
+        ? `다음 문장: ${(next.en || "").slice(0, 40)}${(next.en || "").length > 40 ? "…" : ""}`
+        : "영상은 계속 재생됩니다 · 멈추지 않고 찍으세요";
+    }
   }
 
   function tap() {
