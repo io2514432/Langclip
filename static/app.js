@@ -457,9 +457,10 @@ async function toggleStar() {
 
 /* ================= 전체 스크립트 ================= */
 function openScriptSheet() {
-  if (!S.cur) return;
+  if (!S.cur) { toast("학습할 쇼츠를 먼저 열어주세요"); return; }
   $("#sc-title").textContent = S.cur.title || "전체 스크립트";
-  $("#sc-list").innerHTML = S.cur.segs.map((s, i) => `
+  const segs = S.cur.segs || [];
+  $("#sc-list").innerHTML = segs.map((s, i) => `
     <button class="sc-row ${i === S.idx ? "on" : ""}" data-i="${i}">
       <b>${i + 1}</b>
       <span class="sc-txt">
@@ -471,19 +472,15 @@ function openScriptSheet() {
   $$("#sc-list .sc-row").forEach((b) => {
     b.onclick = () => { $("#sheet-script").hidden = true; playFrom(+b.dataset.i); };
   });
-  const vf = S.cur.verify || {};
-  stEl.textContent = S.cur.complete ? "통과" : (vf.tries ? `${vf.score}점 · 재도전` : "미응시");
-  stEl.className = S.cur.complete ? "on" : "";
-  $("#sc-audio").hidden = !S.admin;
-  renderAudioState();
   $("#sheet-script").hidden = false;
   const cur = $("#sc-list .sc-row.on");
   if (cur) setTimeout(() => cur.scrollIntoView({ block: "center" }), 60);
 }
 
 function renderAudioState() {
-  const au = S.cur && S.cur.audio;
   const st = $("#sc-audio-state");
+  if (st === __D) return;              // 이 버전 대본 시트에는 음성 연결 UI가 없다
+  const au = S.cur && S.cur.audio;
   $("#sc-audio-unlink").hidden = !au;
   $("#sc-audio-btn").textContent = au ? "다른 음성으로 바꾸기" : "음성 파일 넣기";
   if (au) {
@@ -1726,7 +1723,6 @@ function bind() {
   $("#btn-sub").onclick = cycleSub;
   $("#btn-repeat").onclick = toggleRepeat;
   $("#btn-star").onclick = toggleStar;
-  $("#btn-script").onclick = openScriptSheet;
   $("#btn-shadow").onclick = onShadowBtn;
   $("#wv-skip").onclick = endListen;
 
@@ -2007,7 +2003,10 @@ stopAudioBar = function () {
     };
     const bsc = $("#btn-script");
     if (bsc) bsc.onclick = () => {
-      try { openScriptSheet(); } catch (e) { toast("대본을 열지 못했습니다: " + e.message, 3200); }
+      try { openScriptSheet(); } catch (e) {
+        console.error("[langclip] openScriptSheet failed", e);
+        toast("대본을 열지 못했습니다: " + e.message, 3200);
+      }
     };
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
