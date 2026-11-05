@@ -1215,16 +1215,7 @@ body.vf-focus .screens{height:100%}
   .sp-sym,.splash-title,.splash-bar{animation:none}
   .splash-bar i{animation:sp-slide 1.6s ease-in-out infinite}
 }
-
-/* v6.8 · 대본 시트 원본 음성 */
-.sc-audio{margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
-.sc-audio-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.sc-audio-lab{font-size:12px;font-weight:600;color:var(--fg)}
-.sc-audio-lab b{font-weight:700;color:var(--muted);margin-left:4px}
-.sc-audio-lab b.on{color:#1B9C63}
-.sc-audio-sub{margin-top:4px;font-size:11.5px;line-height:1.5;color:var(--muted)}
-.sc-audio-btn{margin-top:8px;width:100%;height:34px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg);font-size:12.5px;font-weight:600}
-.sc-audio-unlink{font-size:11.5px;color:var(--muted);text-decoration:underline;background:none;border:0;padding:2px}
-/* v6.9 · 대본 탭 원본 음성 버튼 */
-#btn-audio-main{margin-left:auto}
-#btn-audio-main.on{color:#1B9C63;border-color:#1B9C63}
+/* v7.0 · 학습 목록 음원 추가/교체 (텍스트 링크) */
+.v-audio{margin-left:auto;padding:0;border:0;background:none;font-size:11px;font-weight:650;
+  color:var(--mute);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.v-audio:active,.v-audio:hover{color:var(--fg)}

@@ -281,6 +281,7 @@ function renderVideos() {
           <div class="nc-meta" style="margin-top:5px">
             ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
             <span>총 ${v.n}문장</span>
+            ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : ""}
           </div>
         </div>
         <div class="vc-pct">${v.complete ? ic("i-check", "ic xs") : ""}</div>
@@ -288,6 +289,8 @@ function renderVideos() {
     el.querySelector(".vc-body").onclick = () => openVideo(v, 0);
     const del = el.querySelector(".vdel");
     if (del) del.onclick = (e) => { e.stopPropagation(); deleteVideo(v); };
+    const abtn = el.querySelector(".v-audio");
+    if (abtn) abtn.onclick = (e) => { e.stopPropagation(); openAudioSheet(v.id); };
     box.appendChild(el);
   });
 }
@@ -477,36 +480,9 @@ function openScriptSheet() {
   $$("#sc-list .sc-row").forEach((b) => {
     b.onclick = () => { $("#sheet-script").hidden = true; playFrom(+b.dataset.i); };
   });
-  AUD.v = S.cur;
-  renderAudioState();
   $("#sheet-script").hidden = false;
   const cur = $("#sc-list .sc-row.on");
   if (cur) setTimeout(() => cur.scrollIntoView({ block: "center" }), 60);
-}
-
-function renderAudioState() {
-  const v = AUD.v || S.cur;
-  const au = v && v.audio;
-  const blk = $("#sc-audio-block");
-  if (blk) blk.hidden = !S.admin;
-  const mbtn = $("#btn-audio-main");
-  if (mbtn) { mbtn.hidden = !S.admin; mbtn.classList.toggle("on", !!(au && au.url)); }
-  const st = $("#sc-audio-state");
-  if (!st) return;
-  $("#sc-audio-unlink").hidden = !au;
-  $("#sc-audio-btn").textContent = au ? "다른 음성으로 바꾸기" : "음성 파일 넣기";
-  if (au) {
-    st.textContent = "연결됨";
-    st.className = "on";
-    $("#sc-audio-sub").textContent =
-      `${au.title || "음성"} · ${Number(au.dur || 0).toFixed(1)}초 · 오프셋 ${Number(au.offset || 0).toFixed(1)}s · 실제 파형으로 그리고 음향 채점을 합니다.`;
-  } else {
-    st.textContent = "없음";
-    st.className = "";
-    $("#sc-audio-sub").textContent = v
-      ? "연결하면 실제 파형으로 그리고 음향 채점을 합니다. 없으면 문장 길이로만 채점합니다."
-      : "영상을 선택하면 원본 음성을 붙일 수 있습니다.";
-  }
 }
 
 /* ================= 원본 음성 등록 ================= */
@@ -516,14 +492,12 @@ function openAudioSheet(vid) {
   const v = (S.videos || []).find((x) => x.id === id) || null;
   if (!v) return toast("학습할 쇼츠를 먼저 열어주세요");
   AUD.v = v;
-  $("#sheet-script").hidden = true;
   $("#au-file").value = "";
   $("#au-title").value = v.title || "";
   $("#au-license").value = "";
   $("#au-source").value = "owned";
   $("#au-offset").value = "0";
   $("#au-ok").checked = false;
-  renderAudioState();
   $("#sheet-audio").hidden = false;
 }
 
@@ -552,6 +526,7 @@ async function saveAudio() {
     await loadHome();
     AUD.v = (S.videos || []).find((x) => x.id === v.id) || v;
     if (S.cur && S.cur.id === v.id) await refreshCur();
+    AUD.v = null;
     $("#sheet-audio").hidden = true;
     toast("원본 음성을 연결했습니다", 3200);
     if ($("#s-script").classList.contains("is-active")) renderScript();
@@ -573,7 +548,6 @@ async function unlinkAudio() {
     await loadHome();
     AUD.v = (S.videos || []).find((x) => x.id === v.id) || v;
     if (S.cur && S.cur.id === v.id) await refreshCur();
-    renderAudioState();
     toast("연결을 해제했습니다");
   } catch (e) { toast("해제 실패: " + e.message, 4000); }
 }
@@ -1854,10 +1828,6 @@ function bind() {
   if (vfs) vfs.onclick = submitRecall;
 
 
-  const bAud = $("#sc-audio-btn");
-  if (bAud) bAud.onclick = () => { try { openAudioSheet(); } catch (e) { toast("열지 못했습니다: " + e.message, 3200); } };
-  const bAun = $("#sc-audio-unlink");
-  if (bAun) bAun.onclick = unlinkAudio;
   const bAsv = $("#au-save");
   if (bAsv) bAsv.onclick = saveAudio;
 
