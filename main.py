@@ -600,7 +600,8 @@ def patch_segs(vid: str, payload: dict, request: Request):
         v["n"] = len(out)
     d["videos"][vid] = v
     save_db(d)
-    return {"ok": True, "segs": out, "n": len(out)}
+    moved = prog.sync_sentence_notes(vid, out, v)   # 북마크 문장도 수정 내용을 따라간다
+    return {"ok": True, "segs": out, "n": len(out), "notes_updated": moved}
 
 
 @app.put("/api/videos/{vid}/script")

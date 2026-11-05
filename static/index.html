@@ -276,12 +276,13 @@
       <!-- ================= 검증 ================= -->
       <section class="screen" id="s-verify">
         <div class="test-head">
-          <button class="vback dark" id="btn-verify-close"><svg class="ic"><use href="#i-left"/></svg></button>
-          <div class="test-title">학습 완료 검증</div>
-          <div class="test-prog" id="vf-prog"></div>
+          <button class="vf-back" id="btn-verify-close" aria-label="나가기"><svg class="ic"><use href="#i-left"/></svg></button>
+          <div class="test-title">백지 테스트</div>
         </div>
-        <div class="vf-steps" id="vf-steps"></div>
         <div class="scroll vf-scroll" id="vf-body"></div>
+        <div class="vf-foot" id="vf-foot">
+          <button class="vf-submit" id="vf-submit">채점하기</button>
+        </div>
       </section>
 
       <!-- ================= SYNC ================= -->
@@ -392,10 +393,12 @@ Sure. What size would you like?
       <div class="sheet-bg" data-close></div>
       <div class="sheet">
         <div class="sheet-grip"></div>
-        <h3 id="sc-title">전체 스크립트</h3>
+        <div class="sc-head">
+          <h3 id="sc-title">전체 스크립트</h3>
+          <button class="sc-x" data-close aria-label="닫기"><svg class="ic"><use href="#i-close"/></svg></button>
+        </div>
         <div class="sc-list" id="sc-list"></div>
         <button class="sc-vf" id="sc-final-btn">백지 테스트로 암기 확인</button>
-<button class="btn text" data-close>닫기</button>
       </div>
     </div>
 
@@ -477,7 +480,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=4.8.0"></script>
-<script src="/sync.js?v=4.8.0"></script>
+<script src="/app.js?v=4.9.0"></script>
+<script src="/sync.js?v=4.9.0"></script>
 </body>
 </html>

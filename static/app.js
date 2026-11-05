@@ -46,6 +46,7 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart
 const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 
 function show(id) {
+  if (id !== "s-verify") document.body.classList.remove("vf-focus");
   if (id === "s-script") setTimeout(loadScripts, 0);
   if (id !== "s-play") closeWord();
   if (id === "s-play") stopAudioBar();
@@ -1033,10 +1034,21 @@ function startVerify() {
   VF.stage = "recall"; VF.i = 0; VF.scores = [];
   VF.typed = {}; VF.spot = {}; VF.spotItems = []; VF.n = S.cur.segs.length;
   document.body.classList.remove("vf-mask");
+  document.body.classList.add("vf-focus");
   stopTick(); pausePlayer();
   show("s-verify");
   renderVerify();
-  toast(`백지 테스트 · 문장 ${VF.n}개를 처음부터 끝까지 타이핑합니다`, 3400);
+}
+
+function exitVerify(ask) {
+  const segs = (S.cur && S.cur.segs) || [];
+  const done = segs.filter((s, i) => String(VF.typed[i] || "").trim()).length;
+  if (ask && done > 0 &&
+      !confirm(`작성한 답변 ${done}개가 사라집니다.\n\n백지 테스트를 나갈까요?`)) return;
+  VF.on = false; FN.on = false;
+  VF.typed = {}; VF.spot = {}; VF.scores = []; VF.stage = "recall";
+  document.body.classList.remove("vf-focus");
+  show("s-play"); startTick();
 }
 
 /* 1단계 끝 → 2단계 */
@@ -1051,15 +1063,8 @@ function finishRead() {
 }
 
 function stepBar() {
-  const steps = [["recall", "백지 테스트"]];
-  const order = steps.map(([k]) => k);
-  const cur = order.indexOf(VF.stage);
-  $("#vf-steps").innerHTML = steps.map(([k, label], i) => {
-    const done = i < cur, on = i === cur;
-    return `<div class="vf-step ${done ? "done" : ""} ${on ? "on" : ""}">
-      <b>${done ? ic("i-check", "ic xs") : i + 1}</b><span>${label}</span></div>`;
-  }).join("");
-  $("#vf-prog").textContent = `${cur + 1} / ${steps.length}`;
+  const el = $("#vf-steps");
+  if (el) el.innerHTML = "";
 }
 
 function renderVerify() {
@@ -1073,28 +1078,39 @@ function renderVerify() {
 function renderRecall() {
   const segs = S.cur.segs;
   $("#vf-body").innerHTML = `
-    <p class="test-desc">영어는 보이지 않습니다. <b>한국어만 보고</b> 영어 문장을 그대로 써보세요.
-      문장마다 <b>${verifyNeed.recall}점</b> 이상이면 통과입니다. (오타 1~2자 허용)</p>
+    <p class="test-desc">한국어만 보고 영어로 쓰세요 · 문장마다 <b>${verifyNeed.recall}점</b> 이상 통과</p>
     ${segs.map((s, i) => `
       <div class="vf-row" data-i="${i}">
-        <div class="vf-ko"><b>${i + 1}</b>${esc(s.ko || "(한국어 없음 · 영어만)")}</div>
-        <textarea class="vf-in" data-i="${i}" rows="2" spellcheck="false" autocapitalize="off"
+        <div class="vf-ko"><b>${i + 1}</b><span>${esc(s.ko || "(한국어 없음 · 영어만)")}</span></div>
+        <textarea class="vf-in" data-i="${i}" rows="1" spellcheck="false" autocapitalize="off"
           placeholder="${s.ko ? "영어로 옮겨 적기" : esc((s.en || "").slice(0, 1)) + "…"}"></textarea>
       </div>`).join("")}
-    <button class="btn primary" id="vf-recall-next">채점하기</button>`;
+    <div class="vf-pad"></div>`;
   $$("#vf-body .vf-in").forEach((el) => {
     el.value = VF.typed[el.dataset.i] || "";
-    el.oninput = () => { VF.typed[el.dataset.i] = el.value; };
+    const fit = () => { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
+    el.oninput = () => { VF.typed[el.dataset.i] = el.value; fit(); updateVfCount(); };
+    fit();
   });
+  updateVfCount();
   const first = $("#vf-body .vf-in");
   if (first) first.focus();
-  $("#vf-recall-next").onclick = async () => {
-    const empty = segs.filter((s, i) => !String(VF.typed[i] || "").trim()).length;
-    if (empty && !confirm(`아직 쓰지 않은 문장이 ${empty}개 있습니다.
+}
 
-이대로 다음 단계로 갈까요?`)) return;
-    await submitVerify();
-  };
+function updateVfCount() {
+  const segs = (S.cur && S.cur.segs) || [];
+  const done = segs.filter((s, i) => String(VF.typed[i] || "").trim()).length;
+  const foot = $("#vf-foot");
+  if (foot) foot.hidden = VF.stage !== "recall";
+  const b = $("#vf-submit");
+  if (b) b.textContent = `채점하기 (${done}/${segs.length} 작성됨)`;
+}
+
+async function submitRecall() {
+  const segs = (S.cur && S.cur.segs) || [];
+  const empty = segs.filter((s, i) => !String(VF.typed[i] || "").trim()).length;
+  if (empty && !confirm(`아직 쓰지 않은 문장이 ${empty}개 있습니다.\n\n이대로 채점할까요?`)) return;
+  await submitVerify();
 }
 
 /* 3단계: 무작위 스팟 체크 */
@@ -1131,7 +1147,8 @@ function renderSpot() {
 const verifyNeed = { recall: 90, spot: 85 };
 
 async function submitVerify() {
-  const b = $("#vf-finish");
+  const b = $("#vf-submit");
+  const label = b ? b.textContent : "";
   if (b) { b.disabled = true; b.textContent = "채점 중…"; }
   try {
     const r = await jsonPost(`/api/videos/${S.cur.id}/verify/check`, {
@@ -1144,8 +1161,8 @@ async function submitVerify() {
     await loadVideos();
     renderVerify();
   } catch (e) {
-    if (b) { b.disabled = false; b.textContent = "검증 결과 보기"; }
-    toast("검증 실패: " + e.message, 4200);
+    if (b) { b.disabled = false; b.textContent = label || "채점하기"; }
+    toast("채점 실패: " + e.message, 4200);
   }
 }
 
@@ -1182,8 +1199,10 @@ function renderVerifyResult() {
       <button class="btn primary" id="vf-again">다시 테스트</button>
       <button class="btn ghost" id="vf-close">학습으로 돌아가기</button>
     </div>`;
+  const foot = $("#vf-foot");
+  if (foot) foot.hidden = true;
   $("#vf-again").onclick = () => { VF.spotItems = []; startVerify(); };
-  $("#vf-close").onclick = () => { VF.on = false; show("s-play"); startTick(); };
+  $("#vf-close").onclick = () => exitVerify(false);
   if (r.passed) toast("학습 완료! 전체 문장을 통과했습니다", 4200);
 }
 
@@ -1832,7 +1851,9 @@ function bind() {
   };
   $("#btn-result-close").onclick = () => { stopMix(); closeWave(true); show("s-play"); startTick(); };
   $("#wv-cancel").onclick = cancelShadow;
-  $("#btn-verify-close").onclick = () => { VF.on = false; show("s-play"); startTick(); };
+  $("#btn-verify-close").onclick = () => exitVerify(true);
+  const vfs = $("#vf-submit");
+  if (vfs) vfs.onclick = submitRecall;
 
 
   $("#sc-audio-btn").onclick = openAudioSheet;
@@ -1910,15 +1931,15 @@ function fitSub() {
   if (!box) return;
   const plain = box.dataset.plain || "";
   const st = $("#vstage");
-  const room = Math.max(120, (st ? st.clientHeight : 720) * 0.58);
+  const room = Math.max(140, (st ? st.clientHeight : 720) * 0.62);
   let fs = plain.length <= 24 ? 31
-    : plain.length <= 40 ? 29
-    : plain.length <= 60 ? 27
-    : plain.length <= 90 ? 24
-    : plain.length <= 130 ? 21 : 19;
+    : plain.length <= 40 ? 30
+    : plain.length <= 60 ? 28
+    : plain.length <= 90 ? 26
+    : plain.length <= 130 ? 23 : 21;
   box.style.fontSize = fs + "px";
   let guard = 0;
-  while (box.scrollHeight > room && fs > 16 && guard++ < 30) {
+  while (box.scrollHeight > room && fs > 17 && guard++ < 30) {
     fs -= 1;
     box.style.fontSize = fs + "px";
   }

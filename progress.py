@@ -254,6 +254,31 @@ def _save_notes(n: dict) -> None:
     _save(_p("notes.json"), n)
 
 
+def sync_sentence_notes(vid: str, segs: list[dict], video: dict | None = None) -> int:
+    """자막을 수정하면 그 영상에서 북마크한 문장도 같은 내용으로 따라가게 한다.
+    문장 수가 줄어 범위를 벗어난 북마크는 지운다."""
+    n = _notes()
+    hit = 0
+    for key in [k for k, v in n["sentences"].items() if v.get("vid") == vid]:
+        item = n["sentences"][key]
+        i = int(item.get("idx", -1))
+        if i < 0 or i >= len(segs):
+            n["sentences"].pop(key)
+            continue
+        s = segs[i]
+        item["en"] = s.get("en") or s.get("text", "")
+        item["ko"] = s.get("ko", "")
+        item["start"] = s.get("start")
+        item["end"] = s.get("end")
+        if video:
+            item["title"] = video.get("title", item.get("title", ""))
+            item["yt"] = video.get("yt", item.get("yt", ""))
+        n["sentences"][key] = item
+        hit += 1
+    _save_notes(n)
+    return hit
+
+
 def notes() -> dict:
     n = _notes()
     s = sorted(n["sentences"].values(), key=lambda x: x.get("created", ""), reverse=True)
