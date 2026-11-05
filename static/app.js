@@ -561,7 +561,6 @@ async function refreshCur() {
     if (i >= 0) S.videos[i] = v;
     S.seg = S.cur.segs[S.idx];
     renderSeg();
-    renderAudioState();
   } catch {}
 }
 
