@@ -1182,3 +1182,37 @@ body.vf-focus .screens{height:100%}
 
 /* 완벽히 맞힌 문장 */
 .vr-seg.done .vr-i{color:#0085FF}
+
+/* ================= v6.5 : 스플래시 ================= */
+.splash{position:fixed;inset:0;z-index:9999;background:#fff;display:grid;place-items:center;
+  transition:opacity .45s ease,transform .45s ease}
+.splash.out{opacity:0;pointer-events:none}
+.splash-in{position:relative;width:100%;max-width:430px;height:100%;max-height:932px;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.bg-phrase{position:absolute;color:#000;white-space:nowrap;user-select:none;pointer-events:none;
+  letter-spacing:-.01em;font-weight:500}
+.sp-fr{top:11%;right:10%;font-size:15px;font-weight:400;opacity:.14}
+.sp-ko{top:18%;left:10%;font-size:19px;opacity:.26}
+.sp-en{top:25%;right:12%;font-size:17px;opacity:.20}
+.sp-ja{top:32%;left:8%;font-size:14px;font-weight:400;opacity:.15}
+.sp-zh{bottom:29%;right:12%;font-size:18px;opacity:.24}
+.sp-es{bottom:20%;left:10%;font-size:16px;font-weight:400;opacity:.18}
+.sp-de{bottom:11%;right:18%;font-size:15px;font-weight:400;opacity:.12}
+.splash-brand{display:flex;flex-direction:column;align-items:center;z-index:10}
+.sp-sym{width:112px;height:auto;display:block;margin-bottom:16px;
+  filter:drop-shadow(0 12px 26px rgba(0,149,246,.28));
+  animation:sp-pop .62s cubic-bezier(.2,.8,.2,1) both}
+.splash-title{font-size:38px;font-weight:800;color:#000;letter-spacing:-.035em;line-height:1.1;
+  animation:sp-up .55s .08s cubic-bezier(.2,.8,.2,1) both}
+.splash-bar{position:relative;width:76px;height:2px;border-radius:99px;background:#EDF1F5;
+  margin-top:26px;overflow:hidden;animation:sp-up .55s .16s cubic-bezier(.2,.8,.2,1) both}
+.splash-bar i{position:absolute;top:0;left:0;width:38%;height:100%;border-radius:99px;
+  background:#0095F6;animation:sp-slide 1.15s ease-in-out infinite}
+@keyframes sp-pop{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
+@keyframes sp-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes sp-slide{0%{transform:translateX(-100%)}100%{transform:translateX(265%)}}
+@media (max-width:520px){.splash{position:fixed}}
+@media (prefers-reduced-motion:reduce){
+  .sp-sym,.splash-title,.splash-bar{animation:none}
+  .splash-bar i{animation:sp-slide 1.6s ease-in-out infinite}
+}
