@@ -22,75 +22,87 @@ D_MISS_SENT = 20       # 문장을 통째로 비움 (문장당 감점 상한)
 D_MISS_WORD = 5        # 답안에 있어야 할 단어를 빠뜨림
 D_WRONG_WORD = 5       # 단어를 다른 단어로 씀 (빠뜨림·덧붙임과 동일)
 D_EXTRA_WORD = 5       # 원문에 없는 단어를 덧붙임 (빠뜨린 단어와 동일)
-D_PUNCT = 2            # 문장부호 누락·오추가 (쉼표 하나 빠지면 -2)
+D_PUNCT = 2            # 문장부호·대소문자 부정확 (쉼표 하나 빠지면 -2)
 MAX_SENT_LOSS = 20     # 한 문장에서 깎이는 최대치 (= 문장 하나 빠뜨린 것과 동일)
 
-WORD_RE = re.compile(r"[a-z0-9']+")
-PUNCT_RE = re.compile(r"[.,!?;:]")
+CHUNK_RE = re.compile(r"([A-Za-z0-9']+)([.,!?;:]*)")
 SPACE_RE = re.compile(r"\s+")
 
 
-def _clean(s: str) -> str:
-    return (s or "").lower().replace("\u2019", "'").replace("\u2018", "'")
+def _depunct(s: str) -> str:
+    return (s or "").replace("\u2019", "'").replace("\u2018", "'")
 
 
-def words_of(s: str) -> list[str]:
-    return WORD_RE.findall(_clean(s))
+def chunks_of(s: str) -> list:
+    """단어 + 뒤따르는 문장부호를 한 덩어리로 자른다.  'Mother,' -> ['Mother', ',']"""
+    return [[w, p] for w, p in CHUNK_RE.findall(_depunct(s))]
 
 
-def punct_of(s: str) -> list[str]:
-    return PUNCT_RE.findall(_clean(s))
+def words_of(s: str) -> list:
+    return [w.lower() for w, _ in chunks_of(s)]
 
 
 def norm(s: str) -> str:
     return SPACE_RE.sub(" ", " ".join(words_of(s))).strip()
 
 
-def punct_diff(answer: str, said: str) -> int:
-    """문장부호만 따로 비교한다. 다르게 찍은 개수만큼 감점."""
-    a, b = punct_of(answer), punct_of(said)
-    if a == b:
-        return 0
-    n = 0
-    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
-        if op != "equal":
-            n += max(i2 - i1, j2 - j1)
-    return n
-
-
 def word_diff(answer: str, said: str) -> dict:
-    """단어 1:1 대조.
+    """단어 1:1 대조 + 표기(문장부호·대소문자) 비교.
 
     LCS(SequenceMatcher)로 최장 일치 구간을 먼저 붙잡기 때문에, 중간에 단어가
-    끼어들거나 순서가 살짝 밀려도 뒤쪽 단어는 다시 정상 매칭된다.
-    (예: 'you are the love' → 'the'만 추가로 잡히고 'love'는 그대로 맞음)
+    끼어들어도 뒤쪽 단어는 다시 정상 매칭된다.
+      예) 'you are the love' -> 'the'만 덧붙임, 'love'는 정상
     """
-    a, b = words_of(answer), words_of(said)
-    tokens, miss, wrong, extra = [], 0, 0, 0
-    if not a:
-        return {"tokens": [], "miss": 0, "wrong": 0, "extra": 0, "blank": True}
-    if not b:
-        return {"tokens": [["miss", w] for w in a], "miss": len(a), "wrong": 0,
-                "extra": 0, "blank": True}
-    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+    a, b = chunks_of(answer), chunks_of(said)
+    aw = [w.lower() for w, _ in a]
+    bw = [w.lower() for w, _ in b]
+    mine, ans = [], []
+    miss = wrong = extra = mark = 0
+
+    if not aw:
+        return {"mine": [], "ans": [], "miss": 0, "wrong": 0, "extra": 0,
+                "mark": 0, "blank": True}
+    if not bw:
+        for w, p in a:
+            ans.append(["miss", w + p])
+        return {"mine": [], "ans": ans, "miss": len(a), "wrong": 0, "extra": 0,
+                "mark": 0, "blank": True}
+
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, aw, bw, autojunk=False).get_opcodes():
         if op == "equal":
-            for w in a[i1:i2]:
-                tokens.append(["ok", w])
-        elif op == "delete":                      # 정답에만 있음 = 빠뜨림
-            for w in a[i1:i2]:
-                tokens.append(["miss", w]); miss += 1
-        elif op == "insert":                      # 답안에만 있음 = 덧붙임
-            for w in b[j1:j2]:
-                tokens.append(["extra", w]); extra += 1
-        else:                                     # replace
+            for k in range(i2 - i1):
+                (w, p) = a[i1 + k]
+                (bw_, bp) = b[j1 + k]
+                if w == bw_ and p == bp:
+                    mine.append(["ok", bw_ + bp])
+                    ans.append(["ok", w + p])
+                else:
+                    mark += 1
+                    mine.append(["mark", bw_ + bp])
+                    ans.append(["mark", w + p])
+        elif op == "delete":                 # 정답에만 있음 = 빠뜨림
+            for k in range(i1, i2):
+                w, p = a[k]
+                ans.append(["miss", w + p]); miss += 1
+        elif op == "insert":                 # 답안에만 있음 = 덧붙임
+            for k in range(j1, j2):
+                w, p = b[k]
+                mine.append(["extra", w + p]); extra += 1
+        else:                                # replace
             pair = min(i2 - i1, j2 - j1)
             for k in range(pair):
-                tokens.append(["wrong", b[j1 + k]]); wrong += 1
-            for w in a[i1 + pair:i2]:
-                tokens.append(["miss", w]); miss += 1
-            for w in b[j1 + pair:j2]:
-                tokens.append(["extra", w]); extra += 1
-    return {"tokens": tokens, "miss": miss, "wrong": wrong, "extra": extra, "blank": False}
+                w, p = a[i1 + k]
+                bw_, bp = b[j1 + k]
+                mine.append(["wrong", bw_ + bp]); wrong += 1
+                ans.append(["wrong", w + p])
+            for k in range(i1 + pair, i2):
+                w, p = a[k]
+                ans.append(["miss", w + p]); miss += 1
+            for k in range(j1 + pair, j2):
+                w, p = b[k]
+                mine.append(["extra", w + p]); extra += 1
+    return {"mine": mine, "ans": ans, "miss": miss, "wrong": wrong,
+            "extra": extra, "mark": mark, "blank": False}
 
 
 def check_recall(segs: list[dict], typed: dict) -> dict:
@@ -104,24 +116,23 @@ def check_recall(segs: list[dict], typed: dict) -> dict:
         said = str((typed or {}).get(i, "") or (typed or {}).get(str(i), "") or "")
         if not en:
             rows.append({"i": i, "lost": 0, "answer": "", "said": said.strip()[:300],
-                         "tokens": [], "punct": 0})
+                         "mine": [], "ans": [], "punct": 0})
             continue
         d = word_diff(en, said)
-        pd = 0 if d["blank"] else punct_diff(en, said)
         if d["blank"]:
             lost = D_MISS_SENT
             totals["blank"] += 1
         else:
             lost = (d["miss"] * D_MISS_WORD + d["wrong"] * D_WRONG_WORD +
-                    d["extra"] * D_EXTRA_WORD + pd * D_PUNCT)
+                    d["extra"] * D_EXTRA_WORD + d["mark"] * D_PUNCT)
             totals["miss"] += d["miss"]; totals["wrong"] += d["wrong"]
-            totals["extra"] += d["extra"]; totals["punct"] += pd
+            totals["extra"] += d["extra"]; totals["punct"] += d["mark"]
         lost = min(lost, MAX_SENT_LOSS)      # 한 문장이 점수를 다 먹지 않게
         if lost == 0:
             clean += 1
         lost_total += lost
         rows.append({"i": i, "lost": lost, "answer": en, "said": said.strip()[:300],
-                     "tokens": d["tokens"], "punct": pd})
+                     "mine": d["mine"], "ans": d["ans"], "punct": d["mark"]})
 
     total = len([r for r in rows if r["answer"]])
     score = max(0, 100 - lost_total)

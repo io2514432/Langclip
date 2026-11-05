@@ -1108,14 +1108,16 @@ function playResultSeg(i) {
   }, 120);
 }
 
-function tokHtml(tokens) {
+function lineHtml(tokens, side) {
   if (!tokens || !tokens.length) return `<span class="vr-none">작성하지 않음</span>`;
   return tokens.map(([k, w]) => {
     const e = esc(w);
-    if (k === "ok") return `<span class="tk ok">${e}</span>`;
-    if (k === "wrong") return `<span class="tk bad">${e}</span>`;
-    if (k === "extra") return `<span class="tk extra">${e}</span>`;
-    return `<span class="tk miss">✓${e}</span>`;
+    if (side === "mine") {
+      const bad = (k === "wrong" || k === "extra") ? " tk-bad" : "";
+      return `<span class="tk${bad}">${e}</span>`;
+    }
+    const hi = (k === "ok") ? "" : " tk-hi";
+    return `<span class="tk${hi}">${e}</span>`;
   }).join(" ");
 }
 
@@ -1134,7 +1136,7 @@ function renderVerifyResult() {
     </div>
     <div class="vr-segs">
       ${rows.map((x) => `
-        <div class="vr-seg">
+        <div class="vr-seg${x.lost ? "" : " done"}">
           <div class="vr-top">
             <span class="vr-i">${x.i + 1}</span>
             ${x.lost ? `<span class="vr-lost">-${x.lost}</span>` : ""}
@@ -1142,8 +1144,8 @@ function renderVerifyResult() {
               <svg class="ic"><use href="#i-sound"/></svg>
             </button>
           </div>
-          <p class="vr-mine">${tokHtml(x.tokens)}</p>
-          <p class="vr-ans">${esc(x.answer)}</p>
+          <p class="vr-mine">${lineHtml(x.lost ? x.mine : x.ans, "ans")}</p>
+          ${x.lost ? `<p class="vr-ans"><span class="vr-lab">정답</span>${lineHtml(x.ans, "ans")}</p>` : ""}
         </div>`).join("")}
     </div>
     <div class="actions">
