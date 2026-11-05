@@ -275,11 +275,13 @@ function renderVideos() {
           <img src="https://i.ytimg.com/vi/${esc(v.yt)}/mqdefault.jpg" alt="" />
         </div>
         <div class="vc-main">
-          <div class="nc-en" style="font-size:13px">${esc(v.title)} ${v.complete ? '<span class="okchip">완료</span>' : ""}</div>
-          <div class="nc-meta" style="margin-top:5px">
-            ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
-            <span>총 ${v.n}문장</span>
-            ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : ""}
+          <div class="nc-en">${esc(v.title)} ${v.complete ? '<span class="okchip">완료</span>' : ""}</div>
+          <div class="nc-meta">
+            <span class="m-l">
+              ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
+              <span class="m-n">총 ${v.n}문장</span>
+            </span>
+            ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : `<span class="m-sp"></span>`}
           </div>
         </div>
         <div class="vc-pct">${v.complete ? ic("i-check", "ic xs") : ""}</div>
