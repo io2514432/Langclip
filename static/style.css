@@ -1306,3 +1306,17 @@ body.vf-focus .screens{height:100%}
 .vrow-wrap .v-audio:active,.vrow-wrap .v-audio:hover{color:#0F172A}
 .vrow-wrap .vc-pct{flex:0 0 16px;width:16px;display:grid;place-items:center;align-self:flex-start;
   margin-top:1px}
+
+/* v7.6 · 카드별 삭제 버튼 + 음원 링크 우측 정렬 */
+.vrow-wrap{position:relative}
+.vrow-wrap .vdel{position:absolute;top:7px;right:7px;z-index:3;
+  width:20px;height:20px;display:grid;place-items:center;
+  border:0;border-radius:6px;background:none;color:#94A3B8;padding:0;cursor:pointer}
+.vrow-wrap .vdel .ic{width:12px;height:12px;stroke-width:2.4}
+.vrow-wrap .vdel:hover,.vrow-wrap .vdel:active{color:#E2564F;background:#FEF2F2}
+.vrow-wrap .vc-body{padding:10px 12px 9px}
+.vrow-wrap .vc-pct{display:none!important}
+.vrow-wrap .nc-en{padding-right:16px;min-height:2.9em}
+.vrow-wrap .nc-meta{min-height:18px}
+.vrow-wrap .nc-meta .m-done{font-size:10.5px;font-weight:750;color:#1B9C63;white-space:nowrap}
+.vrow-wrap .v-audio{margin-left:auto;padding-right:0}
