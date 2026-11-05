@@ -24,7 +24,7 @@ PASS_SCORE = 90        # 이 점수 이상이면 통과
 D_MISS_SENT = 20       # 문장을 통째로 비움 (문장당 감점 상한)
 D_MISS_WORD = 5        # 답안에 있어야 할 단어를 빠뜨림
 D_WRONG_WORD = 2       # 단어를 다른 단어로 씀
-D_EXTRA_WORD = 1       # 원문에 없는 단어를 덧붙임
+D_EXTRA_WORD = 5       # 원문에 없는 단어를 덧붙임 (빠뜨린 단어와 동일)
 MAX_SENT_LOSS = 20     # 한 문장에서 깎이는 최대치 (= 문장 하나 빠뜨린 것과 동일)
 
 READ_MIN_AVG = 60      # 가림 낭독: 전체 평균
