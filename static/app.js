@@ -1108,6 +1108,20 @@ function playResultSeg(i) {
   }, 120);
 }
 
+/* 서버 응답이 구버전(tokens)이어도 화면이 비지 않도록 정규화한다. */
+function rowLines(x) {
+  if (Array.isArray(x.mine) && Array.isArray(x.ans) && (x.mine.length || x.ans.length)) {
+    return { mine: x.mine, ans: x.ans };
+  }
+  const toks = Array.isArray(x.tokens) ? x.tokens : [];
+  const words = String(x.answer || "").match(/[A-Za-z0-9']+[.,!?;:]*/g) || [];
+  const mine = toks.filter(([k]) => k !== "miss").map(([k, w]) => [k === "ok" ? "ok" : k, w]);
+  const ans = toks.length
+    ? toks.filter(([k]) => k !== "extra").map(([k, w]) => (k === "ok" ? ["ok", w] : ["miss", w]))
+    : words.map((w) => ["ok", w]);
+  return { mine, ans };
+}
+
 function lineHtml(tokens, side) {
   if (!tokens || !tokens.length) return `<span class="vr-none">작성하지 않음</span>`;
   return tokens.map(([k, w]) => {
@@ -1135,7 +1149,7 @@ function renderVerifyResult() {
       </div>
     </div>
     <div class="vr-segs">
-      ${rows.map((x) => `
+      ${rows.map((row) => { const x = row, ln = rowLines(row); return `
         <div class="vr-seg${x.lost ? "" : " done"}">
           <div class="vr-top">
             <span class="vr-i">${x.i + 1}</span>
@@ -1144,9 +1158,9 @@ function renderVerifyResult() {
               <svg class="ic"><use href="#i-sound"/></svg>
             </button>
           </div>
-          <p class="vr-mine">${lineHtml(x.lost ? x.mine : x.ans, "ans")}</p>
-          ${x.lost ? `<p class="vr-ans"><span class="vr-lab">정답</span>${lineHtml(x.ans, "ans")}</p>` : ""}
-        </div>`).join("")}
+          <p class="vr-mine">${lineHtml(ln.mine.length ? ln.mine : ln.ans, "mine")}</p>
+          ${x.lost ? `<p class="vr-ans"><span class="vr-lab">정답</span>${lineHtml(ln.ans, "ans")}</p>` : ""}
+        </div>`; }).join("")}
     </div>
     <div class="actions">
       <button class="btn primary" id="vf-again">다시 테스트</button>

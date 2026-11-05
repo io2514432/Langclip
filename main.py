@@ -451,11 +451,14 @@ def video_public(v: dict, d: dict) -> dict:
 
 
 # --------------------------------------------------------------- API
+LANGCLIP_BUILD = "6.2.0"
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
-            "script_md": True, "version": app.version,
+            "script_md": True, "version": app.version, "build": LANGCLIP_BUILD,
             "locked": bool(ADMIN_TOKEN) or PUBLIC, "mode": APP_MODE, "name": "Langclip"}
 
 
