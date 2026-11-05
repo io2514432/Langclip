@@ -178,6 +178,9 @@
             <button class="rail" id="btn-repeat" title="현재 문장 반복">
               <svg class="ic"><use href="#i-loop"/></svg><span class="rail-lab" id="loop-lab">반복</span>
             </button>
+            <button class="rail" id="btn-nudge" title="자막 싱크 미세조정" hidden>
+              <svg class="ic"><use href="#i-list"/></svg><span class="rail-lab">싱크</span>
+            </button>
             <button class="rail" id="btn-shadow" title="쉐도잉 (다시 누르면 취소)">
               <svg class="ic"><use href="#i-mic"/></svg><span class="rail-lab" id="shadow-lab">쉐도잉</span>
             </button>
@@ -221,6 +224,15 @@
           </div>
 
           <div class="vbottom">
+            <div class="segadj" id="segadj" hidden>
+              <span class="segadj-lab">자막</span>
+              <button class="vbtn xs" data-nudge="-0.5">−0.5</button>
+              <button class="vbtn xs" data-nudge="-0.1">−0.1</button>
+              <button class="vbtn xs" data-nudge="0.1">+0.1</button>
+              <button class="vbtn xs" data-nudge="0.5">+0.5</button>
+              <button class="vbtn xs" id="segadj-all" title="모든 문장을 함께 올깁니다">전체</button>
+              <span class="segadj-hint" id="segadj-hint"></span>
+            </div>
             <div class="vprog"><i id="vprog"></i></div>
             <div class="vrow">
               <button class="vbtn" id="btn-prev"><svg class="ic"><use href="#i-left"/></svg> 이전</button>
@@ -425,7 +437,10 @@ Sure. What size would you like?
           </div>
         </div>
 
-        <button class="btn primary" id="btn-sync-start">싱크 맞추기</button>
+        <div class="add-actions">
+          <button class="btn primary" id="btn-sync-start">싱크 맞추기</button>
+          <button class="btn ghost" id="btn-auto-sync">자동 싱크</button>
+        </div>
         <button class="btn text" data-close>닫기</button>
       </div>
     </div>
@@ -539,7 +554,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=7.1.0"></script>
-<script src="/sync.js?v=7.1.0"></script>
+<script src="/app.js?v=7.2.0"></script>
+<script src="/sync.js?v=7.2.0"></script>
 </body>
 </html>

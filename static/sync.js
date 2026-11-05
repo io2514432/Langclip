@@ -321,6 +321,55 @@
     ST.clock = 0;
   }
 
+
+  async function waitDuration(ms) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      try { const d = ST.player && ST.player.getDuration && ST.player.getDuration(); if (d > 0.5) return d; } catch {}
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    return 0;
+  }
+
+  /* 자동 싱크: 영상 길이를 문장 수로 균등 분배한다. 정확도는 낮으므로
+     저장 후 학습 플레이어에서 '자막 밀기'로 다듬는 것을 전제로 한다. */
+  async function auto(opts) {
+    const url = (opts.url || "").trim();
+    const text = opts.text || "";
+    const title = (opts.title || "").trim();
+    if (!url) return toast("쇼츠 주소를 입력해주세요");
+    if (!text.trim()) return toast("대본을 붙여넣어 주세요");
+
+    const b = $("#btn-auto-sync");
+    if (b) { b.disabled = true; b.textContent = "계산 중…"; }
+    try {
+      const r = await App().jsonPost("/api/sync/split", { text, split_sentences: true });
+      if (!r.items || !r.items.length) throw new Error("문장을 찾지 못했습니다");
+      ST.url = url; ST.title = title; ST.items = r.items;
+      ST.bounds = []; ST.finished = false;
+      ST.need = r.items.length > 1 ? r.items.length - 1 : 1;
+      const sheet = $("#sheet-add"); if (sheet) sheet.hidden = true;
+      show("s-sync");
+      const te = $("#sync-title"); if (te) te.textContent = title || "자동 싱크";
+      render();
+      await mount(url);
+      const dur = await waitDuration(9000);
+      if (!dur) throw new Error("영상 길이를 읽지 못했습니다. '싱크 맞추기'로 직접 맞춰주세요");
+
+      const n = ST.items.length;
+      ST.bounds = [];
+      for (let i = 1; i < n; i++) ST.bounds.push(Math.round((dur * i / n) * 100) / 100);
+      ST.need = ST.bounds.length || 1;
+      render();
+      finish();
+      toast(`영상 ${dur.toFixed(1)}초 ÷ ${n}문장으로 배치했습니다 · 저장 후 미세조정하세요`, 4200);
+    } catch (e) {
+      toast("자동 싱크 실패: " + e.message, 5200);
+    } finally {
+      if (b) { b.disabled = false; b.textContent = "자동 싱크"; }
+    }
+  }
+
   function bind() {
     $("#sync-tap").onclick = tap;
     $("#sync-undo").onclick = undo;
@@ -351,5 +400,5 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
   else bind();
 
-  window.LangclipSync = { ST, start, tap, undo, finish };
+  window.LangclipSync = { ST, start, auto, tap, undo, finish };
 })();

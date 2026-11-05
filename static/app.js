@@ -319,6 +319,7 @@ async function openVideo(v, idx = 0) {
   setSubClass();
   show("s-play");
   selectSeg(S.idx, true);
+  nudgeLabel();
   await mountPlayer(v.yt);
   setTimeout(() => { sizeVideo(); playFrom(S.idx); }, 350);
   startTick();
@@ -483,6 +484,85 @@ function openScriptSheet() {
   $("#sheet-script").hidden = false;
   const cur = $("#sc-list .sc-row.on");
   if (cur) setTimeout(() => cur.scrollIntoView({ block: "center" }), 60);
+}
+
+
+/* ================= 자막 싱크 미세조정 (관리자) ================= */
+const NUDGE = { all: false, timer: 0, saving: false };
+
+function nudgeLabel() {
+  const el = $("#segadj-hint");
+  if (!el || !S.cur) return;
+  const s = S.cur.segs[S.idx];
+  if (!s) { el.textContent = ""; return; }
+  el.textContent = `${S.idx + 1}번 ${s.start.toFixed(1)}–${s.end.toFixed(1)}s` + (NUDGE.all ? " · 전체" : "");
+}
+
+function nudgeToggle(force) {
+  if (!S.admin || !S.cur) return;
+  const box = $("#segadj");
+  const on = typeof force === "boolean" ? force : (box ? box.hidden : true);
+  if (box) box.hidden = !on;
+  const rail = $("#btn-nudge");
+  if (rail) rail.classList.toggle("on", !!on);
+  nudgeLabel();
+}
+
+function nudgeBy(d) {
+  if (!S.cur) return;
+  const segs = S.cur.segs || [];
+  const i = S.idx;
+  if (!segs.length) return;
+  const r2 = (x) => Math.round(x * 100) / 100;
+
+  if (NUDGE.all) {
+    let minStart = Infinity;
+    segs.forEach((s) => { minStart = Math.min(minStart, s.start); });
+    const dd = (minStart + d < 0) ? -minStart : d;
+    segs.forEach((s) => {
+      s.start = r2(Math.max(0, s.start + dd));
+      s.end = r2(Math.max(s.start + 0.2, s.end + dd));
+    });
+  } else {
+    const s = segs[i];
+    const prev = segs[i - 1];
+    let st = r2(s.start + d);
+    let en = r2(s.end + d);
+    if (st < 0) { en = r2(en - st); st = 0; }
+    if (prev && st < prev.end) st = prev.end;
+    if (en < st + 0.25) en = r2(st + 0.25);
+    s.start = st; s.end = en;
+    const nx = segs[i + 1];
+    if (nx && nx.start < s.end) nx.start = s.end;
+  }
+  S.seg = segs[i];
+  renderSeg();
+  nudgeLabel();
+  clearTimeout(NUDGE.timer);
+  NUDGE.timer = setTimeout(nudgeSave, 650);
+}
+
+async function nudgeSave() {
+  if (!S.cur || NUDGE.saving) return;
+  NUDGE.saving = true;
+  try {
+    const r = await api(`/api/videos/${S.cur.id}/segs`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segs: S.cur.segs.map((s) => ({ start: s.start, end: s.end })) }),
+    });
+    S.cur.segs = r.segs;
+    S.cur.n = r.n;
+    const k = S.videos.findIndex((x) => x.id === S.cur.id);
+    if (k >= 0) S.videos[k] = S.cur;
+    delete SCRC[S.cur.id];
+    S.seg = S.cur.segs[S.idx];
+    nudgeLabel();
+  } catch (e) {
+    toast("싱크 저장 실패: " + e.message, 4200);
+  } finally {
+    NUDGE.saving = false;
+  }
 }
 
 /* ================= 원본 음성 등록 ================= */
@@ -1792,6 +1872,13 @@ function bind() {
     closeWord();
   }, true);
 
+  const bNudge = $("#btn-nudge");
+  if (bNudge) bNudge.onclick = () => { try { nudgeToggle(); } catch (e) { toast("열지 못했습니다: " + e.message, 3200); } };
+  const bAll = $("#segadj-all");
+  if (bAll) bAll.onclick = () => { NUDGE.all = !NUDGE.all; bAll.classList.toggle("on", NUDGE.all); nudgeLabel(); };
+  $$("#segadj [data-nudge]").forEach((b) => {
+    b.onclick = () => nudgeBy(Number(b.dataset.nudge) || 0);
+  });
   $("#btn-back").onclick = () => {
     if (SH.phase !== "idle") {
       closeWave();
@@ -1879,6 +1966,8 @@ window.attachAddAudio = attachAddAudio;
     const h = await api("/api/health");
     S.admin = !h.locked;
   } catch { S.admin = true; }
+  const railNudge = $("#btn-nudge");
+  if (railNudge) railNudge.hidden = !S.admin;
   if (!S.admin) {
     $("#tab-add").hidden = true;
   }

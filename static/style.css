@@ -1240,3 +1240,16 @@ body.vf-focus .screens{height:100%}
 #s-notes .sec-title,
 #note-preview,
 #s-notes .note-empty{box-shadow:none!important;background-image:none!important}
+
+/* ================= v7.2 · 자동 싱크 / 자막 밀기 ================= */
+.add-actions{display:flex;gap:8px;margin-top:2px}
+.add-actions .btn{flex:1 1 0;width:auto;min-width:0;margin:0}
+.btn.ghost{background:#F2F4F6;color:#334155;border:1px solid #E5E9EF}
+
+.segadj{display:flex;align-items:center;gap:5px;padding:6px 8px;border-radius:12px;
+  background:rgba(8,20,32,.55);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(8px)}
+.segadj[hidden]{display:none}
+.segadj-lab{font-size:10px;font-weight:800;color:#7BD8FF;margin-right:2px}
+.segadj-hint{margin-left:auto;font-size:10px;font-weight:700;color:rgba(255,255,255,.6);
+  font-variant-numeric:tabular-nums}
+.vbtn.xs{height:26px;min-width:36px;padding:0 7px;font-size:10.5px;font-weight:800;border-radius:8px}
