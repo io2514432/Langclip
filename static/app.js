@@ -29,9 +29,8 @@ const SH = {
   meBuf: null, takeDecoded: null,
 };
 
-/* 학습 완료 검증 (3단계) */
-const VF = { on: false, stage: "read", i: 0, scores: [], typed: {}, spot: {}, spotItems: [], n: 0 };
-const FN = { on: false, i: 0, scores: [] };     // 가림 낭독 단계 진행 상태
+/* 백지 테스트 */
+const VF = { on: false, stage: "recall", typed: {}, n: 0 };
 
 /* ---------------- utils ---------------- */
 function toast(msg, ms = 2600) {
@@ -773,12 +772,9 @@ function playOriginalSeg(seg) {
 /* ---------------- 쉐도잉 본체 ---------------- */
 function cancelShadow() {
   if (SH.phase === "idle") return;
-  const wasVerify = VF.on;
-  VF.on = false; FN.on = false;
+  VF.on = false;
   closeWave();
-  document.body.classList.remove("vf-mask");
-  toast(wasVerify ? "검증을 취소했습니다" : "쉐도잉을 취소했습니다");
-  if (wasVerify) { show("s-play"); startTick(); }
+  toast("쉐도잉을 취소했습니다");
 }
 
 function onShadowBtn() {
@@ -797,7 +793,7 @@ async function startShadow() {
   SH.playT = 0;
   SH.score = null;
 
-  openWave(VF.on ? `검증 ${FN.i + 1}/${S.cur.n} · ${seg.en || ""}` : `${S.idx + 1}. ${seg.en || seg.text || ""}`);
+  openWave(`${S.idx + 1}. ${seg.en || seg.text || ""}`);
 
   if (au && au.url) {
     waveState("준비", "load");
@@ -869,19 +865,12 @@ async function beginTake() {
     });
   } catch (e) {
     showScoring(false);
-    FN.on = false; VF.on = false;
     SH.phase = "done";
     closeWave();
     show("s-play"); startTick();
     return toast("마이크를 사용할 수 없습니다 (" + (e && e.name ? e.name : "권한 필요") + ")", 4600);
   }
   showScoring(false);
-  if (false) {
-    const wasFinal = FN.on;
-    FN.on = false;
-    closeWave();
-    return toast((wasFinal ? "최종 검증 중단 · " : "") + "마이크를 사용할 수 없습니다 (" + e.name + ")", 4200);
-  }
   if (SH.phase !== "count") { try { SH.stream.getTracks().forEach((t) => t.stop()); } catch {} return; }
 
   const mimes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
@@ -890,10 +879,8 @@ async function beginTake() {
   try {
     SH.rec = new MediaRecorder(SH.stream, mime ? { mimeType: mime } : undefined);
   } catch (e) {
-    const wasFinal = FN.on;
-    FN.on = false;
     closeWave();
-    return toast((wasFinal ? "최종 검증 중단 · " : "") + "녹음을 시작할 수 없습니다", 3600);
+    return toast("녹음을 시작할 수 없습니다", 3600);
   }
   SH.rec.ondataavailable = (e) => { if (e.data.size) SH.chunks.push(e.data); };
   SH.rec.onstop = onTakeStop;
@@ -968,7 +955,6 @@ function onTakeStop() {
   if (!S.takeBlob || S.takeBlob.size < 1000) {
     SH.phase = "done";
     waveState("다시", "done");
-    if (FN.on) { FN.on = false; toast("녹음이 너무 짧아 최종 검증을 중단했습니다", 3600); }
     return;
   }
   submitScore();
@@ -992,17 +978,6 @@ async function submitScore() {
     sc.className = "wv-score " + (r.total >= 70 ? "good" : "low");
     drawWave();
 
-    if (FN.on) {
-      FN.scores.push(SH.score);
-      FN.i++;
-      if (FN.i < S.cur.segs.length) {
-        waveState(`${FN.i} 완료`, "done");
-        selectSeg(FN.i, true);
-        setTimeout(() => { if (FN.on) startShadow(); }, 550);
-        return;
-      }
-      return finishRead();
-    }
     renderResult(r);
     show("s-result");
     loadHome();
@@ -1015,12 +990,10 @@ async function submitScore() {
       return submitScore();
     }
     SH.__retry = 0;
-    const wasFinal = FN.on;
-    FN.on = false;
     SH.phase = "done";
     waveState("오류 · 다시 눌러 재시도", "done");
     toast("채점에 실패했습니다: " + e.message, 5200);
-    if (wasFinal) closeWave();
+    closeWave();
   }
 }
 
@@ -1030,10 +1003,9 @@ function startVerify() {
   if (!S.cur.segs || !S.cur.segs.length) return toast("문장이 없습니다");
   if (SH.phase !== "idle") closeWave(true);
   $("#sheet-script").hidden = true;
-  VF.on = false; FN.on = false;
-  VF.stage = "recall"; VF.i = 0; VF.scores = [];
-  VF.typed = {}; VF.spot = {}; VF.spotItems = []; VF.n = S.cur.segs.length;
-  document.body.classList.remove("vf-mask");
+  VF.on = false;
+  VF.stage = "recall";
+  VF.typed = {}; VF.n = S.cur.segs.length;
   document.body.classList.add("vf-focus");
   stopTick(); pausePlayer();
   show("s-verify");
@@ -1045,32 +1017,15 @@ function exitVerify(ask) {
   const done = segs.filter((s, i) => String(VF.typed[i] || "").trim()).length;
   if (ask && done > 0 &&
       !confirm(`작성한 답변 ${done}개가 사라집니다.\n\n백지 테스트를 나갈까요?`)) return;
-  VF.on = false; FN.on = false;
-  VF.typed = {}; VF.spot = {}; VF.scores = []; VF.stage = "recall";
+  VF.on = false;
+  VF.typed = {}; VF.stage = "recall";
   document.body.classList.remove("vf-focus");
   show("s-play"); startTick();
 }
 
 /* 1단계 끝 → 2단계 */
-function finishRead() {
-  VF.scores = FN.scores.slice();
-  FN.on = false;
-  closeWave(true);
-  document.body.classList.remove("vf-mask");
-  VF.stage = "recall";
-  show("s-verify");
-  renderVerify();
-}
-
-function stepBar() {
-  const el = $("#vf-steps");
-  if (el) el.innerHTML = "";
-}
-
 function renderVerify() {
-  stepBar();
   if (VF.stage === "recall") return renderRecall();
-  if (VF.stage === "spot") return renderSpot();
   if (VF.stage === "done") return renderVerifyResult();
 }
 
@@ -1078,7 +1033,7 @@ function renderVerify() {
 function renderRecall() {
   const segs = S.cur.segs;
   $("#vf-body").innerHTML = `
-    <p class="test-desc"><b>${verifyNeed.recall}점 이상 통과</b></p>
+    <p class="test-desc"><b>${PASS_SCORE}점 이상 통과</b></p>
     ${segs.map((s, i) => `
       <div class="vf-row" data-i="${i}">
         <div class="vf-ko"><b>${i + 1}</b><span>${esc(s.ko || "(한국어 없음 · 영어만)")}</span></div>
@@ -1114,37 +1069,7 @@ async function submitRecall() {
 }
 
 /* 3단계: 무작위 스팟 체크 */
-async function loadSpot() {
-  if (VF.spotItems.length) return;
-  try {
-    const r = await api(`/api/videos/${S.cur.id}/verify/spot?k=3`);
-    VF.spotItems = r.items || [];
-  } catch (e) {
-    VF.spotItems = [];
-    toast("스팟 문장을 불러오지 못했습니다: " + e.message, 3800);
-  }
-}
-
-function renderSpot() {
-  $("#vf-body").innerHTML = `
-    <p class="test-desc">무작위로 뽑힌 <b>${VF.spotItems.length}문장</b>입니다. 첫 글자 힌트만 보고 채우세요.
-      문장마다 <b>${verifyNeed.spot}점</b> 이상이면 통과입니다.</p>
-    ${VF.spotItems.map((it) => `
-      <div class="vf-row" data-i="${it.i}">
-        <div class="vf-ko"><b>${it.i + 1}</b>${esc(it.ko || "")}</div>
-        <div class="vf-hint">${esc(it.hint)}</div>
-        <textarea class="vf-in" data-i="${it.i}" rows="2" spellcheck="false"
-          placeholder="첫 글자를 따라 문장을 완성하세요"></textarea>
-      </div>`).join("")}
-    <button class="btn primary" id="vf-finish">검증 결과 보기</button>`;
-  $$("#vf-body .vf-in").forEach((el) => {
-    el.value = VF.spot[el.dataset.i] || "";
-    el.oninput = () => { VF.spot[el.dataset.i] = el.value; };
-  });
-  $("#vf-finish").onclick = submitVerify;
-}
-
-const verifyNeed = { recall: 90, spot: 85 };
+const PASS_SCORE = 90;   // verify.py 의 PASS_SCORE 와 같은 값
 
 async function submitVerify() {
   const b = $("#vf-submit");
@@ -1152,7 +1077,7 @@ async function submitVerify() {
   if (b) { b.disabled = true; b.textContent = "채점 중…"; }
   try {
     const r = await jsonPost(`/api/videos/${S.cur.id}/verify/check`, {
-      read: [], typed: VF.typed, spot: {},
+      typed: VF.typed,
     });
     VF.result = r;
     VF.stage = "done";
@@ -1167,7 +1092,6 @@ async function submitVerify() {
 }
 
 function renderVerifyResult() {
-  stepBar();
   const r = VF.result || {};
   const st = r.stages || {};
   const row = (key, label, s, extra) => {
@@ -1193,7 +1117,6 @@ function renderVerifyResult() {
         <div class="vf-sub">${r.passed ? "전체 문장을 통과했습니다" : "부족한 단계를 다시 연습하세요"}</div>
       </div>
     </div>
-    ${st.read && st.read.n ? row("read", "가림 낭독", st.read) : ""}
     ${row("recall", "백지 테스트", rc)}
     ${rc.total ? `<div class="vf-miss">
       ${dd.blank ? `<span>빠뜨린 문장 <b>${dd.blank}</b></span>` : ""}
@@ -1203,7 +1126,6 @@ function renderVerifyResult() {
       ${rc.lost ? `<span class="sum">감점 <b>-${rc.lost}</b></span>`
                 : `<span class="sum zero">감점 없음 · 만점</span>`}
     </div>` : ""}
-    ${st.spot && st.spot.total ? row("spot", "스팟 체크", st.spot) : ""}
     ${fails.length ? `<div class="vf-list"><b class="vf-list-h">가장 많이 틀린 문장</b>${fails.map((x) => `
       <div class="vf-li"><span>${x.i + 1}번 · -${x.lost}점</span><em>${esc(x.answer)}</em></div>`).join("")}</div>` : ""}
     <div class="actions">
@@ -1212,7 +1134,7 @@ function renderVerifyResult() {
     </div>`;
   const foot = $("#vf-foot");
   if (foot) foot.hidden = true;
-  $("#vf-again").onclick = () => { VF.spotItems = []; startVerify(); };
+  $("#vf-again").onclick = () => startVerify();
   $("#vf-close").onclick = () => exitVerify(false);
   if (r.passed) toast("학습 완료! 전체 문장을 통과했습니다", 4200);
 }
@@ -1835,7 +1757,6 @@ function bind() {
 
   $("#btn-back").onclick = () => {
     if (SH.phase !== "idle") {
-      FN.on = false;
       closeWave();
       toast("쉐도잉을 취소했습니다");
       return;

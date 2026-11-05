@@ -1049,21 +1049,6 @@ def sync_apply(payload: dict, request: Request):
 
 
 # ---- 학습 완료 검증 (3단계)
-_SPOT: dict[str, dict] = {}
-
-
-@app.get("/api/videos/{vid}/verify/spot")
-def verify_spot(vid: str, k: int = verify.SPOT_K):
-    """스팟 체크 문장을 무작위로 골라 준다. 힌트만 노출."""
-    d = db()
-    v = d["videos"].get(vid) or get_video(vid)
-    idx = verify.spot_pick(vid, len(v["segs"]), k, salt=_now_salt())
-    _SPOT[vid] = {"at": time.time(), "idx": idx}
-    items = [{"i": i, "ko": v["segs"][i].get("ko", ""),
-              "hint": verify.hint_of(v["segs"][i].get("en") or v["segs"][i].get("text") or "")}
-             for i in idx]
-    return {"ok": True, "k": len(items), "items": items, "count": len(v["segs"])}
-
 
 def _now_salt() -> str:
     return str(int(time.time() // 60))
@@ -1111,7 +1096,6 @@ PUBLIC_ALLOW = {
     ("DELETE", "/api/notes/sentence/{vid}/{idx}"),
     ("POST", "/api/notes/word"),
     ("GET", "/api/words/{word}"),
-    ("GET", "/api/videos/{vid}/verify/spot"),
     ("POST", "/api/videos/{vid}/verify/check"),
 }
 if PUBLIC:

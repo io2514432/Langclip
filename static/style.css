@@ -665,22 +665,10 @@ body{
 #s-verify{background:var(--bg);display:none;flex-direction:column}
 #s-verify.is-active{display:flex}
 
-.vf-steps{display:flex;gap:6px;padding:0 12px 8px}
-.vf-step{flex:1 1 0;display:flex;align-items:center;gap:5px;padding:7px 8px;border:1px solid var(--line);
-  border-radius:10px;background:#fff;font-size:9.5px;font-weight:800;color:#A6BCCC}
-.vf-step b{flex:0 0 15px;height:15px;border-radius:5px;background:#F1F7FC;color:#A6BCCC;
-  font-size:8.5px;display:grid;place-items:center}
-.vf-step.on{border-color:var(--sky);background:#EAF7FF;color:var(--sky-d)}
-.vf-step.on b{background:var(--sky-d);color:#fff}
-.vf-step.done{border-color:#C8EBDD;background:#F5FDF9;color:#22B884}
-.vf-step.done b{background:#22B884;color:#fff}
-
 .vf-row{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px;margin-bottom:8px}
 .vf-ko{font-size:11px;line-height:1.5;color:var(--ink);font-weight:650;display:flex;gap:6px}
 .vf-ko b{flex:0 0 17px;height:17px;border-radius:5px;background:var(--sky-l);color:var(--sky-d);
   font-size:9px;display:grid;place-items:center;margin-top:1px}
-.vf-hint{margin-top:6px;font-size:10px;font-weight:800;color:var(--sky-d);letter-spacing:.02em;
-  background:#F4FBFF;border:1px dashed #BFE6FB;border-radius:7px;padding:5px 7px}
 .vf-in{width:100%;margin-top:7px;border:1px solid var(--line);border-radius:9px;background:#FBFEFF;
   font:inherit;font-size:11px;line-height:1.5;padding:7px 8px;color:var(--ink);resize:vertical}
 .vf-in:focus{outline:none;border-color:var(--sky);background:#fff}
@@ -712,10 +700,6 @@ body{
 .vf-li span{font-size:9.5px;font-weight:850;color:#E2564F}
 .vf-li em{font-style:normal;font-size:10px;color:var(--ink);line-height:1.4}
 
-/* 가림 낭독: 영어 자막 숨김 */
-body.vf-mask .sub-en,.body-vf .sub-en{display:none!important}
-body.vf-mask #btn-star{display:none!important}
-body.vf-mask .sub-ko{font-size:13px}
 .actions{display:flex;flex-direction:column;gap:7px;margin-top:6px}
 
 
@@ -1007,9 +991,6 @@ button{box-shadow:none}
 .abar-loop.on{background:#F0F9FF;color:var(--brand);box-shadow:inset 0 0 0 1.5px var(--brand)}
 .abar{border-radius:16px}
 
-.vf-step{border-radius:10px}
-.vf-step b{background:none;color:var(--mute);font-weight:800}
-.vf-step.on b{color:var(--brand)}
 
 
 /* ================= v4.5 정리 ================= */

@@ -1,21 +1,18 @@
-"""Langclip — 학습 완료 검증 (3단계 교차 검증)
+"""Langclip — 백지 테스트(전체 타이핑) 채점
 
-왜 3단계인가
-  셰도잉 점수만으로는 '암기'를 증명하지 못한다. 영어가 화면에 보이면 그대로 읽어도
-  높은 점수가 나오기 때문이다. 그래서 검증을 세 축으로 나눈다.
+한국어만 보고 영어 문장을 처음부터 끝까지 타이핑한다.
+100점에서 틀린 만큼 깎고, 0점 아래로는 내려가지 않는다.
 
-  1) 가림 낭독(read)   : 영어 자막을 숨기고 한국어만 보고 말한다 → 발음·억양·유창성
-  2) 가림 복창(recall) : 한국어만 보고 영어 문장을 직접 타이핑한다 → 내용 암기
-  3) 스팟 체크(spot)   : 무작위 3문장을 첫 글자 힌트만 보고 타이핑한다 → 부분 암기 방지
+  문장 통째로 비움  -20  (문장당 감점 상한)
+  단어 빠뜨림       -5
+  단어 덧붙임       -5
+  단어 오답         -5
 
-  세 단계를 모두 통과해야 '학습 완료'. 타이핑 채점은 결정적(항상 같은 결과)이라
-  브라우저·기기 편차가 없다.
+90점 이상이면 통과. 타이핑 채점은 결정적(항상 같은 결과)이라 기기·브라우저 편차가 없다.
 """
 from __future__ import annotations
 
 import difflib
-import hashlib
-import random
 import re
 
 # ---- 백지 테스트(전체 타이핑) 채점 -------------------------------------
@@ -26,12 +23,6 @@ D_MISS_WORD = 5        # 답안에 있어야 할 단어를 빠뜨림
 D_WRONG_WORD = 5       # 단어를 다른 단어로 씀 (빠뜨림·덧붙임과 동일)
 D_EXTRA_WORD = 5       # 원문에 없는 단어를 덧붙임 (빠뜨린 단어와 동일)
 MAX_SENT_LOSS = 20     # 한 문장에서 깎이는 최대치 (= 문장 하나 빠뜨린 것과 동일)
-
-READ_MIN_AVG = 60      # 가림 낭독: 전체 평균
-READ_MIN_ONE = 25      # 가림 낭독: 문장 최저(아예 안 읽은 것 배제)
-RECALL_PASS = 90       # 가림 복창: 문장별 유사도(%)
-SPOT_PASS = 85         # 스팟 체크: 문장별 유사도(%)
-SPOT_K = 3
 
 PUNCT = re.compile(r"[^\w\s'’-]")
 SPACE = re.compile(r"\s+")
@@ -71,45 +62,7 @@ def pct(a: str, b: str) -> int:
     wordpct = 100.0 * hit / max(1, len(wa))
     return int(round(0.45 * base + 0.55 * wordpct))
 
-def hint_of(text: str) -> str:
-    """첫 글자 힌트: 'Hi, can I get a latte please?' → 'H, c I g a l p?'"""
-    out = []
-    for w in (text or "").split(" "):
-        core = re.sub(r"[^\w'’-]", "", w)
-        if not core:
-            out.append(w)
-            continue
-        out.append(core[0] + re.sub(r"[\w'’-]", "", w))
-    return " ".join(out)
-
-
-def spot_pick(vid: str, n: int, k: int = SPOT_K, salt: str = "") -> list[int]:
-    """무작위 스팟 문장 고르기 (문장 수가 적으면 전부)."""
-    if n <= 0:
-        return []
-    k = min(max(1, k), n)
-    seed = int(hashlib.md5(f"{vid}:{salt}:{n}".encode()).hexdigest(), 16) % 10 ** 9
-    rnd = random.Random(seed)
-    idx = list(range(n))
-    rnd.shuffle(idx)
-    return sorted(idx[:k])
-
-
 # ---------------------------------------------------------------- 1) 가림 낭독
-def check_read(scores: list[int], n_segs: int) -> dict:
-    sc = [int(round(float(x))) for x in (scores or [])]
-    if n_segs <= 0:
-        return {"passed": False, "avg": 0, "n": 0, "note": "문장이 없습니다"}
-    if len(sc) != n_segs:
-        return {"passed": False, "avg": 0, "n": len(sc),
-                "note": f"문장 {n_segs}개 중 {len(sc)}개만 기록되었습니다"}
-    avg = round(sum(sc) / len(sc), 1)
-    low = min(sc)
-    passed = avg >= READ_MIN_AVG and low >= READ_MIN_ONE
-    return {"passed": passed, "avg": avg, "low": low, "n": len(sc),
-            "need_avg": READ_MIN_AVG, "need_low": READ_MIN_ONE, "scores": sc}
-
-
 # ---------------------------------------------------------------- 2) 가림 복창
 def word_diff(answer: str, said: str) -> dict:
     """단어 단위로 비교해 감점을 계산한다.
@@ -182,49 +135,16 @@ def check_recall(segs: list[dict], typed: dict) -> dict:
 
 
 # ---------------------------------------------------------------- 3) 스팟 체크
-def check_spot(segs: list[dict], idx: list[int], typed: dict) -> dict:
-    rows, ok = [], 0
-    for i in (idx or []):
-        if not (0 <= int(i) < len(segs)):
-            continue
-        s = segs[int(i)]
-        en = (s.get("en") or s.get("text") or "").strip()
-        said = str((typed or {}).get(int(i), "") or (typed or {}).get(str(i), "") or "")
-        score = pct(en, said)
-        good = bool(en) and score >= SPOT_PASS
-        ok += 1 if good else 0
-        rows.append({"i": int(i), "score": score, "pass": good, "answer": en,
-                     "said": said.strip()[:200]})
-    total = len(rows)
-    return {"passed": bool(total) and ok == total, "hit": ok, "total": total,
-            "rows": rows, "need": SPOT_PASS, "idx": [r["i"] for r in rows]}
-
-
 # ---------------------------------------------------------------- 통합
-def _weighted_score(r, c, s) -> int:
-    recall = c.get("score", 0)
-    parts, w = [(recall, 1.0)], 1.0
-    if r:
-        parts.append((r.get("avg") or 0, 0.4)); w += 0.4
-    if s:
-        parts.append((100 * s["hit"] / max(1, s["total"]), 0.3)); w += 0.3
-    return int(round(sum(x * k for x, k in parts) / w))
-
-
-def judge(segs: list[dict], read_scores, typed, spot_idx, spot_typed) -> dict:
-    # v4.7: 백지 테스트(전체 타이핑) 단일 단계. 넘겨받은 단계만 판정에 넣는다.
-    r = check_read(read_scores, len(segs)) if read_scores else None
+def judge(segs: list[dict], typed) -> dict:
     c = check_recall(segs, typed or {})
-    s = check_spot(segs, spot_idx or [], spot_typed or {}) if spot_idx else None
-    passed = bool(c["passed"] and (r is None or r["passed"]) and (s is None or s["passed"]))
+    passed = bool(c["passed"])
     fails = [row["i"] for row in sorted(c["rows"], key=lambda x: -x.get("lost", 0))
              if row.get("lost", 0) > 0][:5]
     return {
         "passed": passed,
-        "stages": {k: v for k, v in (("read", r), ("recall", c), ("spot", s)) if v},
-        "score": _weighted_score(r, c, s),
+        "stages": {"recall": c},
+        "score": c["score"],
         "failed_sentences": fails,
-        "headline": ("학습 완료" if passed else
-                     "가림 낭독 미달" if (r and not r["passed"]) else
-                     "백지 테스트 미달" if not c["passed"] else "스팟 체크 미달"),
+        "headline": "학습 완료" if passed else "백지 테스트 미달",
     }
