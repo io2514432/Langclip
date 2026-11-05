@@ -1142,3 +1142,37 @@ body.vf-focus .screens{height:100%}
 .vf-miss .sum{background:#FFF1F0;color:#D14B45}
 .vf-miss .sum b{color:#D14B45}
 .vf-miss .sum.zero{background:#EFFAF4;color:#1F9D6B}
+
+/* ================= v6.0 : 결과 화면 ================= */
+
+/* 점수는 도넛 대신 큰 숫자로 */
+.vr-hero{display:flex;align-items:baseline;gap:14px;padding:8px 0 20px}
+.vr-num{font-size:54px;font-weight:800;letter-spacing:-.05em;line-height:.95;
+  color:#0F172A;font-variant-numeric:tabular-nums}
+.vr-num small{font-size:15px;font-weight:700;color:#94A3B8;margin-left:3px;letter-spacing:0}
+.vr-txt{display:flex;flex-direction:column;gap:3px;padding-bottom:6px}
+.vr-txt b{font-size:14px;font-weight:750;letter-spacing:-.02em}
+.vr-hero.ok .vr-txt b{color:#1F9D6B}
+.vr-hero.no .vr-txt b{color:#E2564F}
+.vr-txt em{font-style:normal;font-size:11px;color:#94A3B8}
+
+/* 문장별 결과: 카드·박스 없이 여백만 */
+.vr-segs{display:flex;flex-direction:column;gap:22px}
+.vr-seg{position:relative}
+.vr-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.vr-i{font-size:11px;font-weight:800;color:#CBD5E1;font-variant-numeric:tabular-nums}
+.vr-lost{font-size:10.5px;font-weight:700;color:#E2564F;font-variant-numeric:tabular-nums}
+.vr-spk{margin-left:auto;border:0;background:none;padding:2px;color:#94A3B8;cursor:pointer;
+  display:grid;place-items:center}
+.vr-spk .ic{width:15px;height:15px;stroke-width:1.9}
+.vr-spk:active{color:#0070F3}
+.vr-mine{font-size:14px;line-height:1.65;color:#334155;margin:0 0 3px;word-break:break-word}
+.vr-ans{font-size:12.5px;line-height:1.6;color:#94A3B8;margin:0}
+.vr-ans::before{content:"정답 ";font-size:10px;font-weight:800;color:#CBD5E1;letter-spacing:-.01em}
+.vr-none{color:#CBD5E1;font-size:13px}
+
+/* 단어 대조 색 */
+.tk.ok{color:#0070F3}
+.tk.bad{color:#E2564F}
+.tk.extra{color:#E2564F;text-decoration:line-through;opacity:.75}
+.tk.miss{color:#E2564F;font-weight:700}

@@ -1058,7 +1058,10 @@ function updateVfCount() {
   const foot = $("#vf-foot");
   if (foot) foot.hidden = VF.stage !== "recall";
   const b = $("#vf-submit");
-  if (b) b.textContent = `채점하기 (${done}/${segs.length} 작성됨)`;
+  if (b) {
+    b.disabled = false;              // 이전 채점에서 잠긴 상태를 반드시 푼다
+    b.textContent = `채점하기 (${done}/${segs.length} 작성됨)`;
+  }
 }
 
 async function submitRecall() {
@@ -1091,52 +1094,69 @@ async function submitVerify() {
   }
 }
 
+function playResultSeg(i) {
+  const seg = (S.cur && S.cur.segs) || [];
+  const s = seg[i];
+  if (!s) return;
+  if (!S.player || !S.ready) return toast("플레이어 준비 중입니다");
+  try { S.player.seekTo(s.start, true); S.player.playVideo(); } catch {}
+  clearInterval(window.__vrStop);
+  window.__vrStop = setInterval(() => {
+    let t = 0;
+    try { t = S.player.getCurrentTime() || 0; } catch { return; }
+    if (t >= (s.end || s.start + 1)) { try { S.player.pauseVideo(); } catch {} clearInterval(window.__vrStop); }
+  }, 120);
+}
+
+function tokHtml(tokens) {
+  if (!tokens || !tokens.length) return `<span class="vr-none">작성하지 않음</span>`;
+  return tokens.map(([k, w]) => {
+    const e = esc(w);
+    if (k === "ok") return `<span class="tk ok">${e}</span>`;
+    if (k === "wrong") return `<span class="tk bad">${e}</span>`;
+    if (k === "extra") return `<span class="tk extra">${e}</span>`;
+    return `<span class="tk miss">✓${e}</span>`;
+  }).join(" ");
+}
+
 function renderVerifyResult() {
   const r = VF.result || {};
-  const st = r.stages || {};
-  const row = (key, label, s, extra) => {
-    const ok = s && s.passed;
-    const detail = s
-      ? (key === "read" ? `평균 ${Math.round(s.avg || 0)}점 · 최저 ${Math.round(s.low || 0)}점`
-        : `${s.hit || 0} / ${s.total || 0} 문장`)
-      : "미응시";
-    return `<div class="vf-res ${ok ? "ok" : "no"}">
-      <span class="vf-res-ic">${ok ? ic("i-check", "ic xs") : ic("i-close", "ic xs")}</span>
-      <span class="vf-res-b"><b>${label}</b><em>${detail}${extra ? " · " + extra : ""}</em></span>
-    </div>`;
-  };
-  const rc = st.recall || {};
-  const dd = rc.detail || {};
-  const fails = (rc.rows || []).filter((x) => (x.lost || 0) > 0)
-    .sort((x, y) => y.lost - x.lost).slice(0, 5);
+  const rc = (r.stages || {}).recall || {};
+  const rows = rc.rows || [];
+  const score = Math.round(r.score || 0);
   $("#vf-body").innerHTML = `
-    <div class="vf-head ${r.passed ? "ok" : ""}">
-      <div class="vf-score"><b>${Math.round(r.score || 0)}</b><small>점</small></div>
-      <div class="vf-head-b">
-        <div class="vf-verdict">${r.passed ? "학습 완료" : esc(r.headline || "다시 도전")}</div>
-        <div class="vf-sub">${r.passed ? "전체 문장을 통과했습니다" : "부족한 단계를 다시 연습하세요"}</div>
+    <div class="vr-hero ${r.passed ? "ok" : "no"}">
+      <div class="vr-num">${score}<small>점</small></div>
+      <div class="vr-txt">
+        <b>${r.passed ? "통과했습니다" : "다시 도전해보세요"}</b>
+        <em>${r.passed ? "모든 문장을 확인하세요" : `${rc.need || 90}점 이상이면 통과입니다`}</em>
       </div>
     </div>
-    ${row("recall", "백지 테스트", rc)}
-    ${rc.total ? `<div class="vf-miss">
-      ${dd.blank ? `<span>빠뜨린 문장 <b>${dd.blank}</b></span>` : ""}
-      ${dd.miss ? `<span>빠뜨린 단어 <b>${dd.miss}</b></span>` : ""}
-      ${dd.wrong ? `<span>틀린 단어 <b>${dd.wrong}</b></span>` : ""}
-      ${dd.extra ? `<span>덧붙인 단어 <b>${dd.extra}</b></span>` : ""}
-      ${rc.lost ? `<span class="sum">감점 <b>-${rc.lost}</b></span>`
-                : `<span class="sum zero">감점 없음 · 만점</span>`}
-    </div>` : ""}
-    ${fails.length ? `<div class="vf-list"><b class="vf-list-h">가장 많이 틀린 문장</b>${fails.map((x) => `
-      <div class="vf-li"><span>${x.i + 1}번 · -${x.lost}점</span><em>${esc(x.answer)}</em></div>`).join("")}</div>` : ""}
+    <div class="vr-segs">
+      ${rows.map((x) => `
+        <div class="vr-seg">
+          <div class="vr-top">
+            <span class="vr-i">${x.i + 1}</span>
+            ${x.lost ? `<span class="vr-lost">-${x.lost}</span>` : ""}
+            <button class="vr-spk" data-i="${x.i}" aria-label="발음 듣기">
+              <svg class="ic"><use href="#i-sound"/></svg>
+            </button>
+          </div>
+          <p class="vr-mine">${tokHtml(x.tokens)}</p>
+          <p class="vr-ans">${esc(x.answer)}</p>
+        </div>`).join("")}
+    </div>
     <div class="actions">
       <button class="btn primary" id="vf-again">다시 테스트</button>
       <button class="btn ghost" id="vf-close">학습으로 돌아가기</button>
     </div>`;
   const foot = $("#vf-foot");
   if (foot) foot.hidden = true;
-  $("#vf-again").onclick = () => startVerify();
-  $("#vf-close").onclick = () => exitVerify(false);
-  if (r.passed) toast("학습 완료! 전체 문장을 통과했습니다", 4200);
+  $$("#vf-body .vr-spk").forEach((b) => {
+    b.onclick = () => playResultSeg(+b.dataset.i);
+  });
+  $("#vf-again").onclick = () => { clearInterval(window.__vrStop); startVerify(); };
+  $("#vf-close").onclick = () => { clearInterval(window.__vrStop); exitVerify(false); };
 }
 
 /* ================= 결과 ================= */
