@@ -282,13 +282,13 @@ def toggle_sentence(vid: str, idx: int, seg: dict, video: dict | None = None,
 
 
 def toggle_word(word: str, meaning: str = "", ctx: str = "", vid: str = "",
-                idx: int = -1) -> dict:
+                idx: int = -1, toggle_only: bool = False) -> dict:
     n = _notes()
     key = re.sub(r"[^a-z0-9'\- ]", "", (word or "").lower()).strip()
     if not key:
         return {"ok": False, "error": "empty"}
     if key in n["words"]:
-        if meaning.strip():
+        if meaning.strip() and not toggle_only:
             n["words"][key]["meaning"] = meaning.strip()[:200]
             _save_notes(n)
             return {"ok": True, "bookmarked": True, "key": key, "updated": True}

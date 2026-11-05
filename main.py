@@ -569,6 +569,40 @@ def get_script(vid: str):
             "template": SCRIPT_TEMPLATE}
 
 
+@app.patch("/api/videos/{vid}/segs")
+def patch_segs(vid: str, payload: dict, request: Request):
+    """문장(자막)을 직접 수정한다. 영어/한국어/시작·종료 시간만 바꾼다."""
+    require_admin(request)
+    items = payload.get("segs")
+    if not isinstance(items, list) or not items:
+        raise HTTPException(422, "문장 목록이 비어 있습니다")
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    cur = v.get("segs") or []
+    out = []
+    for i, it in enumerate(items):
+        base = cur[i] if i < len(cur) else {}
+        en = str(it.get("en", base.get("en", "")) or "").strip()[:500]
+        ko = str(it.get("ko", base.get("ko", "")) or "").strip()[:500]
+        try:
+            st = round(float(it.get("start", base.get("start", 0.0))), 3)
+            en_t = round(float(it.get("end", base.get("end", 0.0))), 3)
+        except (TypeError, ValueError):
+            raise HTTPException(422, f"{i + 1}번 문장의 시간 형식이 올바르지 않습니다")
+        if st < 0 or en_t <= st:
+            raise HTTPException(422, f"{i + 1}번 문장의 종료 시간이 시작보다 뒤여야 합니다")
+        if not en:
+            raise HTTPException(422, f"{i + 1}번 문장의 영어가 비어 있습니다")
+        out.append({**base, "en": en, "ko": ko, "start": st, "end": en_t})
+    out.sort(key=lambda x: x["start"])
+    v["segs"] = out
+    if "n" in v:
+        v["n"] = len(out)
+    d["videos"][vid] = v
+    save_db(d)
+    return {"ok": True, "segs": out, "n": len(out)}
+
+
 @app.put("/api/videos/{vid}/script")
 def put_script(vid: str, payload: dict, request: Request):
     require_admin(request)
@@ -883,7 +917,8 @@ def note_word(payload: dict):
                             str(payload.get("meaning") or ""),
                             str(payload.get("ctx") or ""),
                             str(payload.get("vid") or ""),
-                            int(payload.get("idx", -1)))
+                            int(payload.get("idx", -1)),
+                            bool(payload.get("toggle_only")))
 
 
 @app.get("/api/words/{word}")

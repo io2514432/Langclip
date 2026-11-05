@@ -279,9 +279,8 @@ function renderVideos() {
         <div class="vc-main">
           <div class="nc-en" style="font-size:13px">${esc(v.title)} ${v.complete ? '<span class="okchip">완료</span>' : ""}</div>
           <div class="nc-meta" style="margin-top:5px">
-            <span class="tag">문장 ${v.n}개</span>
             ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
-            <span>${v.complete ? "검증 통과" : (v.verify && v.verify.tries ? "검증 재도전" : "학습 중")}</span>
+            <span>총 ${v.n}문장</span>
           </div>
         </div>
         <div class="vc-pct">${v.complete ? ic("i-check", "ic xs") : ""}</div>
@@ -1491,17 +1490,27 @@ function initMixUI() {
 /* ---------- 단어 팝업 (작은 검은 박스) ---------- */
 const WP = { word: "", ctx: "", ko: "", saved: false, seq: 0 };
 
+function paintWordStar(on) {
+  const b = $("#wp-book");
+  if (!b) return;
+  b.innerHTML = ic(on ? "i-star-fill" : "i-star");
+  b.classList.toggle("on", !!on);
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
 async function openWord(word, ctx) {
   if (!word) return;
+  if (!$("#s-play").classList.contains("is-active")) return;
   if (performance.now() < S.lockUntil) return;
   if (SH.phase !== "idle") return;
   const pop = $("#word-pop"); if (!pop) return;
+  if (!pop.hidden && WP.word === word) return;
   const seq = ++WP.seq;
   S.word = { word, ctx };
   WP.word = word; WP.ctx = ctx || ""; WP.ko = ""; WP.saved = false;
   $("#wp-word").textContent = word;
   $("#wp-ko").textContent = "…";
-  $("#wp-book").classList.remove("on");
+  paintWordStar(false);
   pop.hidden = false;
   try {
     const r = await api("/api/words/" + encodeURIComponent(word));
@@ -1509,6 +1518,7 @@ async function openWord(word, ctx) {
     const d = (r.definitions || [])[0];
     WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning : (r.ko || (d ? d.def : ""));
     WP.saved = !!r.saved;
+    paintWordStar(WP.saved);
     $("#wp-ko").textContent = WP.ko || "뜻을 찾지 못했어요";
     $("#wp-book").classList.toggle("on", !!WP.saved);
   } catch {
@@ -1522,15 +1532,15 @@ function closeWord() {
   if (pop) pop.hidden = true;
 }
 
-async function toggleWordBook() {
+async function toggleWordStar() {
   if (!WP.word) return;
   try {
     const r = await jsonPost("/api/notes/word", {
       word: WP.word, meaning: WP.ko, ctx: WP.ctx, vid: S.cur?.id || "", idx: S.idx,
+      toggle_only: true,
     });
     WP.saved = !!r.bookmarked;
-    const pb = $("#wp-book");
-    if (pb) { pb.classList.toggle("on", WP.saved); pb.setAttribute("aria-pressed", WP.saved ? "true" : "false"); }
+    paintWordStar(WP.saved);
     await reloadNotes();
     toast(r.bookmarked ? "북마크에 담았습니다" : "북마크에서 뺐습니다");
   } catch (e) { toast("실패: " + e.message, 3800); }
@@ -1564,7 +1574,7 @@ async function openDict() {
 }
 
 /* ================= 대본 ================= */
-const SCR = { q: "", vid: "" };
+const SCR = { q: "", vid: "", edit: false };
 const SCRC = {};
 
 async function scrVideo(id) {
@@ -1600,6 +1610,13 @@ async function renderScript() {
   const v = await scrVideo(SCR.vid);
   if (!v) { box.innerHTML = `<div class="scr-empty">대본을 불러오지 못했습니다</div>`; return; }
   if (SCR.vid !== v.id) return;
+  const eb = $("#scr-edit");
+  if (eb) {
+    eb.hidden = !S.admin;
+    eb.textContent = SCR.edit ? "보기" : "편집";
+    eb.classList.toggle("on", SCR.edit);
+  }
+  if (SCR.edit && S.admin) return renderScriptEdit(v);
   const q = (SCR.q || "").trim().toLowerCase();
   const segs = (v.segs || []).map((s, i) => ({ s, i })).filter(({ s }) => {
     if (!q) return true;
@@ -1615,6 +1632,62 @@ async function renderScript() {
     b.onclick = () => playSegAudio(SCR.vid, +b.dataset.i);
   });
   auMark();
+}
+
+function renderScriptEdit(v) {
+  const box = $("#scr-body");
+  const segs = v.segs || [];
+  box.innerHTML = `<div class="scr-vt">${esc(v.title || "")} · ${segs.length}문장 편집</div>` +
+    segs.map((s, i) => `
+      <div class="ed-row" data-i="${i}">
+        <div class="ed-head"><b>${i + 1}</b>
+          <span class="ed-time">
+            <input class="ed-st" type="number" step="0.1" min="0" value="${Number(s.start || 0).toFixed(2)}" />
+            <i>–</i>
+            <input class="ed-en2" type="number" step="0.1" min="0" value="${Number(s.end || 0).toFixed(2)}" />
+            <i>s</i>
+          </span>
+        </div>
+        <input class="ed-en" value="${esc(s.en || s.text || "")}" placeholder="영어 문장" />
+        <input class="ed-ko" value="${esc(s.ko || "")}" placeholder="한국어 뜻 (없어도 됨)" />
+      </div>`).join("") +
+    `<div class="ed-actions">
+      <button class="btn primary" id="scr-save">저장</button>
+      <button class="btn ghost" id="scr-cancel">취소</button>
+    </div>`;
+  $("#scr-save").onclick = () => saveScriptEdit(v);
+  $("#scr-cancel").onclick = () => { SCR.edit = false; SCR.q = ""; renderScript(); };
+}
+
+async function saveScriptEdit(v) {
+  const rows = $$("#scr-body .ed-row");
+  const segs = rows.map((r, i) => ({
+    i,
+    en: r.querySelector(".ed-en").value.trim(),
+    ko: r.querySelector(".ed-ko").value.trim(),
+    start: Number(r.querySelector(".ed-st").value) || 0,
+    end: Number(r.querySelector(".ed-en2").value) || 0,
+  }));
+  const bad = segs.find((s) => s.end <= s.start);
+  if (bad) return toast(`${bad.i + 1}번 문장의 종료 시간이 시작보다 빠릅니다`, 4200);
+  const b = $("#scr-save");
+  if (b) { b.disabled = true; b.textContent = "저장 중…"; }
+  try {
+    const r = await api(`/api/videos/${v.id}/segs`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segs }),
+    });
+    delete SCRC[v.id];
+    const i = S.videos.findIndex((x) => x.id === v.id);
+    if (i >= 0) S.videos[i] = { ...S.videos[i], segs: r.segs, n: r.n };
+    if (S.cur && S.cur.id === v.id) { Object.assign(S.cur, { segs: r.segs, n: r.n }); }
+    SCR.edit = false;
+    toast(`대본을 저장했습니다 · ${r.n}문장`, 3000);
+    renderScript();
+  } catch (e) {
+    if (b) { b.disabled = false; b.textContent = "저장"; }
+    toast("저장 실패: " + e.message, 4600);
+  }
 }
 
 async function saveWordMeaning() {
@@ -1713,9 +1786,15 @@ function bind() {
     jumpTo(f.id, 0);
   };
   $("#note-more").onclick = () => show("s-notes");
-  $("#wp-book").onclick = toggleWordBook;
+  $("#wp-book").onclick = toggleWordStar;
   $("#wp-more").onclick = openDict;
   $("#scr-q").oninput = () => { SCR.q = $("#scr-q").value; renderScript(); };
+  const se = $("#scr-edit");
+  if (se) se.onclick = () => {
+    if (!S.admin) return;
+    SCR.edit = !SCR.edit;
+    renderScript();
+  };
   document.addEventListener("pointerdown", (e) => {
     const pop = $("#word-pop");
     if (!pop || pop.hidden) return;
