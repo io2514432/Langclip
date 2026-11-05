@@ -526,11 +526,26 @@ def add_video(payload: dict, request: Request):
 
 @app.delete("/api/videos/{vid}")
 def del_video(vid: str, request: Request):
+    """영상 삭제 — 대본·음원 파일·학습기록(시도·북마크·검증)을 함께 지워 정크를 남기지 않는다."""
     require_admin(request)
     d = db()
-    d["videos"].pop(vid, None)
+    v = d["videos"].pop(vid, None)
+    audio_removed = None
+    aid = (v or {}).get("audio_id")
+    if aid:
+        still = any(x.get("audio_id") == aid for x in d["videos"].values())
+        if not still:
+            a = d.get("audios", {}).pop(aid, None)
+            if a:
+                try:
+                    storage.delete(a.get("key", ""))
+                except Exception:
+                    pass
+                audio_removed = aid
     save_db(d)
-    return {"ok": True}
+    purged = prog.purge_video(vid)
+    return {"ok": True, "removed": bool(v), "audio_removed": audio_removed,
+            "purged": purged}
 
 
 @app.patch("/api/videos/{vid}/segments/{idx}")

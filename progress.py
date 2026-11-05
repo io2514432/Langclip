@@ -458,3 +458,48 @@ def _ko_of(word: str) -> tuple[str, str | None]:
         _ko_store()
         return ko, "translate"
     return "", None
+
+# ---------------------------------------------------------------- 삭제 정리
+def _dirs() -> list:
+    """관리자 본인 폴더 + 방문자별 폴더 전부."""
+    out = [DATA]
+    u = DATA / "users"
+    if u.is_dir():
+        for d in sorted(u.iterdir()):
+            if d.is_dir():
+                out.append(d)
+    return out
+
+
+def purge_video(vid: str) -> dict:
+    """영상을 지울 때 그 영상에 묶인 학습기록을 모든 사용자 폴더에서 지운다. (정크 방지)"""
+    stat = {"attempts": 0, "sentences": 0, "words": 0, "verify": 0}
+    for d in _dirs():
+        f = d / "attempts.json"
+        if f.exists():
+            rows = _load(f, [])
+            if isinstance(rows, list):
+                keep = [r for r in rows if not (isinstance(r, dict) and r.get("vid") == vid)]
+                if len(keep) != len(rows):
+                    stat["attempts"] += len(rows) - len(keep)
+                    _save(f, keep)
+        f = d / "notes.json"
+        if f.exists():
+            n = _load(f, {})
+            if isinstance(n, dict):
+                hit = 0
+                for k in [k for k, v in (n.get("sentences") or {}).items() if isinstance(v, dict) and v.get("vid") == vid]:
+                    n["sentences"].pop(k, None); hit += 1
+                stat["sentences"] += hit
+                wh = 0
+                for k in [k for k, v in (n.get("words") or {}).items() if isinstance(v, dict) and v.get("vid") == vid]:
+                    n["words"].pop(k, None); wh += 1
+                stat["words"] += wh
+                if hit or wh:
+                    _save(f, n)
+        f = d / "verify.json"
+        if f.exists():
+            vv = _load(f, {})
+            if isinstance(vv, dict) and vid in vv:
+                vv.pop(vid, None); stat["verify"] += 1; _save(f, vv)
+    return stat
