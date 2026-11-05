@@ -346,6 +346,8 @@ function onTick() {
     const d = Math.max(0.1, S.seg.end - S.seg.start);
     const p = Math.min(100, Math.max(0, ((t - S.seg.start) / d) * 100));
     $("#vprog").style.width = p + "%";
+    const adj = $("#segadj");
+    if (adj && !adj.hidden) { NUDGE.now = t; nudgeLabel(); }
   }
   setPlayBtn(playing);
 }
@@ -392,6 +394,7 @@ function selectSeg(i, quiet) {
   S.idx = i;
   S.seg = S.cur.segs[i];
   renderSeg();
+  if (typeof nudgeLabel === "function") nudgeLabel();
 }
 
 function playFrom(i) {
@@ -488,14 +491,29 @@ function openScriptSheet() {
 
 
 /* ================= 자막 싱크 미세조정 (관리자) ================= */
-const NUDGE = { all: false, timer: 0, saving: false };
+/* mode: end(끝 조정 → 다음 문장이 따라옴) / start(시작 조정 → 앞 문장이 따라옴) / seg(구간 통째로) */
+const NUDGE = { mode: "end", all: false, timer: 0, saving: false, now: 0 };
 
 function nudgeLabel() {
   const el = $("#segadj-hint");
-  if (!el || !S.cur) return;
+  if (!el || !S.cur || !S.cur.segs) return;
   const s = S.cur.segs[S.idx];
   if (!s) { el.textContent = ""; return; }
-  el.textContent = `${S.idx + 1}번 ${s.start.toFixed(1)}–${s.end.toFixed(1)}s` + (NUDGE.all ? " · 전체" : "");
+  const live = NUDGE.now ? ` · 지금 ${NUDGE.now.toFixed(1)}s` : "";
+  el.textContent = `${S.idx + 1}번 ${s.start.toFixed(2)}–${s.end.toFixed(2)}s${live}`;
+}
+
+function nudgeMode(m) {
+  NUDGE.mode = m;
+  if (m !== "seg") NUDGE.all = false;
+  $$("#segadj .mode").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+  const all = $("#segadj-all");
+  if (all) {
+    all.classList.toggle("on", NUDGE.all);
+    all.disabled = m !== "seg";
+    all.style.opacity = m === "seg" ? "" : ".4";
+  }
+  nudgeLabel();
 }
 
 function nudgeToggle(force) {
@@ -505,15 +523,17 @@ function nudgeToggle(force) {
   if (box) box.hidden = !on;
   const rail = $("#btn-nudge");
   if (rail) rail.classList.toggle("on", !!on);
-  nudgeLabel();
+  if (!on) { NUDGE.now = 0; }
+  nudgeMode(NUDGE.mode);
 }
 
 function nudgeBy(d) {
   if (!S.cur) return;
   const segs = S.cur.segs || [];
   const i = S.idx;
-  if (!segs.length) return;
+  if (!segs.length || !segs[i]) return;
   const r2 = (x) => Math.round(x * 100) / 100;
+  const MIN = 0.2;
 
   if (NUDGE.all) {
     let minStart = Infinity;
@@ -521,25 +541,45 @@ function nudgeBy(d) {
     const dd = (minStart + d < 0) ? -minStart : d;
     segs.forEach((s) => {
       s.start = r2(Math.max(0, s.start + dd));
-      s.end = r2(Math.max(s.start + 0.2, s.end + dd));
+      s.end = r2(Math.max(s.start + MIN, s.end + dd));
     });
+  } else if (NUDGE.mode === "end") {
+    const s = segs[i], nx = segs[i + 1];
+    let en = r2(Math.max(s.start + MIN, s.end + d));
+    s.end = en;
+    if (nx) {
+      // 뒤 문장은 앞 문장 끝에 따라온다 (늘어나면 밀리고, 줄어들면 당긴다)
+      nx.start = en;
+      if (nx.end < nx.start + MIN) nx.end = r2(nx.start + MIN);
+      const nn = segs[i + 2];
+      if (nn && nn.start < nx.end) nn.start = nx.end;
+    }
+  } else if (NUDGE.mode === "start") {
+    const s = segs[i], pv = segs[i - 1];
+    let st = r2(Math.max(0, s.start + d));
+    if (st > s.end - MIN) st = r2(s.end - MIN);
+    s.start = st;
+    if (pv) {
+      if (pv.start + MIN > st) st = r2(pv.start + MIN);
+      s.start = st;
+      pv.end = st;           // 앞 문장의 끝은 뒤 문장 시작에 바짝 붙는다
+    }
   } else {
-    const s = segs[i];
-    const prev = segs[i - 1];
+    const s = segs[i], pv = segs[i - 1], nx = segs[i + 1];
     let st = r2(s.start + d);
     let en = r2(s.end + d);
     if (st < 0) { en = r2(en - st); st = 0; }
-    if (prev && st < prev.end) st = prev.end;
-    if (en < st + 0.25) en = r2(st + 0.25);
+    if (pv && st < pv.end) st = pv.end;
+    if (en < st + MIN) en = r2(st + MIN);
     s.start = st; s.end = en;
-    const nx = segs[i + 1];
     if (nx && nx.start < s.end) nx.start = s.end;
   }
+
   S.seg = segs[i];
   renderSeg();
   nudgeLabel();
   clearTimeout(NUDGE.timer);
-  NUDGE.timer = setTimeout(nudgeSave, 650);
+  NUDGE.timer = setTimeout(nudgeSave, 400);
 }
 
 async function nudgeSave() {
@@ -556,7 +596,8 @@ async function nudgeSave() {
     const k = S.videos.findIndex((x) => x.id === S.cur.id);
     if (k >= 0) S.videos[k] = S.cur;
     delete SCRC[S.cur.id];
-    S.seg = S.cur.segs[S.idx];
+    const j = S.cur.segs.findIndex((x) => S.idx < S.cur.segs.length && x === S.cur.segs[S.idx]);
+    S.seg = S.cur.segs[S.idx] || S.cur.segs[0];
     nudgeLabel();
   } catch (e) {
     toast("싱크 저장 실패: " + e.message, 4200);
@@ -1874,8 +1915,16 @@ function bind() {
 
   const bNudge = $("#btn-nudge");
   if (bNudge) bNudge.onclick = () => { try { nudgeToggle(); } catch (e) { toast("열지 못했습니다: " + e.message, 3200); } };
+  $$("#segadj .mode").forEach((b) => {
+    b.onclick = () => nudgeMode(b.dataset.mode);
+  });
   const bAll = $("#segadj-all");
-  if (bAll) bAll.onclick = () => { NUDGE.all = !NUDGE.all; bAll.classList.toggle("on", NUDGE.all); nudgeLabel(); };
+  if (bAll) bAll.onclick = () => {
+    if (NUDGE.mode !== "seg") return;
+    NUDGE.all = !NUDGE.all;
+    bAll.classList.toggle("on", NUDGE.all);
+    nudgeLabel();
+  };
   $$("#segadj [data-nudge]").forEach((b) => {
     b.onclick = () => nudgeBy(Number(b.dataset.nudge) || 0);
   });

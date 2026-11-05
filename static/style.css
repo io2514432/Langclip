@@ -1253,3 +1253,11 @@ body.vf-focus .screens{height:100%}
 .segadj-hint{margin-left:auto;font-size:10px;font-weight:700;color:rgba(255,255,255,.6);
   font-variant-numeric:tabular-nums}
 .vbtn.xs{height:26px;min-width:36px;padding:0 7px;font-size:10.5px;font-weight:800;border-radius:8px}
+
+/* v7.3 · 자막 밀기 모드 칩 */
+.segadj{flex-wrap:wrap}
+.segadj .mode{height:26px;padding:0 8px;border-radius:8px;font-size:10.5px;font-weight:800;
+  border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);
+  font-family:inherit;cursor:pointer}
+.segadj .mode.on{background:rgba(14,165,233,.92);border-color:transparent;color:#fff}
+.segadj .vbtn.xs:disabled{cursor:default}
