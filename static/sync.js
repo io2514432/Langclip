@@ -288,6 +288,8 @@
         sentences: ST.sentences, markdown: $("#sync-md").value,
         duration: duration(),
       });
+      try { if (window.attachAddAudio) await window.attachAddAudio(r.video.id); }
+      catch (e) { toast("원본 음성 연결 실패: " + e.message, 5200); }
       $("#sheet-sync-review").hidden = true;
       toast(`저장 완료 · 문장 ${r.segs.length}개`, 3000);
       await App().loadVideos();

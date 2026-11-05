@@ -1023,3 +1023,32 @@ button{box-shadow:none}
 .wp-book.on{color:#FFB800!important}
 .wp-book.on .ic{fill:#FFB800!important;stroke:#FFB800!important}
 .star.on .ic{fill:#FFB800!important;stroke:#FFB800!important}
+
+/* ================= v4.7 ================= */
+
+/* 모바일: 폰 목업 없이 화면 꽉 채우기 */
+@media (max-width:520px){
+  .stage{padding:0 !important;display:block !important;min-height:100dvh;overflow:hidden}
+  .phone{width:100% !important;max-width:none !important;height:100dvh !important;
+    border:0 !important;border-radius:0 !important;box-shadow:none !important;margin:0 auto !important}
+  body{overscroll-behavior:none}
+}
+
+/* 자막: 화면의 60%까지 사용 */
+.vsub{max-height:60%;overflow:visible}
+
+/* 우측 레일 버튼 확대 */
+.vrail{gap:15px}
+.rail{width:56px}
+.rail .ic{width:25px;height:25px;stroke-width:1.85}
+.rail-lab{font-size:9.5px}
+
+/* 단어 팝업 별: 북마크되면 채워진 별 */
+.wp-book{display:flex !important;align-items:center;justify-content:center;color:rgba(255,255,255,.55)}
+.wp-book.on{color:#FFC53D}
+.wp-book.on .ic{fill:currentColor;stroke:currentColor}
+
+/* 추가 화면: 원본 음성 박스 */
+.ad-box{margin:10px 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.ad-box .field-row{margin-top:8px}
+.ad-box #ad-audio-body{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}

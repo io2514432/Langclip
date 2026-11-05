@@ -143,7 +143,13 @@ async function mountPlayer(videoId) {
           sizeVideo();
           resolve();
         },
-        onStateChange: (e) => { if (e.data === 1) killCaptions(S.player); },
+        onStateChange: (e) => {
+          if (e.data === 1) killCaptions(S.player);
+          // 쇼츠가 끝까지 재생되면 처음으로 돌아가 다시 튼다 (쉐도잉·검증 중 제외)
+          if (e.data === 0 && SH.phase === "idle") {
+            try { S.player.seekTo(0, true); S.player.playVideo(); } catch {}
+          }
+        },
         onError: () => { S.ready = false; resolve(); },
       },
     });
@@ -861,9 +867,15 @@ async function beginTake() {
     SH.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-  } finally {
+  } catch (e) {
     showScoring(false);
+    FN.on = false; VF.on = false;
+    SH.phase = "done";
+    closeWave();
+    show("s-play"); startTick();
+    return toast("마이크를 사용할 수 없습니다 (" + (e && e.name ? e.name : "권한 필요") + ")", 4600);
   }
+  showScoring(false);
   if (false) {
     const wasFinal = FN.on;
     FN.on = false;
@@ -965,9 +977,11 @@ function onTakeStop() {
 async function submitScore() {
   const fd = new FormData();
   fd.append("take", S.takeBlob, "take.webm");
-  showScoring(true);
+  showScoring(true, 120000);
   try {
     const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}/score`, { method: "POST", body: fd });
+    SH.__retry = 0;
+    showScoring(false);
     S.lastResult = r;
     SH.phase = "done";
     SH.score = Math.round(r.total);
@@ -993,11 +1007,19 @@ async function submitScore() {
     show("s-result");
     loadHome();
   } catch (e) {
+    showScoring(false);
+    if (!SH.__retry) {
+      SH.__retry = 1;
+      waveState("다시 채점", "score");
+      toast("채점 응답이 늦어 한 번 더 시도합니다", 2400);
+      return submitScore();
+    }
+    SH.__retry = 0;
     const wasFinal = FN.on;
     FN.on = false;
     SH.phase = "done";
-    waveState("오류", "done");
-    toast("채점에 실패했습니다: " + e.message, 4200);
+    waveState("오류 · 다시 눌러 재시도", "done");
+    toast("채점에 실패했습니다: " + e.message, 5200);
     if (wasFinal) closeWave();
   }
 }
@@ -1008,15 +1030,14 @@ function startVerify() {
   if (!S.cur.segs || !S.cur.segs.length) return toast("문장이 없습니다");
   if (SH.phase !== "idle") closeWave(true);
   $("#sheet-script").hidden = true;
-  VF.on = true; VF.stage = "read"; VF.i = 0; VF.scores = [];
+  VF.on = false; FN.on = false;
+  VF.stage = "recall"; VF.i = 0; VF.scores = [];
   VF.typed = {}; VF.spot = {}; VF.spotItems = []; VF.n = S.cur.segs.length;
-  FN.on = true; FN.i = 0; FN.scores = [];
-  show("s-play");
-  startTick();
-  selectSeg(0, true);
-  document.body.classList.add("vf-mask");
-  toast(`1단계 가림 낭독 · 문장 ${VF.n}개를 순서대로 말합니다`, 3600);
-  setTimeout(() => startShadow(), 420);
+  document.body.classList.remove("vf-mask");
+  stopTick(); pausePlayer();
+  show("s-verify");
+  renderVerify();
+  toast(`백지 테스트 · 문장 ${VF.n}개를 처음부터 끝까지 타이핑합니다`, 3400);
 }
 
 /* 1단계 끝 → 2단계 */
@@ -1031,7 +1052,7 @@ function finishRead() {
 }
 
 function stepBar() {
-  const steps = [["read", "가림 낭독"], ["recall", "백지 테스트"], ["spot", "스팟 체크"]];
+  const steps = [["recall", "백지 테스트"]];
   const order = steps.map(([k]) => k);
   const cur = order.indexOf(VF.stage);
   $("#vf-steps").innerHTML = steps.map(([k, label], i) => {
@@ -1039,7 +1060,7 @@ function stepBar() {
     return `<div class="vf-step ${done ? "done" : ""} ${on ? "on" : ""}">
       <b>${done ? ic("i-check", "ic xs") : i + 1}</b><span>${label}</span></div>`;
   }).join("");
-  $("#vf-prog").textContent = `${cur + 1} / 3`;
+  $("#vf-prog").textContent = `${cur + 1} / ${steps.length}`;
 }
 
 function renderVerify() {
@@ -1061,7 +1082,7 @@ function renderRecall() {
         <textarea class="vf-in" data-i="${i}" rows="2" spellcheck="false" autocapitalize="off"
           placeholder="${s.ko ? "영어로 옮겨 적기" : esc((s.en || "").slice(0, 1)) + "…"}"></textarea>
       </div>`).join("")}
-    <button class="btn primary" id="vf-recall-next">2단계 제출 · 스팟 체크로</button>`;
+    <button class="btn primary" id="vf-recall-next">채점하기</button>`;
   $$("#vf-body .vf-in").forEach((el) => {
     el.value = VF.typed[el.dataset.i] || "";
     el.oninput = () => { VF.typed[el.dataset.i] = el.value; };
@@ -1073,9 +1094,7 @@ function renderRecall() {
     if (empty && !confirm(`아직 쓰지 않은 문장이 ${empty}개 있습니다.
 
 이대로 다음 단계로 갈까요?`)) return;
-    VF.stage = "spot";
-    await loadSpot();
-    renderVerify();
+    await submitVerify();
   };
 }
 
@@ -1117,7 +1136,7 @@ async function submitVerify() {
   if (b) { b.disabled = true; b.textContent = "채점 중…"; }
   try {
     const r = await jsonPost(`/api/videos/${S.cur.id}/verify/check`, {
-      read: VF.scores, typed: VF.typed, spot: VF.spot,
+      read: [], typed: VF.typed, spot: {},
     });
     VF.result = r;
     VF.stage = "done";
@@ -1152,21 +1171,21 @@ function renderVerifyResult() {
       <div class="vf-score"><b>${Math.round(r.score || 0)}</b><small>점</small></div>
       <div class="vf-head-b">
         <div class="vf-verdict">${r.passed ? "학습 완료" : esc(r.headline || "다시 도전")}</div>
-        <div class="vf-sub">${r.passed ? "세 단계를 모두 통과했습니다" : "부족한 단계를 다시 연습하세요"}</div>
+        <div class="vf-sub">${r.passed ? "전체 문장을 통과했습니다" : "부족한 단계를 다시 연습하세요"}</div>
       </div>
     </div>
-    ${row("read", "가림 낭독", st.read)}
-    ${row("recall", "가림 복창", st.recall)}
-    ${row("spot", "스팟 체크", st.spot)}
+    ${st.read && st.read.n ? row("read", "가림 낭독", st.read) : ""}
+    ${row("recall", "백지 테스트", st.recall)}
+    ${st.spot && st.spot.total ? row("spot", "스팟 체크", st.spot) : ""}
     ${fails.length ? `<div class="vf-list"><b class="vf-list-h">복창이 부족한 문장</b>${fails.map((x) => `
       <div class="vf-li"><span>${x.i + 1}번 · ${x.score}점</span><em>${esc(x.answer)}</em></div>`).join("")}</div>` : ""}
     <div class="actions">
-      <button class="btn primary" id="vf-again">다시 검증하기</button>
+      <button class="btn primary" id="vf-again">다시 테스트</button>
       <button class="btn ghost" id="vf-close">학습으로 돌아가기</button>
     </div>`;
   $("#vf-again").onclick = () => { VF.spotItems = []; startVerify(); };
   $("#vf-close").onclick = () => { VF.on = false; show("s-play"); startTick(); };
-  if (r.passed) toast("학습 완료! 세 단계를 모두 통과했습니다", 4200);
+  if (r.passed) toast("학습 완료! 전체 문장을 통과했습니다", 4200);
 }
 
 /* ================= 결과 ================= */
@@ -1489,7 +1508,7 @@ async function openWord(word, ctx) {
     if (seq !== WP.seq) return;
     const d = (r.definitions || [])[0];
     WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning : (r.ko || (d ? d.def : ""));
-    WP.saved = !!(r.saved && r.saved.meaning);
+    WP.saved = !!r.saved;
     $("#wp-ko").textContent = WP.ko || "뜻을 찾지 못했어요";
     $("#wp-book").classList.toggle("on", !!WP.saved);
   } catch {
@@ -1510,9 +1529,6 @@ async function toggleWordBook() {
       word: WP.word, meaning: WP.ko, ctx: WP.ctx, vid: S.cur?.id || "", idx: S.idx,
     });
     WP.saved = !!r.bookmarked;
-    const wl = (S.notes && (S.notes.words || [])) || [];
-    const hasW = wl.some((w) => String(w.word || "").toLowerCase() === String(WP.word).toLowerCase());
-    WP.saved = !!WP.saved || hasW;
     const pb = $("#wp-book");
     if (pb) { pb.classList.toggle("on", WP.saved); pb.setAttribute("aria-pressed", WP.saved ? "true" : "false"); }
     await reloadNotes();
@@ -1756,6 +1772,37 @@ function bind() {
   });
 }
 
+/* ================= 추가 화면: 원본 음성 ================= */
+function resetAddAudio() {
+  const on = $("#ad-audio-on"); if (on) on.checked = false;
+  const body = $("#ad-audio-body"); if (body) body.hidden = true;
+  const f = $("#ad-file"); if (f) f.value = "";
+  const ok = $("#ad-ok"); if (ok) ok.checked = false;
+  const off = $("#ad-offset"); if (off) off.value = "0";
+}
+
+async function attachAddAudio(vid) {
+  const on = $("#ad-audio-on");
+  if (!on || !on.checked || !vid) return;
+  const f = $("#ad-file");
+  const file = f && f.files && f.files[0];
+  if (!file) throw new Error("음성 파일을 선택해주세요");
+  if (!$("#ad-ok").checked) throw new Error("원본 음성 권리 확인에 체크해주세요");
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  fd.append("title", (($("#sy-title") && $("#sy-title").value.trim()) || file.name).slice(0, 80));
+  fd.append("offset", String(Number($("#ad-offset").value) || 0));
+  fd.append("source", $("#ad-source").value);
+  fd.append("license", "추가 화면에서 등록");
+  const au = await api("/api/audios", { method: "POST", body: fd });
+  await jsonPost(`/api/videos/${vid}/link-audio`, {
+    audio_id: au.id, offset: Number($("#ad-offset").value) || 0,
+  });
+  resetAddAudio();
+  toast("원본 음성을 연결했습니다", 3200);
+}
+window.attachAddAudio = attachAddAudio;
+
 /* ================= 시작 ================= */
 (async function boot() {
   try {
@@ -1784,15 +1831,15 @@ function fitSub() {
   if (!box) return;
   const plain = box.dataset.plain || "";
   const st = $("#vstage");
-  const room = Math.max(90, (st ? st.clientHeight : 720) * 0.30);
-  let fs = plain.length <= 22 ? 31
-    : plain.length <= 34 ? 28
-    : plain.length <= 50 ? 25
-    : plain.length <= 72 ? 22
-    : plain.length <= 100 ? 20 : 18;
+  const room = Math.max(120, (st ? st.clientHeight : 720) * 0.58);
+  let fs = plain.length <= 24 ? 31
+    : plain.length <= 40 ? 29
+    : plain.length <= 60 ? 27
+    : plain.length <= 90 ? 24
+    : plain.length <= 130 ? 21 : 19;
   box.style.fontSize = fs + "px";
   let guard = 0;
-  while (box.scrollHeight > room && fs > 15 && guard++ < 24) {
+  while (box.scrollHeight > room && fs > 16 && guard++ < 30) {
     fs -= 1;
     box.style.fontSize = fs + "px";
   }
@@ -1913,12 +1960,12 @@ function setCount(id, n) {
   el.classList.toggle("zero", v === 0);
 }
 
-function showScoring(on) {
+function showScoring(on, ms) {
   const el = $("#scoring");
   if (!el) return;
   el.hidden = !on;
   clearTimeout(window.__scT);
-  if (on) window.__scT = setTimeout(() => { el.hidden = true; }, 25000);
+  if (on) window.__scT = setTimeout(() => { el.hidden = true; }, ms || 120000);
 }
 
 
@@ -2001,6 +2048,17 @@ stopAudioBar = function () {
       if (S.videos && S.videos.length) return go(S.videos[0]);
       loadVideos().then(() => go(S.videos && S.videos[0])).catch(() => toast("영상을 불러오지 못했습니다"));
     };
+    const btest = $("#btn-test");
+    if (btest) btest.onclick = () => {
+      try { startVerify(); } catch (e) {
+        console.error("[langclip] startVerify failed", e);
+        toast("테스트를 열지 못했습니다: " + e.message, 3200);
+      }
+    };
+    const aon = $("#ad-audio-on");
+    if (aon) aon.onchange = () => { const b = $("#ad-audio-body"); if (b) b.hidden = !aon.checked; };
+    const abox = $("#ad-audio-box");
+    if (abox) abox.hidden = !S.admin;
     const bsc = $("#btn-script");
     if (bsc) bsc.onclick = () => {
       try { openScriptSheet(); } catch (e) {

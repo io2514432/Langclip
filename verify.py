@@ -137,19 +137,29 @@ def check_spot(segs: list[dict], idx: list[int], typed: dict) -> dict:
 
 
 # ---------------------------------------------------------------- 통합
+def _weighted_score(r, c, s) -> int:
+    recall = 100 * c["hit"] / max(1, c["total"])
+    parts, w = [(recall, 1.0)], 1.0
+    if r:
+        parts.append((r.get("avg") or 0, 0.4)); w += 0.4
+    if s:
+        parts.append((100 * s["hit"] / max(1, s["total"]), 0.3)); w += 0.3
+    return int(round(sum(x * k for x, k in parts) / w))
+
+
 def judge(segs: list[dict], read_scores, typed, spot_idx, spot_typed) -> dict:
-    r = check_read(read_scores, len(segs))
+    # v4.7: 백지 테스트(전체 타이핑) 단일 단계. 넘겨받은 단계만 판정에 넣는다.
+    r = check_read(read_scores, len(segs)) if read_scores else None
     c = check_recall(segs, typed or {})
-    s = check_spot(segs, spot_idx or [], spot_typed or {})
-    passed = bool(r["passed"] and c["passed"] and s["passed"])
+    s = check_spot(segs, spot_idx or [], spot_typed or {}) if spot_idx else None
+    passed = bool(c["passed"] and (r is None or r["passed"]) and (s is None or s["passed"]))
     fails = [row["i"] for row in c["rows"] if not row["pass"]]
     return {
         "passed": passed,
         "stages": {"read": r, "recall": c, "spot": s},
-        "score": int(round(0.3 * (r.get("avg") or 0) + 0.5 * (100 * c["hit"] / max(1, c["total"]))
-                           + 0.2 * (100 * s["hit"] / max(1, s["total"])))),
+        "score": _weighted_score(r, c, s),
         "failed_sentences": fails,
         "headline": ("학습 완료" if passed else
-                     "가림 낭독 미달" if not r["passed"] else
-                     "암기 복창 미달" if not c["passed"] else "스팟 체크 미달"),
+                     "가림 낭독 미달" if (r and not r["passed"]) else
+                     "백지 테스트 미달" if not c["passed"] else "스팟 체크 미달"),
     }
