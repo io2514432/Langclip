@@ -37,18 +37,27 @@
 
   <script>
   (function () {
-    var KEY = "lc_splash_v1";
     var el = document.getElementById("splash");
     if (!el || !el.parentNode) return;
+
+    // 첫 접속 1회. 단 하드 새로고침(Ctrl+Shift+R / Shift+새로고침)은 다시 보여준다.
+    var SEEN = "lc_splash_v1";
     var seen = false;
-    try { seen = localStorage.getItem(KEY) === "1"; } catch (e) {}
-    if (seen) { el.parentNode.removeChild(el); return; }   // 두 번째부터는 그리지 않는다
-    var MIN = 700, t0 = Date.now(), done = false;
+    try { seen = localStorage.getItem(SEEN) === "1"; } catch (e) {}
+    var hard = false;
+    try {
+      var nav = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+      if (nav && nav.type === "reload") hard = true;
+    } catch (e) {}
+
+    if (seen && !hard) { el.parentNode.removeChild(el); return; }
+
+    var MIN = 1000, t0 = Date.now(), done = false;
     function hide() {
       if (done) return;
       done = true;
       el.classList.add("out");
-      try { localStorage.setItem(KEY, "1"); } catch (e) {}
+      try { localStorage.setItem(SEEN, "1"); } catch (e) {}
       setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 460);
     }
     var ticks = 0;
@@ -534,7 +543,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=6.5.0"></script>
-<script src="/sync.js?v=6.5.0"></script>
+<script src="/app.js?v=6.6.0"></script>
+<script src="/sync.js?v=6.6.0"></script>
 </body>
 </html>
