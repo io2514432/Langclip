@@ -1881,7 +1881,6 @@ window.attachAddAudio = attachAddAudio;
   } catch { S.admin = true; }
   if (!S.admin) {
     $("#tab-add").hidden = true;
-    $("#tip-add").hidden = true;
   }
   bind();
   await loadVideos();

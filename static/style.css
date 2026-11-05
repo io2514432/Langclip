@@ -1219,3 +1219,24 @@ body.vf-focus .screens{height:100%}
 .v-audio{margin-left:auto;padding:0;border:0;background:none;font-size:11px;font-weight:650;
   color:var(--mute);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .v-audio:active,.v-audio:hover{color:var(--fg)}
+
+/* ================= v7.1 · 북마크 카드 그림자·그라데이션 제거 ================= */
+/* 홈 북마크 미리보기 · 북마크 탭 문장 · 단어 섹션 공통 */
+#note-preview .note-card,
+#notes-list .note-card,
+#words-list .note-card{
+  box-shadow:none!important;
+  background-image:none!important;
+  background:#fff!important;
+  border:1px solid #EEF2F6!important;
+  filter:none!important;
+}
+#note-preview .note-card:active,
+#notes-list .note-card:active,
+#words-list .note-card:active{transform:none!important}
+#note-preview .note-card:hover,
+#notes-list .note-card:hover{border-color:#DDE6EF!important}
+/* 섹션 제목·빈 상태도 그림자 제거 */
+#s-notes .sec-title,
+#note-preview,
+#s-notes .note-empty{box-shadow:none!important;background-image:none!important}
