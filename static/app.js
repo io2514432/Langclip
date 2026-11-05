@@ -1078,7 +1078,7 @@ function renderVerify() {
 function renderRecall() {
   const segs = S.cur.segs;
   $("#vf-body").innerHTML = `
-    <p class="test-desc">한국어만 보고 영어로 쓰세요 · 문장마다 <b>${verifyNeed.recall}점</b> 이상 통과</p>
+    <p class="test-desc"><b>${verifyNeed.recall}점 이상 통과</b></p>
     ${segs.map((s, i) => `
       <div class="vf-row" data-i="${i}">
         <div class="vf-ko"><b>${i + 1}</b><span>${esc(s.ko || "(한국어 없음 · 영어만)")}</span></div>
@@ -1181,7 +1181,10 @@ function renderVerifyResult() {
       <span class="vf-res-b"><b>${label}</b><em>${detail}${extra ? " · " + extra : ""}</em></span>
     </div>`;
   };
-  const fails = ((st.recall || {}).rows || []).filter((x) => !x.pass).slice(0, 5);
+  const rc = st.recall || {};
+  const dd = rc.detail || {};
+  const fails = (rc.rows || []).filter((x) => (x.lost || 0) > 0)
+    .sort((x, y) => y.lost - x.lost).slice(0, 5);
   $("#vf-body").innerHTML = `
     <div class="vf-head ${r.passed ? "ok" : ""}">
       <div class="vf-score"><b>${Math.round(r.score || 0)}</b><small>점</small></div>
@@ -1191,10 +1194,18 @@ function renderVerifyResult() {
       </div>
     </div>
     ${st.read && st.read.n ? row("read", "가림 낭독", st.read) : ""}
-    ${row("recall", "백지 테스트", st.recall)}
+    ${row("recall", "백지 테스트", rc)}
+    ${rc.total ? `<div class="vf-miss">
+      ${dd.blank ? `<span>빠뜨린 문장 <b>${dd.blank}</b></span>` : ""}
+      ${dd.miss ? `<span>빠뜨린 단어 <b>${dd.miss}</b></span>` : ""}
+      ${dd.wrong ? `<span>틀린 단어 <b>${dd.wrong}</b></span>` : ""}
+      ${dd.extra ? `<span>덧붙인 단어 <b>${dd.extra}</b></span>` : ""}
+      ${rc.lost ? `<span class="sum">감점 <b>-${rc.lost}</b></span>`
+                : `<span class="sum zero">감점 없음 · 만점</span>`}
+    </div>` : ""}
     ${st.spot && st.spot.total ? row("spot", "스팟 체크", st.spot) : ""}
-    ${fails.length ? `<div class="vf-list"><b class="vf-list-h">복창이 부족한 문장</b>${fails.map((x) => `
-      <div class="vf-li"><span>${x.i + 1}번 · ${x.score}점</span><em>${esc(x.answer)}</em></div>`).join("")}</div>` : ""}
+    ${fails.length ? `<div class="vf-list"><b class="vf-list-h">가장 많이 틀린 문장</b>${fails.map((x) => `
+      <div class="vf-li"><span>${x.i + 1}번 · -${x.lost}점</span><em>${esc(x.answer)}</em></div>`).join("")}</div>` : ""}
     <div class="actions">
       <button class="btn primary" id="vf-again">다시 테스트</button>
       <button class="btn ghost" id="vf-close">학습으로 돌아가기</button>
@@ -1832,6 +1843,8 @@ function bind() {
     pausePlayer(); stopTick(); show("s-home");
   };
   $("#btn-play").onclick = togglePlay;
+  const vtap = $("#vtap");
+  if (vtap) vtap.onclick = () => { if (SH.phase === "idle") togglePlay(); };
   $("#btn-prev").onclick = () => step(-1);
   $("#btn-next-seg").onclick = () => step(1);
   $("#btn-sub").onclick = cycleSub;

@@ -1145,3 +1145,19 @@ body.vf-focus .screens{height:100%}
 .sc-vf{height:50px;margin:14px 0 6px;border:0;border-radius:12px;background:#EBF5FF;
   color:#0070F3;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer}
 .sc-vf:active{background:#DDEEFF}
+
+/* ================= v5.0 ================= */
+
+/* 영상 위 빈 공간 탭 → 재생/일시정지 (컨트롤보다 아래 레이어) */
+.vtap{position:absolute;inset:0;z-index:5;background:none;
+  -webkit-tap-highlight-color:transparent;cursor:pointer}
+.vstage.lock .vtap{pointer-events:none}
+
+/* 백지 테스트 결과: 감점 내역 */
+.vf-miss{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 12px}
+.vf-miss span{font-size:10.5px;color:#64748B;background:#F1F5F9;border-radius:8px;
+  padding:5px 9px;font-weight:600}
+.vf-miss b{color:#0F172A;font-weight:800}
+.vf-miss .sum{background:#FFF1F0;color:#D14B45}
+.vf-miss .sum b{color:#D14B45}
+.vf-miss .sum.zero{background:#EFFAF4;color:#1F9D6B}
