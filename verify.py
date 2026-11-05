@@ -46,12 +46,78 @@ def norm(s: str) -> str:
     return SPACE_RE.sub(" ", " ".join(words_of(s))).strip()
 
 
-def word_diff(answer: str, said: str) -> dict:
-    """단어 1:1 대조 + 표기(문장부호·대소문자) 비교.
+def _align(aw, bw):
+    """Exact LCS alignment. Returns runs of ("equal"|"miss"|"extra", [(i, j), ...])."""
+    n, m = len(aw), len(bw)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        row, nxt = dp[i], dp[i + 1]
+        ai = aw[i]
+        for j in range(m - 1, -1, -1):
+            if ai == bw[j]:
+                row[j] = nxt[j + 1] + 1
+            else:
+                row[j] = nxt[j] if nxt[j] >= row[j + 1] else row[j + 1]
 
-    LCS(SequenceMatcher)로 최장 일치 구간을 먼저 붙잡기 때문에, 중간에 단어가
-    끼어들어도 뒤쪽 단어는 다시 정상 매칭된다.
-      예) 'you are the love' -> 'the'만 덧붙임, 'love'는 정상
+    runs = []
+
+    def push(kind, pair):
+        if runs and runs[-1][0] == kind:
+            runs[-1][1].append(pair)
+        else:
+            runs.append([kind, [pair]])
+
+    i = j = 0
+    while i < n and j < m:
+        if aw[i] == bw[j]:
+            push("equal", (i, j)); i += 1; j += 1
+        elif dp[i + 1][j] >= dp[i][j + 1]:
+            push("miss", (i, -1)); i += 1
+        else:
+            push("extra", (-1, j)); j += 1
+    while i < n:
+        push("miss", (i, -1)); i += 1
+    while j < m:
+        push("extra", (-1, j)); j += 1
+    return runs
+
+
+def _pair_substitutions(runs):
+    """Adjacent miss/extra runs are really one substitution -> report as 'wrong'."""
+    out = []
+    k = 0
+    while k < len(runs):
+        kind, items = runs[k]
+        if kind in ("miss", "extra") and k + 1 < len(runs) and runs[k + 1][0] in ("miss", "extra") and runs[k + 1][0] != kind:
+            other = runs[k + 1][1]
+            pairs = min(len(items), len(other))
+            if kind == "miss":
+                subs = [(items[t][0], other[t][1]) for t in range(pairs)]
+                rest_a = items[pairs:]
+                rest_b = other[pairs:]
+            else:
+                subs = [(other[t][0], items[t][1]) for t in range(pairs)]
+                rest_a = other[pairs:]
+                rest_b = items[pairs:]
+            out.append(["wrong", subs])
+            if rest_a:
+                out.append(["miss", rest_a])
+            if rest_b:
+                out.append(["extra", rest_b])
+            k += 2
+            continue
+        out.append([kind, items])
+        k += 1
+    return out
+
+
+def word_diff(answer: str, said: str) -> dict:
+    """Word-by-word comparison with exact LCS alignment.
+
+    A word inserted in the middle only counts once: the tokens after it line up
+    again instead of cascading into a run of mismatches.
+    Formatting (punctuation / capitalisation) on an otherwise matching word
+    costs one 'mark'.
     """
     a, b = chunks_of(answer), chunks_of(said)
     aw = [w.lower() for w, _ in a]
@@ -68,39 +134,33 @@ def word_diff(answer: str, said: str) -> dict:
         return {"mine": [], "ans": ans, "miss": len(a), "wrong": 0, "extra": 0,
                 "mark": 0, "blank": True}
 
-    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, aw, bw, autojunk=False).get_opcodes():
-        if op == "equal":
-            for k in range(i2 - i1):
-                (w, p) = a[i1 + k]
-                (bw_, bp) = b[j1 + k]
-                if w == bw_ and p == bp:
-                    mine.append(["ok", bw_ + bp])
-                    ans.append(["ok", w + p])
+    for kind, items in _pair_substitutions(_align(aw, bw)):
+        if kind == "equal":
+            for i, j in items:
+                wa, pa = a[i]
+                wb, pb = b[j]
+                if wa == wb and pa == pb:
+                    mine.append(["ok", wb + pb])
+                    ans.append(["ok", wa + pa])
                 else:
                     mark += 1
-                    mine.append(["mark", bw_ + bp])
-                    ans.append(["mark", w + p])
-        elif op == "delete":                 # 정답에만 있음 = 빠뜨림
-            for k in range(i1, i2):
-                w, p = a[k]
-                ans.append(["miss", w + p]); miss += 1
-        elif op == "insert":                 # 답안에만 있음 = 덧붙임
-            for k in range(j1, j2):
-                w, p = b[k]
-                mine.append(["extra", w + p]); extra += 1
-        else:                                # replace
-            pair = min(i2 - i1, j2 - j1)
-            for k in range(pair):
-                w, p = a[i1 + k]
-                bw_, bp = b[j1 + k]
-                mine.append(["wrong", bw_ + bp]); wrong += 1
-                ans.append(["wrong", w + p])
-            for k in range(i1 + pair, i2):
-                w, p = a[k]
-                ans.append(["miss", w + p]); miss += 1
-            for k in range(j1 + pair, j2):
-                w, p = b[k]
-                mine.append(["extra", w + p]); extra += 1
+                    mine.append(["mark", wb + pb])
+                    ans.append(["mark", wa + pa])
+        elif kind == "wrong":
+            for i, j in items:
+                wa, pa = a[i]
+                wb, pb = b[j]
+                mine.append(["wrong", wb + pb]); wrong += 1
+                ans.append(["wrong", wa + pa])
+        elif kind == "miss":
+            for i, _j in items:
+                wa, pa = a[i]
+                ans.append(["miss", wa + pa]); miss += 1
+        else:
+            for _i, j in items:
+                wb, pb = b[j]
+                mine.append(["extra", wb + pb]); extra += 1
+
     return {"mine": mine, "ans": ans, "miss": miss, "wrong": wrong,
             "extra": extra, "mark": mark, "blank": False}
 
