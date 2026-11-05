@@ -1050,25 +1050,13 @@ def sync_apply(payload: dict, request: Request):
 
 # ---- 학습 완료 검증 (3단계)
 
-def _now_salt() -> str:
-    return str(int(time.time() // 60))
-
-
 @app.post("/api/videos/{vid}/verify/check")
 def verify_check(vid: str, payload: dict):
-    """3단계 결과를 한 번에 판정한다. 통과하면 그 쇼츠는 학습 완료."""
+    """백지 테스트(전체 타이핑)를 채점한다. 통과하면 그 쇼츠는 학습 완료."""
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
-    segs = v["segs"]
-    spot_typed = payload.get("spot") or {}
-    issued = []
-    if spot_typed:                      # 스팟 체크는 화면에서 실제로 답한 경우에만 채점
-        issued = (_SPOT.get(vid) or {}).get("idx") or             verify.spot_pick(vid, len(segs), verify.SPOT_K, salt=_now_salt())
-
-    res = verify.judge(segs, payload.get("read") or [], payload.get("typed") or {},
-                       issued, spot_typed)
+    res = verify.judge(v["segs"], payload.get("typed") or {})
     rec = prog.record_verify(vid, res)
-    _SPOT.pop(vid, None)
     return {**res, **rec, "complete": prog.is_complete(vid),
             "completed": prog.completed_count(), "xp": prog.level_info()}
 
