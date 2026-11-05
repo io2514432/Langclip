@@ -137,6 +137,54 @@
 
 ---
 
+## 6-1. 내 PC에서 비밀번호 없이 접속하기 (SSH 키) ⭐
+
+브라우저 SSH 창은 **내 PC의 파일을 올리거나(scp), 터널을 열 수 없습니다.**
+그래서 내 PC에 열쇠를 하나 만들고, 서버에 그 열쇠를 등록합니다. **평생 한 번만** 하면 됩니다.
+
+### ① 내 PC에서 열쇠 만들기
+
+**PowerShell** 을 열고:
+
+```powershell
+ssh-keygen -t ed25519 -C "langclip"
+```
+
+- `Enter file in which to save the key` → 그냥 **Enter**
+- `passphrase` → 그냥 **Enter**, 또 **Enter** (비밀번호 없이)
+
+그다음 공개 열쇠를 화면에 출력:
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub
+```
+
+`ssh-ed25519 AAAAC3Nza... langclip` 같은 **한 줄**이 나옵니다. 이 줄을 복사하세요.
+
+### ② 서버에 열쇠 등록
+
+브라우저의 **SSH 창**에서 (아래 `ssh-ed25519 ...` 부분에 방금 복사한 줄을 붙여넣기):
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo 'ssh-ed25519 AAAAC3Nza...여기에-복사한-내용... langclip' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+### ③ 확인
+
+**PowerShell** 에서:
+
+```powershell
+ssh ubuntu@34.123.45.67
+```
+
+비밀번호를 묻지 않고 `ubuntu@langclip:~$` 가 나오면 성공. `exit` 로 나옵니다.
+
+> 이제부터 `scp`(파일 올리기)와 `ssh -L`(터널)이 전부 됩니다.
+
+---
+
 ## 7. 서버 준비 (한 번만)
 
 ### 7-1. 기본 업데이트
@@ -197,22 +245,26 @@ cd ~
 git clone https://github.com/<내계정>/<저장소이름>.git langclip
 ```
 
-**방법 B — 내 PC에서 직접 올리기**
+**방법 B — GitHub 없이 내 PC에서 직접 올리기**
 
-내 PC에서 PowerShell을 열고:
+먼저 **6-1 SSH 키 등록**을 끝내야 합니다. 그다음 PowerShell에서:
 
 ```powershell
 cd C:\dev
-scp langclip.zip ubuntu@34.123.45.67:~/
+scp -r langclip ubuntu@34.123.45.67:~/
 ```
 
-> 처음 접속이면 `yes` 를 입력하고, 비밀번호 대신 **아무것도 입력하지 말고 Enter**.
-> (VM은 기본적으로 SSH 키로 인증하므로 비밀번호가 없습니다. 위 명령이 안 되면 방법 A를 쓰세요.)
+> `data/` 까지 같이 올라갑니다. 이미 서버에 `data/` 가 있으면 **덮어쓰지 않도록**
+> 아래 8-2 처럼 `data` 를 빼고 올리는 편이 안전합니다.
 
-그다음 서버 창에서:
+```powershell
+scp -r langclip ubuntu@34.123.45.67:~/langclip-new
+```
+
+그다음 서버 창에서 폴더만 교체:
 
 ```bash
-cd ~ && unzip langclip.zip && mv langclip-main langclip
+cd ~ && rsync -a --exclude data langclip-new/ langclip/ && rm -rf langclip-new
 ```
 
 ### 8-2. 데이터 폴더 (영상·대본·북마크·학습기록)
@@ -354,26 +406,98 @@ sudo journalctl -u caddy -n 20 --no-pager
 
 ---
 
-## 13. 관리자로 영상 등록하기
+## 13. 관리자로 영상 등록하기 ⭐ 여기가 제일 궁금한 부분
 
-관리자 서버는 **인터넷에 열지 않았습니다**(`127.0.0.1`). 내 PC에서 안전하게 터널을 뚫어 접속합니다.
+### 왜 그냥 `127.0.0.1:8000` 으로는 안 되나?
 
-**내 PC의 PowerShell에서:**
+`127.0.0.1` 은 "**이 컴퓨터 자신**"을 뜻하는 주소입니다.
+서버 컴퓨터 안에서 `127.0.0.1:8000` 을 열면, 그건 **서버 자신만** 볼 수 있는 문입니다.
+내 PC 브라우저에서 `127.0.0.1:8000` 을 치면 **내 PC 자신**을 찾아가기 때문에 안 열립니다.
+
+그래서 두 가지 중 하나를 합니다.
+
+---
+
+### 방법 1 — SSH 터널 (권장 · 안전)
+
+서버의 8000번 문을 **내 PC의 8000번 문에 연결**하는 방법입니다.
+인터넷에는 전혀 열리지 않으므로 비밀번호가 새도 뚫릴 수가 없습니다.
+
+**PowerShell 창 1개를 열고** (6-1 SSH 키가 먼저 필요):
 
 ```powershell
 ssh -L 8000:127.0.0.1:8000 ubuntu@34.123.45.67
 ```
 
-> 이 창은 **닫지 말고** 그대로 두세요. 이 창이 열려 있는 동안만 터널이 유지됩니다.
+- 아무 메시지 없이 프롬프트만 뜨면 **성공**입니다. 이 창은 **닫지 마세요.**
+- 이 창이 열려 있는 동안만 터널이 유지됩니다. 닫으면 끊깁니다.
 
-그다음 내 PC 브라우저에서:
+그다음 **내 PC 브라우저**에서:
 
 ```
 http://127.0.0.1:8000/admin?token=여기에-내-비밀번호
 ```
 
-→ `추가` 탭이 보이면 성공. 영상 등록·대본 수정·원본 음성 업로드를 여기서 합니다.
-한 번 접속하면 30일간 기억됩니다.
+→ `추가` 탭이 보이면 성공. 영상 등록 · 대본 수정 · 원본 음성 업로드를 여기서 합니다.
+한 번 접속하면 **30일간** 기억되므로, 다음부터는 `http://127.0.0.1:8000/` 만 쳐도 됩니다.
+
+> **중요:** 여기서 등록한 영상은 **즉시** 공개 주소(`https://<IP>.sslip.io`)에도 나타납니다.
+> 두 서버가 같은 `data/` 폴더를 보기 때문입니다. 복사할 필요 없습니다.
+
+---
+
+### 방법 2 — 관리자 페이지를 따로 열기 (폰에서도 등록하고 싶을 때)
+
+SSH 창을 매번 열기 귀찮다면, **비밀번호를 한 겹 더** 씌워서 8443 포트로 엽니다.
+
+```bash
+caddy hash-password --plaintext '내-관리자-비번'
+```
+
+나온 `$2a$14$...` 문자열을 복사한 뒤:
+
+```bash
+sudo tee /etc/caddy/Caddyfile > /dev/null <<'EOF'
+34.123.45.67.sslip.io {
+    reverse_proxy 127.0.0.1:8001
+    encode gzip
+    request_body {
+        max_size 60MB
+    }
+}
+
+34.123.45.67.sslip.io:8443 {
+    basic_auth {
+        admin $2a$14$여기에-해시-붙여넣기
+    }
+    reverse_proxy 127.0.0.1:8000
+}
+EOF
+```
+
+> `34.123.45.67` 은 본인 IP로 (세 군데), 해시는 방금 나온 값으로 바꾸세요.
+
+```bash
+sudo systemctl reload caddy
+```
+
+이제 **어디서든** (폰 포함):
+
+```
+https://34.123.45.67.sslip.io:8443/admin?token=여기에-내-비밀번호
+```
+
+브라우저가 ID/비밀번호를 먼저 물어봅니다 → `admin` / 위에서 정한 비번 → 앱 토큰은 주소에 붙어 있어서 자동 통과.
+
+> 방법 2는 **인터넷에 열리는 문**입니다. 비밀번호를 길게(12자 이상) 쓰세요.
+> 불안하면 방법 1만 쓰면 됩니다.
+
+---
+
+### 대본만 고치고 싶을 때
+
+영상 등록이 아니라 **대본 문장 수정**도 같은 관리자 화면에서 합니다.
+목록에서 영상 클릭 → `대본` → 문장 고치고 저장. 공개 서버에도 바로 반영됩니다.
 
 ---
 
@@ -428,3 +552,155 @@ cd ~/langclip && tar czf ~/backup-$(date +%m%d).tgz data
 ```powershell
 scp ubuntu@34.123.45.67:~/backup-*.tgz .
 ```
+
+---
+
+## 18. 서버에 코드 업데이트 반영하기 ⭐ 두 번째 질문
+
+내 PC에서 고친 코드를 **서버에도 똑같이** 넣어주는 작업입니다.
+핵심 원칙 3가지:
+
+1. **`data/` 폴더는 절대 건드리지 않는다** — 영상 목록·대본·학습기록이 전부 여기 있습니다.
+2. **코드는 서버에서 직접 고치지 않는다** — 내 PC에서만 고치고 내려보냅니다.
+3. **코드를 바꿨으면 서버를 재시작한다** — 안 하면 옛 코드가 계속 돕니다.
+
+---
+
+### 18-1. 가장 흔한 경우: 내 PC에서 기능을 고쳤을 때
+
+#### ① 내 PC에서 커밋 (지금 하던 그대로)
+
+```powershell
+cd C:\dev\langclip
+git add -A
+git commit -m "feat: 뭘 고쳤는지"
+```
+
+#### ② 서버로 보내기
+
+**GitHub를 쓰는 경우** — 내 PC에서:
+
+```powershell
+git push
+```
+
+서버 SSH 창에서:
+
+```bash
+cd ~/langclip
+git pull
+```
+
+**GitHub를 안 쓰는 경우** — 내 PC에서 폴더를 통째로 복사:
+
+```powershell
+cd C:\dev
+scp -r langclip ubuntu@34.123.45.67:~/langclip-new
+```
+
+서버 SSH 창에서 (`data` 는 빼고 덮어쓰기):
+
+```bash
+cd ~ && rsync -a --exclude data langclip-new/ langclip/ && rm -rf langclip-new
+```
+
+> `rsync` 는 **바뀐 파일만** 복사합니다. 빠르고, `data/` 는 손대지 않습니다.
+> `rsync: command not found` 가 뜨면 `sudo apt install -y rsync`.
+
+#### ③ 라이브러리가 바뀌었으면 설치 (requirements.txt 를 고쳤을 때만)
+
+```bash
+cd ~/langclip
+.venv/bin/pip install -r requirements.txt
+```
+
+> 안 바뀌었으면 이 단계는 **건너뛰세요.** 10분씩 걸립니다.
+
+#### ④ 서버 재시작 — 이걸 빼먹으면 아무것도 안 바뀝니다
+
+```bash
+sudo systemctl restart langclip langclip-admin
+```
+
+#### ⑤ 확인
+
+```bash
+curl -s http://127.0.0.1:8001/api/health
+```
+
+`{"ok":true,...}` 가 나오면 살아 있는 것입니다. 그다음 **브라우저에서 Ctrl+Shift+R** (강력 새로고침).
+
+> **왜 강력 새로고침?** 브라우저가 옛 `app.js` 를 캐시에 들고 있기 때문입니다.
+> `static/index.html` 의 `?v=` 값을 올려 커밋하면 일반 새로고침으로도 반영됩니다.
+
+---
+
+### 18-2. 화면(HTML/CSS/JS)만 고친 경우
+
+서버 재시작이 **필요 없습니다.** 파일만 바뀌면 됩니다. 다만 브라우저 캐시 때문에:
+
+- `static/index.html` 의 `?v=` 값을 올리고 (`?v=6.6.0` → `?v=6.7.0`)
+- `Ctrl+Shift+R` 로 새로고침
+
+---
+
+### 18-3. 서버에서 뭔가 잘못됐을 때 되돌리기
+
+```bash
+cd ~/langclip
+git log --oneline -5        # 최근 커밋 보기
+git checkout <되돌릴-커밋해시>
+sudo systemctl restart langclip langclip-admin
+```
+
+다시 최신으로:
+
+```bash
+git checkout main
+sudo systemctl restart langclip langclip-admin
+```
+
+> `data/` 는 git 관리 대상이 아니라서 **되돌려도 학습 기록은 그대로**입니다.
+
+---
+
+### 18-4. 업데이트 전후 백업 (습관 들이면 좋음)
+
+업데이트 직전, 서버 SSH 창에서:
+
+```bash
+cd ~/langclip && tar czf ~/backup-$(date +%m%d-%H%M).tgz data
+```
+
+문제가 생기면:
+
+```bash
+cd ~/langclip && tar xzf ~/backup-1105-1630.tgz
+```
+
+---
+
+### 18-5. 절대 하면 안 되는 것
+
+| 하면 안 되는 것 | 왜 |
+|---|---|
+| 서버에서 `main.py` 직접 수정 | 다음 `git pull` 때 충돌 나서 업데이트가 막힘 |
+| `git pull` 후 재시작 생략 | 옛 코드가 계속 돌아 "안 고쳐졌다"고 착각 |
+| `--workers 2` 이상 | JSON 기록이 서로 덮어써서 학습기록 소실 |
+| `data/` 를 `scp` 로 덮어쓰기 | 최신 학습기록이 옛 파일로 되돌아감 |
+| `sudo rm -rf ~/langclip/data` | 전부 사라짐 (백업 없으면 복구 불가) |
+
+---
+
+## 19. 버전 확인이 헷갈릴 때
+
+`/api/health` 의 `build` 값은 코드 안에 **고정 문자열**로 들어 있어서, 실제로는 안 바뀝니다.
+지금 서버가 최신인지 확인하려면 **파일 날짜**를 보는 게 확실합니다:
+
+```bash
+cd ~/langclip && ls -l --time-style=+%m-%d\ %H:%M static/app.js main.py
+```
+
+방금 `git pull` 한 시각과 같으면 최신입니다.
+
+그리고 실제 동작 확인은 **브라우저 강력 새로고침 후 화면**으로 하는 게 가장 정확합니다.
