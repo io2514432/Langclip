@@ -185,22 +185,20 @@ function renderHome() {
     const done = !!f.complete;
     $("#btn-start").disabled = false;
     $("#btn-start").textContent = done ? "다시 연습하기" : "학습 시작하기";
-    $("#fan").innerHTML = [0, 1, 2].map((i) => `
-      <div class="fan-item">
-        <img src="https://i.ytimg.com/vi/${esc(f.yt)}/mqdefault.jpg" alt="" />
-        ${i === 1 ? `<span class="fan-badge">${done ? "완료" : "학습"}</span>` : ""}
-      </div>`).join("");
+    const fi = $("#focus-img");
+    if (fi) fi.src = `https://i.ytimg.com/vi/${esc(f.yt)}/hqdefault.jpg`;
   } else {
     $("#focus-t").textContent = "오늘의 쇼츠";
     $("#focus-s").textContent = "등록된 영상이 없습니다";
     $("#btn-start").disabled = true;
     $("#btn-start").textContent = "시작하기";
-    $("#fan").innerHTML = `<div class="fan-item"></div><div class="fan-item"></div><div class="fan-item"></div>`;
+    const fi0 = $("#focus-img"); if (fi0) fi0.removeAttribute("src");
   }
 
   const ns = S.notes.sentences || [];
   setCount("note-count", ns.length);
   const box = $("#note-preview");
+  if (!box) { renderNotesScreen(); return; }
   if (!ns.length) {
     box.innerHTML = `<div class="note-empty"><b>아직 저장한 문장이 없습니다</b><br />학습 중 자막 위 별표를 누르면 어려운 문장이 여기에 모입니다.</div>`;
   } else {
@@ -269,7 +267,7 @@ function renderVideos() {
   box.innerHTML = "";
   S.videos.forEach((v) => {
     const el = document.createElement("div");
-    el.className = "note-card vrowcard";
+    el.className = "vrow-wrap";
     el.innerHTML = `
       ${S.admin ? `<button class="vdel" title="삭제" data-del="${esc(v.id)}">${ic("i-close", "ic xs")}</button>` : ""}
       <div class="vc-body">
@@ -285,8 +283,21 @@ function renderVideos() {
           </div>
         </div>
         <div class="vc-pct">${v.complete ? ic("i-check", "ic xs") : ""}</div>
+      </div>
+      <div class="vexp" hidden>
+        <button class="vexp-b" data-open="video">영상 보기</button>
+        <button class="vexp-b" data-open="script">대본 보기</button>
       </div>`;
-    el.querySelector(".vc-body").onclick = () => openVideo(v, 0);
+    const exp = el.querySelector(".vexp");
+    el.querySelector(".vc-body").onclick = () => {
+      const open = exp.hidden;
+      $$("#vlist .vexp").forEach((x) => { x.hidden = true; });
+      $$("#vlist .vrow-wrap").forEach((x) => x.classList.remove("is-open"));
+      exp.hidden = !open;
+      el.classList.toggle("is-open", open);
+    };
+    el.querySelector('[data-open="video"]').onclick = (e) => { e.stopPropagation(); openVideo(v, 0); };
+    el.querySelector('[data-open="script"]').onclick = (e) => { e.stopPropagation(); openScript(v.id); };
     const del = el.querySelector(".vdel");
     if (del) del.onclick = (e) => { e.stopPropagation(); deleteVideo(v); };
     const abtn = el.querySelector(".v-audio");
@@ -1692,6 +1703,12 @@ async function scrVideo(id) {
   return SCRC[id];
 }
 
+function openScript(vid) {
+  SCR.vid = vid || SCR.vid;
+  SCR.edit = false;
+  show("s-script");
+}
+
 async function loadScripts() {
   if (!S.videos || !S.videos.length) { try { await loadVideos(); } catch {} }
   const ids = (S.videos || []).map((x) => x.id);
@@ -1733,7 +1750,7 @@ async function renderScript() {
     return ((s.en || s.text || "") + " " + (s.ko || "")).toLowerCase().indexOf(q) >= 0;
   });
   if (!segs.length) { box.innerHTML = `<div class="scr-empty">검색 결과가 없습니다</div>`; return; }
-  box.innerHTML = `<div class="scr-vt">${esc(v.title || "")} · ${segs.length}문장</div>` + segs.map(({ s, i }) => `
+  box.innerHTML = `<div class="scr-vt">${segs.length}문장</div>` + segs.map(({ s, i }) => `
     <button class="scr-seg" data-i="${i}">
       <div class="en"><span class="n">${i + 1}</span>${esc(s.en || s.text || "")}</div>
       ${s.ko ? `<div class="ko">${esc(s.ko)}</div>` : ""}
@@ -1747,7 +1764,7 @@ async function renderScript() {
 function renderScriptEdit(v) {
   const box = $("#scr-body");
   const segs = v.segs || [];
-  box.innerHTML = `<div class="scr-vt">${esc(v.title || "")} · ${segs.length}문장 편집</div>` +
+  box.innerHTML = `<div class="scr-vt">${segs.length}문장 편집</div>` +
     segs.map((s, i) => `
       <div class="ed-row" data-i="${i}">
         <div class="ed-head"><b>${i + 1}</b>
@@ -1898,7 +1915,8 @@ function bind() {
   $("#note-more").onclick = () => show("s-notes");
   $("#wp-book").onclick = toggleWordStar;
   $("#wp-more").onclick = openDict;
-  $("#scr-q").oninput = () => { SCR.q = $("#scr-q").value; renderScript(); };
+  const sq = $("#scr-q");
+  if (sq) sq.oninput = () => { SCR.q = sq.value; renderScript(); };
   const se = $("#scr-edit");
   if (se) se.onclick = () => {
     if (!S.admin) return;
@@ -2266,7 +2284,9 @@ stopAudioBar = function () {
     if (aon) aon.onchange = () => { const b = $("#ad-audio-body"); if (b) b.hidden = !aon.checked; };
     const abox = $("#ad-audio-box");
     if (abox) abox.hidden = !S.admin;
-    const bsc = $("#btn-script");
+    const bsb = $("#btn-scr-back");
+  if (bsb) bsb.onclick = () => show("s-list");
+  const bsc = $("#btn-script");
     if (bsc) bsc.onclick = () => {
       try { openScriptSheet(); } catch (e) {
         console.error("[langclip] openScriptSheet failed", e);

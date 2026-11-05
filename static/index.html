@@ -128,19 +128,13 @@
           </div>
 
           <div class="focus" id="focus-card">
-            <div class="focus-fan" id="fan"></div>
+            <div class="focus-cover"><img id="focus-img" alt="" /></div>
             <div class="focus-head">
               <span class="focus-t" id="focus-t">오늘의 쇼츠</span>
             </div>
             <p class="focus-s" id="focus-s">학습할 쇼츠를 준비하고 있어요.</p>
             <button class="cta" id="btn-start">쇼츠 학습 시작하기 <svg class="ic xs"><use href="#i-right"/></svg></button>
           </div>
-
-          <div class="sec-title">
-            북마크 <span class="pill" id="note-count">0</span>
-            <button class="more" id="note-more">전체</button>
-          </div>
-          <div id="note-preview"></div>
         </div>
       </section>
 
@@ -325,15 +319,11 @@
       <section class="screen" id="s-script">
         <div class="scr-head">
           <div class="scr-trow">
+            <button class="scr-back" id="btn-scr-back" aria-label="뒤로"><svg class="ic"><use href="#i-left"/></svg></button>
             <div class="scr-t">대본</div>
             <button class="scr-edit" id="scr-edit" hidden>편집</button>
           </div>
-          <div class="scr-search">
-            <svg class="ic xs"><use href="#i-list"/></svg>
-            <input id="scr-q" placeholder="문장 · 뜻 검색" autocomplete="off" />
-          </div>
-        </div>
-        <div class="scr-pick" id="scr-pick"></div>
+</div>
         <div class="scroll scr-body" id="scr-body"></div>
       </section>
 
@@ -397,7 +387,6 @@
     <nav class="tabbar">
       <button class="tab is-on" data-tab="s-home"><svg class="ic"><use href="#i-home"/></svg><span>홈</span></button>
       <button class="tab" data-tab="s-list"><svg class="ic"><use href="#i-list"/></svg><span>학습</span></button>
-      <button class="tab" data-tab="s-script"><svg class="ic"><use href="#i-note"/></svg><span>대본</span></button>
       <button class="tab" data-tab="s-notes"><svg class="ic"><use href="#i-star"/></svg><span>북마크</span></button>
       <button class="tab" id="tab-add"><svg class="ic"><use href="#i-plus"/></svg><span>추가</span></button>
     </nav>
@@ -557,7 +546,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=7.3.0"></script>
-<script src="/sync.js?v=7.3.0"></script>
+<script src="/app.js?v=7.4.0"></script>
+<script src="/sync.js?v=7.4.0"></script>
 </body>
 </html>
