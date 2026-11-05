@@ -1199,12 +1199,12 @@ body.vf-focus .screens{height:100%}
 .sp-es{bottom:20%;left:10%;font-size:16px;font-weight:400;opacity:.18}
 .sp-de{bottom:11%;right:18%;font-size:15px;font-weight:400;opacity:.12}
 .splash-brand{display:flex;flex-direction:column;align-items:center;z-index:10}
-.sp-sym{width:112px;height:auto;display:block;margin-bottom:16px;   /* 그림자·그라데이션 없이 심볼만 */
+.sp-sym{width:150px;height:auto;display:block;margin-bottom:20px;   /* 그림자·그라데이션 없이 심볼만 */
   animation:sp-pop .62s cubic-bezier(.2,.8,.2,1) both}
-.splash-title{font-size:38px;font-weight:800;color:#000;letter-spacing:-.035em;line-height:1.1;
+.splash-title{font-size:50px;font-weight:800;color:#000;letter-spacing:-.035em;line-height:1.1;
   animation:sp-up .55s .08s cubic-bezier(.2,.8,.2,1) both}
-.splash-bar{position:relative;width:76px;height:2px;border-radius:99px;background:#EDF1F5;
-  margin-top:26px;overflow:hidden;animation:sp-up .55s .16s cubic-bezier(.2,.8,.2,1) both}
+.splash-bar{position:relative;width:96px;height:2px;border-radius:99px;background:#EDF1F5;
+  margin-top:30px;overflow:hidden;animation:sp-up .55s .16s cubic-bezier(.2,.8,.2,1) both}
 .splash-bar i{position:absolute;top:0;left:0;width:38%;height:100%;border-radius:99px;
   background:#0095F6;animation:sp-slide 1.15s ease-in-out infinite}
 @keyframes sp-pop{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
@@ -1320,3 +1320,9 @@ body.vf-focus .screens{height:100%}
 .vrow-wrap .nc-meta{min-height:18px}
 .vrow-wrap .nc-meta .m-done{font-size:10.5px;font-weight:750;color:#1B9C63;white-space:nowrap}
 .vrow-wrap .v-audio{margin-left:auto;padding-right:0}
+
+/* v7.7 · 스플래시 크기 (작은 화면에서도 넘치지 않게) */
+@media (max-width:380px){
+  .sp-sym{width:120px;margin-bottom:16px}
+  .splash-title{font-size:40px}
+}
