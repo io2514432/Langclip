@@ -131,7 +131,7 @@ def record_verify(vid: str, result: dict) -> dict:
         "headline": result.get("headline", ""),
         "stages": {k: {"passed": bool(v.get("passed")), "hit": v.get("hit"),
                        "total": v.get("total"), "avg": v.get("avg"), "score": v.get("score")}
-                   for k, v in (result.get("stages") or {}).items()},
+                   for k, v in (result.get("stages") or {}).items() if isinstance(v, dict)},
     }
     d = _verifies()
     d[vid] = rec

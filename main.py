@@ -1075,12 +1075,13 @@ def verify_check(vid: str, payload: dict):
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     segs = v["segs"]
-    issued = (_SPOT.get(vid) or {}).get("idx") or []
-    if not issued:
-        issued = verify.spot_pick(vid, len(segs), verify.SPOT_K, salt=_now_salt())
+    spot_typed = payload.get("spot") or {}
+    issued = []
+    if spot_typed:                      # 스팟 체크는 화면에서 실제로 답한 경우에만 채점
+        issued = (_SPOT.get(vid) or {}).get("idx") or             verify.spot_pick(vid, len(segs), verify.SPOT_K, salt=_now_salt())
 
     res = verify.judge(segs, payload.get("read") or [], payload.get("typed") or {},
-                       issued, payload.get("spot") or {})
+                       issued, spot_typed)
     rec = prog.record_verify(vid, res)
     _SPOT.pop(vid, None)
     return {**res, **rec, "complete": prog.is_complete(vid),

@@ -221,7 +221,7 @@ def judge(segs: list[dict], read_scores, typed, spot_idx, spot_typed) -> dict:
              if row.get("lost", 0) > 0][:5]
     return {
         "passed": passed,
-        "stages": {"read": r, "recall": c, "spot": s},
+        "stages": {k: v for k, v in (("read", r), ("recall", c), ("spot", s)) if v},
         "score": _weighted_score(r, c, s),
         "failed_sentences": fails,
         "headline": ("학습 완료" if passed else
