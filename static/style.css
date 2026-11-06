@@ -1861,3 +1861,17 @@ body.study-focus .screens{height:100%}
   color:var(--ink-3);font-size:15px;font-weight:700;cursor:pointer;line-height:1}
 .tcele-home{width:100%;height:38px;margin-top:4px;border:0;background:none;
   color:var(--ink-3);font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
+
+/* ================= v8.7.1 · 카드 뜻 표시 정리 ================= */
+/* Level 2 : 단어 옆 작은 뜻 */
+.dk-w{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.dk-w-m{font-size:12.5px;font-weight:500;color:#7C93A6;letter-spacing:-.01em}
+.dk-w.sent{display:block;font-size:14.5px;font-weight:650;line-height:1.55;color:var(--ink)}
+.dk-card .dk-mean{margin-top:3px}
+
+/* Level 3 : 문장 카드 */
+.ak-ko.prompt{font-size:16.5px;line-height:1.65;margin:14px 0 18px}
+.ak-en.ans{font-size:17.5px;line-height:1.75;font-weight:700}
+.ak-ko.sub{margin-top:10px;font-size:12.5px;font-weight:600;color:#5A7387;line-height:1.6}
+.ak-mean.fade{animation:akFade .25s ease}
+@keyframes akFade{from{opacity:0}to{opacity:1}}

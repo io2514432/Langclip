@@ -353,9 +353,11 @@ function renderDeck() {
     <div class="dk-cards">${d.cards.map((c) => `
       <div class="dk-card">
         <button class="dk-del" data-id="${esc(c.id)}" aria-label="삭제"><svg class="ic xs"><use href="#i-close"/></svg></button>
-        <div class="dk-w">${esc(c.answer)}</div>
-        ${c.meaning ? `<div class="dk-mean">${esc(c.meaning)}</div>` : ""}
-        <div class="dk-ctx">${dkCtx(c)}</div>
+        ${c.kind === "sent"
+          ? `<div class="dk-w sent">${esc(c.answer)}</div>
+             ${c.meaning ? `<div class="dk-mean">${esc(c.meaning)}</div>` : ""}`
+          : `<div class="dk-w">${esc(c.answer)}${c.meaning ? `<span class="dk-w-m">${esc(c.meaning)}</span>` : ""}</div>
+             <div class="dk-ctx">${dkCtx(c)}</div>`}
       </div>`).join("")}</div>`;
   const st = $("#dk-start");
   if (st) st.onclick = () => startStudy(d.due ? d.cards.filter((c) => c.is_due) : d.cards);
@@ -401,6 +403,7 @@ function akRender() {
   if (!c) return akFinish();
   AK.flip = false; AK.hint = false;
   const v = dkVideo(c.vid);
+  const isSent = c.kind === "sent";
   const done = Math.max(0, AK.i);
   const pct = Math.round((done / Math.max(1, AK.n)) * 100);
   $("#ak-i").textContent = `${Math.min(AK.i + 1, AK.n)} / ${AK.n}`;
@@ -409,21 +412,31 @@ function akRender() {
   $("#ak-grades").hidden = true;
   const card = $("#ak-card");
   card.className = "ak-card";
-  card.innerHTML = `
-    <div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>
-    <div class="ak-ko">${esc(c.ko || c.meaning || "이 카드를 기억해보세요")}</div>
-    <div class="ak-en">${akCloze(c, false)}</div>
-    <button class="ak-hint" id="ak-hint">힌트 보기</button>
+  const meta = `<div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>`;
+  const hintBtn = `<button class="ak-hint" id="ak-hint">힌트 보기</button>
     <div class="ak-hintbox" id="ak-hintbox" hidden></div>`;
+  card.innerHTML = isSent
+    ? `${meta}
+      <div class="ak-ko prompt">${esc(c.ko || c.meaning || "이 문장을 영어로 말해보세요")}</div>
+      ${hintBtn}`
+    : `${meta}
+      <div class="ak-ko">${esc(c.ko || "")}</div>
+      <div class="ak-en">${akCloze(c, false)}</div>
+      ${hintBtn}`;
   const h = $("#ak-hint");
   if (h) h.onclick = (e) => {
     e.stopPropagation();
     const box = $("#ak-hintbox");
-    if (box) {
-      box.innerHTML = `<b>${esc(String(c.answer || "").slice(0, 1))}${"_".repeat(Math.max(0, String(c.answer || "").length - 1))}</b>`
+    if (!box) return;
+    if (isSent) {
+      const words = String(c.answer || "").split(/\s+/).filter(Boolean);
+      box.innerHTML = `<b>${esc(words.slice(0, 2).join(" "))} …</b> · ${words.length}단어`;
+    } else {
+      const a = String(c.answer || "");
+      box.innerHTML = `<b>${esc(a.slice(0, 1))}${"_".repeat(Math.max(0, a.length - 1))}</b>`
         + (c.meaning ? ` · ${esc(c.meaning)}` : "");
-      box.hidden = false;
     }
+    box.hidden = false;
     h.hidden = true;
   };
 }
@@ -433,24 +446,44 @@ function akFlip() {
   if (!c || AK.flip) return;
   AK.flip = true;
   const v = dkVideo(c.vid);
+  const isSent = c.kind === "sent";
   const card = $("#ak-card");
   card.className = "ak-card back";
-  card.innerHTML = `
-    <div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>
-    <div class="ak-ko">${esc(c.ko || "")}</div>
-    <div class="ak-en">${akCloze(c, true)}</div>
-    <div class="ak-split"></div>
-    <div class="ak-word">${esc(c.answer || "")}</div>
-    ${c.meaning ? `<div class="ak-mean">${esc(c.meaning)}</div>` : ""}`;
+  const meta = `<div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>`;
+  card.innerHTML = isSent
+    ? `${meta}
+      <div class="ak-en ans">${esc(c.answer || "")}</div>
+      <div class="ak-split"></div>
+      <div class="ak-ko sub">${esc(c.ko || c.meaning || "")}</div>`
+    : `${meta}
+      <div class="ak-ko">${esc(c.ko || "")}</div>
+      <div class="ak-en">${akCloze(c, true)}</div>
+      <div class="ak-split"></div>
+      <div class="ak-word">${esc(c.answer || "")}</div>
+      <div class="ak-mean" id="ak-mean">${esc(c.meaning || "")}</div>`;
   $("#ak-flip").hidden = true;
   $("#ak-grades").hidden = false;
+  if (!isSent && !c.meaning) akMeaning(c);
   akSpeak(c);
+}
+
+/* 뜻이 비어 있는 카드는 사전에서 한 번만 보충한다 */
+async function akMeaning(c) {
+  const el = $("#ak-mean");
+  if (!el || !c) return;
+  try {
+    const r = await api("/api/words/" + encodeURIComponent(c.answer || ""));
+    const m = (r && (r.meaning || r.ko || r.def || r.translation)) || "";
+    if (m && el.isConnected) { el.textContent = m; el.classList.add("fade"); }
+  } catch (e) {}
 }
 
 function akSpeak(c) {
   if (!c) return;
-  const text = String(c.cloze || "").replace(/____/g, " " + (c.answer || "") + " ").trim()
-    || String(c.answer || "");
+  const text = c.kind === "sent"
+    ? String(c.answer || "").trim()
+    : (String(c.cloze || "").replace(/____/g, " " + (c.answer || "") + " ").trim()
+       || String(c.answer || ""));
   if (!text) return;
   try {
     const u = window.speechSynthesis;
