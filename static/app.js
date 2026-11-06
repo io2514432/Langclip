@@ -379,7 +379,6 @@ async function delCard(id) {
   if (!still) {                      // 마지막 카드였다 → 덱이 사라짐
     DK.vid = "";
     show("s-notes");
-    toast("북마크를 모두 지워 덱을 삭제했습니다", 2600);
     return;
   }
   renderDeck();
