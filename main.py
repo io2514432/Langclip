@@ -1172,6 +1172,30 @@ def verify_check(vid: str, payload: dict):
             "completed": prog.completed_count(), "xp": prog.level_info()}
 
 
+@app.post("/api/videos/{vid}/test/grade")
+def test_grade(vid: str, payload: dict):
+    """초급·중급 테스트 결과 저장. 80점 이상이면 암송 완료."""
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    try:
+        pct = max(0.0, min(100.0, float(payload.get("score") or 0)))
+    except (TypeError, ValueError):
+        pct = 0.0
+    mode = str(payload.get("mode") or "beginner")
+    passed = pct >= verify.PASS_SCORE
+    res = {
+        "passed": passed,
+        "score": pct,
+        "headline": mode,
+        "stages": {mode: {"passed": passed, "score": pct,
+                          "hit": payload.get("ok"), "total": len(v["segs"])}},
+    }
+    rec = prog.record_verify(vid, res)
+    return {**rec, "mode": mode, "score": pct, "passed": passed,
+            "complete": prog.is_complete(vid), "completed": prog.completed_count(),
+            "xp": prog.level_info()}
+
+
 @app.delete("/api/videos/{vid}/verify")
 def reset_verify(vid: str, request: Request):
     require_admin(request)
@@ -1199,6 +1223,7 @@ PUBLIC_ALLOW = {
     ("POST", "/api/notes/word"),
     ("GET", "/api/words/{word}"),
     ("POST", "/api/videos/{vid}/verify/check"),
+    ("POST", "/api/videos/{vid}/test/grade"),
 }
 if PUBLIC:
     kept, dropped = [], []

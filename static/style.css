@@ -1611,3 +1611,50 @@ body.vf-focus .screens{height:100%}
 .tq-line-b span{display:block;font-size:10.5px;color:var(--ink-3);line-height:1.45}
 .tq-line-b b{display:block;font-size:11.5px;font-weight:700;color:var(--ink);line-height:1.5;margin-top:1px}
 .tq-acts{display:flex;flex-direction:column;gap:7px;margin:16px 0 4px}
+
+/* ================= v8.4 · 테스트 다듬기 ================= */
+/* 그라데이션·그림자 제거 */
+.tq-hero, .tq-hero.ok, .tq-hero.no{background:#fff;box-shadow:none}
+.tq-hero.ok{background:#F5FCF8;border-color:#C8EBDD}
+.tq-hero.no{background:#FFFAF8;border-color:#FBD3D0}
+.tq-tile,.tq-tile.in{box-shadow:none!important;background:#fff}
+.tq-tile.in{background:#F0F8FF}
+.vf-feed{animation:none}
+.vf-feed,.vf-next,.vf-submit,#s-verify .sheet,.tq-blnk{box-shadow:none!important}
+
+/* 난이도 시트 : 번호 캡슐 제거 */
+.tm-row .tm-n{display:none!important}
+
+/* 초급 : 문장 속 빈칸 */
+.tq-blnk{display:inline-block;height:1.5em;min-width:2.6em;margin:0 .12em;padding:0 .3em;
+  border:0;border-bottom:2px solid var(--sky);border-radius:0;background:#F4FAFF;
+  font-family:inherit;font-size:.92em;font-weight:850;color:var(--sky-d);
+  line-height:1.5em;vertical-align:baseline;cursor:pointer;text-align:center}
+.tq-blnk.on{background:#E6F5FF}
+.tq-blnk:active{background:#DCEFFF}
+.tq-blnk.ok{border-bottom-color:#22B884;background:#F1FCF7;color:#15803D;cursor:default}
+.tq-blnk.no{border-bottom-color:#F97362;background:#FFF4F2;color:#C2410C;cursor:default}
+.tq-cnt{margin-top:12px;font-size:10px;font-weight:800;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;text-align:right}
+.tq-bank{margin-top:14px;padding-top:12px;border-top:1px solid #EEF4F9}
+
+/* 테스트 완료 축하 */
+.tcele{position:fixed;inset:0;z-index:9999;display:grid;place-items:center}
+.tcele[hidden]{display:none}
+.tcele-bg{position:absolute;inset:0;background:rgba(6,14,22,.82)}
+.tcele-box{position:relative;width:min(88vw,330px);padding:28px 22px 16px;border-radius:20px;
+  background:#101C2A;border:1px solid rgba(251,191,36,.32);text-align:center}
+.tcele-score{color:#FBBF24;font-variant-numeric:tabular-nums}
+.tcele-score b{font-size:44px;font-weight:900;letter-spacing:-.03em;line-height:1}
+.tcele-score small{font-size:14px;font-weight:800;margin-left:2px}
+.tcele-t{margin-top:10px;font-size:16px;font-weight:850;color:#F5E9CB;letter-spacing:-.02em}
+.tcele-m{margin:7px 0 16px;font-size:11.5px;line-height:1.65;color:rgba(226,237,246,.62)}
+.tcele-rows{text-align:left;border-top:1px solid rgba(255,255,255,.09)}
+.tcele-r{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 0;border-bottom:1px solid rgba(255,255,255,.09)}
+.tcele-r span{font-size:10.5px;color:rgba(226,237,246,.5)}
+.tcele-r b{font-size:11.5px;font-weight:850;color:#E7F1FA;font-variant-numeric:tabular-nums}
+.tcele-cta{width:100%;height:44px;margin-top:16px;border:0;border-radius:12px;
+  background:#FBBF24;color:#20180A;font-family:inherit;font-size:13px;font-weight:850;cursor:pointer}
+.tcele-x{width:100%;height:34px;margin-top:6px;border:0;background:none;
+  color:rgba(226,237,246,.45);font-family:inherit;font-size:11.5px;cursor:pointer}

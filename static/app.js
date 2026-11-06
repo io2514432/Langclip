@@ -1678,7 +1678,7 @@ async function submitRecall() {
 }
 
 /* 3단계: 무작위 스팟 체크 */
-const PASS_SCORE = 90;   // verify.py 의 PASS_SCORE 와 같은 값
+const PASS_SCORE = 80;   // verify.py 의 PASS_SCORE 와 같은 값
 
 async function submitVerify() {
   const b = $("#vf-submit");
@@ -1751,7 +1751,7 @@ function renderVerifyResult() {
       <div class="vr-num">${score}<small>점</small></div>
       <div class="vr-txt">
         <b>${r.passed ? "통과했습니다" : "다시 도전해보세요"}</b>
-        <em>${r.passed ? "모든 문장을 확인하세요" : `${rc.need || 90}점 이상이면 통과입니다`}</em>
+        <em>${r.passed ? "모든 문장을 확인하세요" : `${rc.need || 80}점 이상이면 통과입니다`}</em>
       </div>
     </div>
     <div class="vr-segs">
@@ -1777,6 +1777,12 @@ function renderVerifyResult() {
   $$("#vf-body .vr-spk").forEach((b) => {
     b.onclick = () => playResultSeg(+b.dataset.i);
   });
+  if (r.passed) setTimeout(() => {
+    const okN = rows.filter((x) => !x.lost).length;
+    const bb = tqSave("recall", score);
+    if (S.cur) S.cur.complete = true;
+    tqCelebrate(score, okN, rows.length, bb || score);
+  }, 340);
   $("#vf-again").onclick = () => { clearInterval(window.__vrStop); startVerify(); };
   $("#vf-close").onclick = () => { clearInterval(window.__vrStop); exitVerify(false); };
 }
@@ -2565,9 +2571,10 @@ async function attachAddAudio(vid) {
 window.attachAddAudio = attachAddAudio;
 
 
-/* ================= v8.3 · 3단계 테스트 (초급·중급·고급) ================= */
+/* ================= v8.4 · 3단계 테스트 ================= */
 const TQ = { on: false, mode: "beginner", idx: 0, phase: "q", res: [], item: null, n: 0, revealed: false };
 const TQ_NAME = { beginner: "초급 · 어절 블록", inter: "중급 · 빈칸 채우기", recall: "고급 · 백지 테스트" };
+const TQ_PASS = 80;
 
 function tqNorm(w) {
   return String(w || "").toLowerCase().replace(/[.,!?;:"'\u2019\u201c\u201d()\[\]]/g, "").trim();
@@ -2589,10 +2596,24 @@ function tqRec() {
   catch (e) { return {}; }
 }
 function tqSave(mode, pct) {
-  if (!S.cur) return;
+  if (!S.cur) return 0;
   const r = tqRec();
   r[mode] = Math.max(r[mode] || 0, pct);
   try { localStorage.setItem("lc_test_" + S.cur.id, JSON.stringify(r)); } catch (e) {}
+  return r[mode];
+}
+
+/* 빈칸 개수 : 기본 3개, 길면 최대 5개 */
+function tqBlankCount(n) {
+  const k = n <= 5 ? 2 : n <= 8 ? 3 : n <= 12 ? 4 : 5;
+  return Math.max(1, Math.min(k, n - 1));
+}
+
+function tqPickBlanks(toks, k) {
+  const cand = [];
+  toks.forEach((t, j) => { if (tqNorm(t).length >= 2) cand.push(j); });
+  const pool = cand.length >= k ? cand : toks.map((t, j) => j);
+  return tqShuffle(pool).slice(0, k).sort((a, b) => a - b);
 }
 
 function tqOpenSheet() {
@@ -2600,41 +2621,42 @@ function tqOpenSheet() {
   const rec = tqRec();
   $$("#sheet-test [data-best]").forEach((el) => {
     const v = rec[el.dataset.best];
-    el.textContent = v ? v + "%" : "";
+    el.textContent = v ? v + "점" : "";
   });
   const box = $("#sheet-test");
   if (!box) return beginTest("recall");
   box.hidden = false;
 }
 
-/* 문장 1개분 문제 생성 */
 function tqBuild(mode, i) {
   const seg = S.cur.segs[i] || {};
   const toks = tqTokens(seg);
   const key = tqNorm(toks.join(" "));
+  const n = toks.length;
+  const k = tqBlankCount(n);
+  const blanks = tqPickBlanks(toks, k);
   if (mode === "beginner") {
-    const have = new Set(toks.map(tqNorm));
+    const bset = new Set(blanks);
+    const used = new Set(blanks.map((j) => tqNorm(toks[j])));
     const pool = [];
-    S.cur.segs.forEach((x, k) => {
-      if (k === i) return;
+    toks.forEach((t, j) => {
+      const x = tqNorm(t);
+      if (!bset.has(j) && x.length > 1 && !used.has(x)) { used.add(x); pool.push(t); }
+    });
+    S.cur.segs.forEach((x, kk) => {
+      if (kk === i) return;
       tqTokens(x).forEach((t) => {
-        const n = tqNorm(t);
-        if (n && n.length > 1 && !have.has(n)) { have.add(n); pool.push(t); }
+        const v = tqNorm(t);
+        if (v && v.length > 1 && !used.has(v)) { used.add(v); pool.push(t); }
       });
     });
-    const nEx = Math.min(3, Math.max(2, Math.round(toks.length * 0.28)));
-    const bank = toks.concat(tqShuffle(pool).slice(0, nEx))
-      .map((w, k) => ({ id: "b" + k, w, used: false }));
-    return { toks, key, bank: tqShuffle(bank), ans: new Array(toks.length).fill(null) };
+    const nEx = Math.min(2, Math.max(1, 3 - Math.floor(blanks.length / 2)));
+    const bank = blanks.map((j) => toks[j])
+      .concat(tqShuffle(pool).slice(0, nEx))
+      .map((w, idx) => ({ id: "b" + idx, w, used: false }));
+    return { toks, key, blanks, bank: tqShuffle(bank), ans: {} };
   }
-  const n = toks.length;
-  let k = n <= 5 ? 1 : n <= 8 ? 2 : n <= 11 ? 3 : 4;
-  k = Math.max(1, Math.min(k, Math.floor(n / 2)));
-  const cand = [];
-  toks.forEach((t, j) => { if (tqNorm(t).length >= 3) cand.push(j); });
-  const pool = cand.length >= k ? cand : toks.map((t, j) => j);
-  const blanks = tqShuffle(pool).slice(0, k).sort((a, b) => a - b);
-  return { toks, key, blanks, vals: {} };
+  return { toks, key, blanks, vals: {}, hinted: {} };
 }
 
 function beginTest(mode) {
@@ -2647,10 +2669,12 @@ function beginTest(mode) {
   TQ.n = S.cur.segs.length; TQ.revealed = false;
   TQ.item = TQ.on ? tqBuild(mode, 0) : null;
   VF.on = false; VF.stage = "recall"; VF.typed = {}; VF.n = TQ.n;
+  VF.mode = mode;
   document.body.classList.add("vf-focus");
   stopTick(); pausePlayer();
   show("s-verify");
   const feed = $("#vf-feed"); if (feed) feed.hidden = true;
+  const tc = $("#tcele"); if (tc) tc.hidden = true;
   $("#vf-title").textContent = TQ_NAME[mode];
   $("#vf-foot").hidden = false;
   if (!TQ.on) {
@@ -2663,16 +2687,23 @@ function beginTest(mode) {
 }
 
 function tqBeginnerHtml(seg, it) {
-  const slots = it.ans.map((t, k) => t
-    ? `<button class="tq-tile in" data-a="${k}">${esc(t.w)}</button>`
-    : `<span class="tq-slot" data-a="${k}"></span>`).join("");
+  const bset = new Set(it.blanks);
+  const parts = it.toks.map((t, j) => {
+    if (!bset.has(j)) return `<span>${esc(t)}</span>`;
+    const w = it.ans[j];
+    const a = tqNorm(t);
+    const wid = Math.min(14, Math.max(3, a.length)) * 0.62 + 1.5;
+    return `<button class="tq-blnk${w ? " on" : ""}" data-a="${j}" style="width:${wid}em">${w ? esc(w.w) : ""}</button>`;
+  }).join(" ");
   const bank = it.bank.map((b) => b.used
     ? `<span class="tq-tile gone">${esc(b.w)}</span>`
     : `<button class="tq-tile" data-t="${b.id}">${esc(b.w)}</button>`).join("");
-  return `<div class="tq-kicker">${TQ.idx + 1}번째 문장</div>
-    <div class="tq-ko">${esc(seg.ko || "영어 문장을 순서대로 배열하세요")}</div>
-    <div class="tq-drop" id="tq-drop">${slots}</div>
-    <div class="tq-bank" id="tq-bank">${bank}</div>`;
+  const done = Object.keys(it.ans).length;
+  return `<div class="tq-kicker">${TQ.idx + 1}번째 문장 · 빈칸 ${it.blanks.length}개</div>
+    <div class="tq-ko">${esc(seg.ko || "빈칸에 들어갈 단어를 고르세요")}</div>
+    <div class="tq-en" id="tq-en">${parts}</div>
+    <div class="tq-bank" id="tq-bank">${bank}</div>
+    <div class="tq-cnt" id="tq-cnt">${done} / ${it.blanks.length} 채움</div>`;
 }
 
 function tqInterHtml(seg, it) {
@@ -2681,17 +2712,15 @@ function tqInterHtml(seg, it) {
     if (!bset.has(j)) return `<span>${esc(t)}</span>`;
     const a = tqNorm(t);
     const w = Math.min(14, Math.max(3, a.length)) * 0.62 + 1.7;
-    return `<input class="tq-bl" data-b="${j}" style="width:${w}em" autocapitalize="off"
-      autocomplete="off" spellcheck="false" placeholder="${esc(t.slice(0, 1))}${".".repeat(Math.max(0, Math.min(13, a.length - 1)))}">`;
+    const h = it.hinted[j] ? esc(t.slice(0, 1)) + "___".slice(0, Math.max(0, 3)) : "";
+    const ph = it.hinted[j] ? esc(t.slice(0, 1)) + "_".repeat(Math.max(1, Math.min(12, a.length - 1))) : "";
+    return `<input class="tq-bl" data-b="${j}" style="width:${w}em" placeholder="${ph}"
+      autocapitalize="off" autocomplete="off" spellcheck="false">`;
   }).join(" ");
   return `<div class="tq-kicker">${TQ.idx + 1}번째 문장 · 빈칸 ${it.blanks.length}개</div>
     <div class="tq-ko">${esc(seg.ko || "빈칸을 채우세요")}</div>
     <div class="tq-en" id="tq-en">${parts}</div>
-    <div class="tq-tools">
-      <button class="tq-tool" id="tq-hint">힌트 보기</button>
-      <button class="tq-tool" id="tq-reveal">정답 보기</button>
-    </div>
-    <div class="tq-hint" id="tq-hint-box"></div>`;
+    <div class="tq-tools"><button class="tq-tool" id="tq-hint">힌트 보기</button></div>`;
 }
 
 function renderTq() {
@@ -2714,6 +2743,7 @@ function renderTq() {
 
 function tqBindBody() {
   const body = $("#vf-body");
+  if (!body) return;
   if (TQ.mode === "beginner") {
     body.querySelectorAll("#tq-bank [data-t]").forEach((el) => {
       el.onclick = () => {
@@ -2721,67 +2751,57 @@ function tqBindBody() {
         const it = TQ.item;
         const tile = it.bank.find((b) => b.id === el.dataset.t);
         if (!tile || tile.used) return;
-        const slot = it.ans.findIndex((x) => !x);
-        if (slot < 0) return;
-        tile.used = true; it.ans[slot] = tile;
+        const j = it.blanks.find((b) => !it.ans[b]);
+        if (j == null) return;
+        tile.used = true; it.ans[j] = tile;
         renderTq();
       };
     });
-    body.querySelectorAll("#tq-drop [data-a]").forEach((el) => {
+    body.querySelectorAll("#tq-en [data-a]").forEach((el) => {
       el.onclick = () => {
         if (TQ.phase !== "q") return;
         const it = TQ.item;
-        const k = +el.dataset.a;
-        const t = it.ans[k];
-        if (t) { t.used = false; it.ans[k] = null; }
-        else {
-          for (let j = it.ans.length - 1; j >= 0; j--) {
-            if (it.ans[j]) { it.ans[j].used = false; it.ans[j] = null; break; }
-          }
-        }
+        const j = +el.dataset.a;
+        const t = it.ans[j];
+        if (!t) return;
+        t.used = false; delete it.ans[j];
         renderTq();
       };
     });
     return;
   }
   body.querySelectorAll(".tq-bl").forEach((el) => {
+    el.value = TQ.item.vals[el.dataset.b] || "";
     el.oninput = () => { TQ.item.vals[el.dataset.b] = el.value; };
     el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); tqCheck(); } };
   });
   const h = $("#tq-hint");
   if (h) h.onclick = () => {
-    const box = $("#tq-hint-box");
-    const seg = S.cur.segs[TQ.idx] || {};
-    const lens = TQ.item.blanks.map((j) => tqNorm(TQ.item.toks[j]).length).join(" · ");
-    const bits = [];
-    if (seg.ko) bits.push("뜻 · " + seg.ko);
-    bits.push(`빈칸 ${TQ.item.blanks.length}개 · 글자수 ${lens}`);
-    box.textContent = bits.join("   |   ");
-    box.classList.add("on");
-  };
-  const r = $("#tq-reveal");
-  if (r) r.onclick = () => {
     if (TQ.phase !== "q") return;
-    TQ.item.blanks.forEach((j) => {
-      const el = body.querySelector(`.tq-bl[data-b="${j}"]`);
-      if (el) { el.value = TQ.item.toks[j]; TQ.item.vals[j] = TQ.item.toks[j]; }
+    TQ.item.blanks.forEach((j) => { TQ.item.hinted[j] = true; });
+    const keep = Object.assign({}, TQ.item.vals);
+    renderTq();
+    TQ.item.vals = keep;
+    $("#vf-body").querySelectorAll(".tq-bl").forEach((el) => {
+      el.value = keep[el.dataset.b] || "";
     });
-    TQ.revealed = true;
-    toast("정답을 채웠습니다 · 이 문장은 오답으로 기록됩니다", 2800);
   };
 }
 
 function tqCheck() {
   if (!TQ.on || TQ.phase !== "q") return;
   const seg = S.cur.segs[TQ.idx] || {};
-  let ok = !TQ.revealed;
+  let ok = true;
   if (TQ.mode === "beginner") {
-    if (TQ.item.ans.some((x) => !x)) ok = false;
-    else if (tqNorm(TQ.item.ans.map((t) => t.w).join(" ")) !== TQ.item.key) ok = false;
+    TQ.item.blanks.forEach((j) => {
+      const a = TQ.item.ans[j];
+      if (!a || tqNorm(a.w) !== tqNorm(TQ.item.toks[j])) ok = false;
+    });
   } else {
     TQ.item.blanks.forEach((j) => {
       const el = $("#vf-body").querySelector(`.tq-bl[data-b="${j}"]`);
-      if (tqNorm((el && el.value) || "") !== tqNorm(TQ.item.toks[j])) ok = false;
+      const v = (el && el.value) || TQ.item.vals[j] || "";
+      if (tqNorm(v) !== tqNorm(TQ.item.toks[j])) ok = false;
     });
   }
   TQ.phase = "check";
@@ -2791,6 +2811,13 @@ function tqCheck() {
       el.disabled = true;
       const j = +el.dataset.b;
       el.classList.add(tqNorm(el.value) === tqNorm(TQ.item.toks[j]) ? "ok" : "no");
+    });
+  }
+  if (TQ.mode === "beginner") {
+    $("#vf-body").querySelectorAll(".tq-blnk").forEach((el) => {
+      const j = +el.dataset.a;
+      const a = TQ.item.ans[j];
+      el.classList.add(a && tqNorm(a.w) === tqNorm(TQ.item.toks[j]) ? "ok" : "no");
     });
   }
   $("#tq-bar").style.width = ((TQ.idx + 1) / TQ.n) * 100 + "%";
@@ -2824,25 +2851,25 @@ function tqNext() {
   renderTq();
 }
 
-function tqResult() {
+async function tqResult() {
   const okN = TQ.res.filter((r) => r.ok).length;
   const n = TQ.n || 1;
   const pct = Math.round((okN / n) * 100);
-  tqSave(TQ.mode, pct);
+  const best = tqSave(TQ.mode, pct);
+  const pass = pct >= TQ_PASS;
   TQ.phase = "done";
   $("#vf-foot").hidden = true;
   $("#vf-feed").hidden = true;
   $("#vf-prog").textContent = `${n}/${n}`;
   $("#tq-bar").style.width = "100%";
   $("#vf-title").textContent = TQ_NAME[TQ.mode];
-  const pass = pct >= 90;
   const upTo = TQ.mode === "beginner" ? "inter" : TQ.mode === "inter" ? "recall" : "beginner";
   const upLab = TQ.mode === "beginner" ? "중급으로 도전" : TQ.mode === "inter" ? "고급으로 도전" : "초급부터 다시";
   $("#vf-body").innerHTML = `
     <div class="tq-hero ${pass ? "ok" : "no"}">
       <div class="tq-score">${pct}<small>점</small></div>
       <div class="tq-hero-tx">
-        <b>${pass ? "잘했어요" : "조금 더 연습해볼까요"}</b>
+        <b>${pass ? "암송 완료" : "80점이 통과선이에요"}</b>
         <em>${okN} / ${n} 문장 정답${pass && TQ.mode !== "recall" ? " · 다음 난이도로 넘어가 보세요" : ""}</em>
       </div>
     </div>
@@ -2861,6 +2888,36 @@ function tqResult() {
   const up = $("#tq-up"); if (up) up.onclick = () => beginTest(upTo);
   const out = $("#tq-out"); if (out) out.onclick = () => exitVerify(false);
   $("#vf-body").scrollTop = 0;
+
+  // 서버 기록 (초급·중급·고급 모두 암송 판정에 반영)
+  try {
+    const r = await jsonPost(`/api/videos/${S.cur.id}/test/grade`, {
+      mode: TQ.mode, score: pct, ok: okN,
+    });
+    if (r && r.complete) {
+      if (S.cur) { S.cur.complete = true; S.cur.verify = r.record || S.cur.verify; }
+      loadVideos().catch(() => {});
+      loadHome().catch(() => {});
+    }
+  } catch (e) {}
+
+  if (pass) setTimeout(() => tqCelebrate(pct, okN, n, best), 320);
+}
+
+function tqCelebrate(pct, okN, n, best) {
+  const box = $("#tcele");
+  if (!box || !S.cur) return;
+  $("#tcele-num").textContent = pct;
+  $("#tcele-t").textContent = "암송 완료";
+  $("#tcele-m").textContent = TQ.mode === "recall"
+    ? "한국어만 보고 문장 전체를 영작했습니다. 이제 이 쇼츠는 완전히 내 것이에요."
+    : "빈칸을 모두 맞혔습니다. 고급까지 가면 문장 전체를 영작할 수 있어요.";
+  $("#tcele-ok").textContent = `${okN} / ${n}`;
+  $("#tcele-mode").textContent = TQ_NAME[TQ.mode].split(" · ")[0];
+  $("#tcele-best").textContent = best ? best + "점" : pct + "점";
+  box.hidden = false;
+  $("#tcele-cta").onclick = () => { box.hidden = true; exitVerify(false); };
+  $("#tcele-x").onclick = () => { box.hidden = true; };
 }
 
 /* ================= 시작 ================= */

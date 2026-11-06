@@ -508,25 +508,21 @@ Sure. What size would you like?
       <div class="sheet">
         <div class="sheet-grip"></div>
         <h3>테스트 난이도</h3>
-        <p class="sheet-desc">쇼츠를 학습한 뒤 단계별로 확인해보세요. 초급·중급은 한 문장씩, 고급은 전체 문장을 한 번에 봅니다.</p>
         <div class="tm-list">
           <button class="tm-row" data-mode="beginner">
-            <span class="tm-n">1</span>
-            <span class="tm-tx"><b>초급 · 어절 블록</b><em>흩어진 단어를 순서대로 배열합니다.</em></span>
+            <span class="tm-tx"><b>초급 · 어절 블록</b><em>빈칸에 들어갈 단어를 골라 채웁니다.</em></span>
             <span class="tm-best" data-best="beginner"></span>
           </button>
           <button class="tm-row" data-mode="inter">
-            <span class="tm-n">2</span>
-            <span class="tm-tx"><b>중급 · 빈칸 채우기</b><em>핵심 단어 몇 개만 직접 입력합니다.</em></span>
+            <span class="tm-tx"><b>중급 · 빈칸 채우기</b><em>핵심 단어를 직접 입력합니다.</em></span>
             <span class="tm-best" data-best="inter"></span>
           </button>
           <button class="tm-row" data-mode="recall">
-            <span class="tm-n">3</span>
-            <span class="tm-tx"><b>고급 · 백지 테스트</b><em>한국어만 보고 전체 문장을 영작합니다.</em></span>
+            <span class="tm-tx"><b>고급 · 백지 테스트</b><em>한국어만 보고 문장 전체를 영작합니다.</em></span>
             <span class="tm-best" data-best="recall"></span>
           </button>
         </div>
-        <p class="tm-note">고급 통과(90점)만 암송 완료로 기록됩니다.</p>
+        <p class="tm-note">80점 이상이면 암송 완료로 기록됩니다.</p>
       </div>
     </div>
 
@@ -558,6 +554,21 @@ Sure. What size would you like?
     </div>
 
     <!-- ===== 오늘 완료 축하 ===== -->
+    <div class="tcele" id="tcele" hidden>
+      <div class="tcele-bg"></div>
+      <div class="tcele-box" id="tcele-box">
+        <div class="tcele-score"><b id="tcele-num">0</b><small>점</small></div>
+        <div class="tcele-t" id="tcele-t">암송 완료</div>
+        <p class="tcele-m" id="tcele-m"></p>
+        <div class="tcele-rows">
+          <div class="tcele-r"><span>정답</span><b id="tcele-ok">0 / 0</b></div>
+          <div class="tcele-r"><span>난이도</span><b id="tcele-mode">-</b></div>
+          <div class="tcele-r"><span>이 쇼츠 최고 기록</span><b id="tcele-best">-</b></div>
+        </div>
+        <button class="tcele-cta" id="tcele-cta">학습으로 돌아가기</button>
+        <button class="tcele-x" id="tcele-x">결과 다시 보기</button>
+      </div>
+    </div>
     <div class="cele-wrap" id="cele" hidden>
       <div class="cele-bg"></div>
       <div class="cele-box">
@@ -681,7 +692,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=8.3.0"></script>
-<script src="/sync.js?v=8.3.0"></script>
+<script src="/app.js?v=8.4.0"></script>
+<script src="/sync.js?v=8.4.0"></script>
 </body>
 </html>
