@@ -172,6 +172,9 @@
             <button class="rail" id="btn-repeat" title="현재 문장 반복">
               <svg class="ic"><use href="#i-loop"/></svg><span class="rail-lab" id="loop-lab">반복</span>
             </button>
+            <button class="rail" id="btn-phrase" title="숙어 설정" hidden>
+              <svg class="ic"><use href="#i-note"/></svg><span class="rail-lab">숙어</span>
+            </button>
             <button class="rail" id="btn-nudge" title="자막 싱크 미세조정" hidden>
               <svg class="ic"><use href="#i-list"/></svg><span class="rail-lab">싱크</span>
             </button>
@@ -329,11 +332,19 @@
 
       <section class="screen" id="s-notes">
         <div class="scroll">
-          <div class="sec-title" style="margin-top:14px">문장 <span class="pill" id="n-count-s">0</span></div>
-          <div id="notes-list"></div>
+          <div class="rv-head">
+            <div class="rv-h-t">오늘 복습 <b id="rv-due">0</b>장</div>
+            <button class="rv-start" id="rv-start">복습 시작</button>
+          </div>
+          <div class="rv-sub" id="rv-sub">북마크한 단어와 문장이 한 덱으로 모입니다.</div>
 
-          <div class="sec-title">단어 <span class="pill" id="n-count-w">0</span></div>
-          <div id="words-list"></div>
+          <div class="rv-filter" id="rv-filter">
+            <button class="f on" data-f="all">전체 <b id="rv-n-all">0</b></button>
+            <button class="f" data-f="word">단어 <b id="rv-n-word">0</b></button>
+            <button class="f" data-f="sent">문장 <b id="rv-n-sent">0</b></button>
+          </div>
+
+          <div id="rv-list"></div>
         </div>
       </section>
 
@@ -468,6 +479,42 @@ Sure. What size would you like?
       </div>
     </div>
 
+
+    <!-- ===== 숙어 설정 (관리자) ===== -->
+    <div class="sheet-wrap" id="sheet-phrase" hidden>
+      <div class="sheet-bg" data-close></div>
+      <div class="sheet">
+        <div class="sheet-grip"></div>
+        <h3>숙어 설정</h3>
+        <p class="sheet-desc">묶을 단어를 순서대로 누르면 구간이 선택됩니다. 확인을 누르면 하나의 숙어로 저장됩니다.</p>
+        <div class="ph-sent" id="ph-sent"></div>
+        <div class="ph-toks" id="ph-toks"></div>
+        <div class="ph-pick" id="ph-pick">선택 없음</div>
+        <label class="field"><span>뜻</span>
+          <input id="ph-meaning" placeholder="예: 믿음으로 걷다" maxlength="120" /></label>
+        <button class="btn primary" id="ph-save">숙어로 저장</button>
+        <div class="ph-list" id="ph-list"></div>
+        <button class="btn text" data-close>닫기</button>
+      </div>
+    </div>
+
+    <!-- ===== 복습 카드 ===== -->
+    <div class="sheet-wrap" id="sheet-card" hidden>
+      <div class="sheet">
+        <div class="cd-top">
+          <span class="cd-i" id="cd-i">1 / 1</span>
+          <span class="cd-kind" id="cd-kind"></span>
+          <button class="cd-x" id="cd-x" aria-label="닫기">&times;</button>
+        </div>
+        <div class="cd-body" id="cd-body"></div>
+        <button class="cd-flip" id="cd-flip">정답 보기</button>
+        <div class="cd-grades" id="cd-grades" hidden>
+          <button data-g="0">모름</button>
+          <button data-g="1">애매</button>
+          <button data-g="2">알겠어</button>
+        </div>
+      </div>
+    </div>
     <!-- ===== 원본 음성 등록 ===== -->
     <div class="sheet-wrap" id="sheet-audio" hidden>
       <div class="sheet-bg" data-close></div>

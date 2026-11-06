@@ -152,7 +152,7 @@ def completed_count() -> int:
 
 
 def _done_days() -> set[str]:
-    """학습 완료(검증 통과)한 날짜. 연속 학습의 유일한 기준."""
+    """학습 완료한 날짜 = 암송(백지테스트) 통과일 ∪ 오늘 학습(Stage 1) 달성일."""
     days: set[str] = set()
     for r in _verifies().values():
         if not r.get("ok"):
@@ -160,6 +160,10 @@ def _done_days() -> set[str]:
         d = _day_of(r.get("done_at") or r.get("at") or "")
         if d:
             days.add(d)
+    try:
+        days |= stage_days()
+    except NameError:
+        pass
     return days
 
 
@@ -233,6 +237,8 @@ def today_focus(videos: dict) -> dict | None:
             "yt": picked.get("yt", ""), "segs": n,
             "memorized": memorized(picked["id"], n),
             "tried_today": n_today, "complete": is_complete(picked["id"]),
+            "stage": stage_of(picked["id"], n),
+            "stage1": stage_of(picked["id"], n)["stage1"],
             "verify": verify_of(picked["id"])}
 
 
@@ -503,3 +509,160 @@ def purge_video(vid: str) -> dict:
             if isinstance(vv, dict) and vid in vv:
                 vv.pop(vid, None); stat["verify"] += 1; _save(f, vv)
     return stat
+
+# ---------------------------------------------------------------- 2단계 완료
+STAGE = "stage.json"
+
+
+def _stage() -> dict:
+    d = _load(_p(STAGE), {})
+    return d if isinstance(d, dict) else {}
+
+
+def stage_of(vid: str, n_segs: int = 0) -> dict:
+    rec = (_stage().get(_today().isoformat()) or {}).get(vid) or {}
+    hear = len(rec.get("listen") or [])
+    sh = len(rec.get("shadow") or [])
+    n = int(n_segs or 0)
+    return {"listen": hear, "shadow": sh, "n": n,
+            "listen_ok": bool(n) and hear >= n,
+            "shadow_ok": sh >= 1,
+            "stage1": bool(rec.get("ok"))}
+
+
+def stage_event(vid: str, kind: str, idx: int, n_segs: int = 0) -> dict:
+    """Stage 1(오늘 학습) 진행 기록.
+    조건 = 대본 전체 1회 청취(문장별) + 섀도잉 1문장 이상."""
+    d = _stage()
+    day = _today().isoformat()
+    d.setdefault(day, {})
+    rec = d[day].setdefault(vid, {"listen": [], "shadow": [], "ok": False})
+    key = "listen" if kind == "listen" else "shadow"
+    i = int(idx)
+    if i >= 0 and i not in rec[key]:
+        rec[key].append(i)
+    n = int(n_segs or 0)
+    if n > 0 and len(rec["listen"]) >= n and len(rec["shadow"]) >= 1:
+        rec["ok"] = True
+    d[day][vid] = rec
+    while len(d) > 90:
+        d.pop(sorted(d)[0], None)
+    _save(_p(STAGE), d)
+    return stage_of(vid, n)
+
+
+def stage_days() -> set[str]:
+    out = set()
+    for day, vids in (_stage() or {}).items():
+        if any((v or {}).get("ok") for v in (vids or {}).values()):
+            out.add(day)
+    return out
+
+
+# ---------------------------------------------------------------- 복습(SRS)
+REVIEW = "review.json"
+REVIEW_STEPS = (1, 3, 7, 21, 60)
+
+
+def _review() -> dict:
+    d = _load(_p(REVIEW), {})
+    return d if isinstance(d, dict) else {}
+
+
+def _cloze(text: str, word: str) -> str:
+    if not text or not word:
+        return text or ""
+    pat = re.compile(r"\b" + re.escape(word) + r"([a-z]{0,3})\b", re.I)
+    return pat.sub("____", text, count=1)
+
+
+def review_deck(videos: dict) -> dict:
+    """단어·문장을 하나의 복습 덱으로 합친다 (문맥 Cloze 카드)."""
+    n = _notes()
+    r = _review()
+    today = _today().isoformat()
+    cards = []
+
+    for key, w in (n.get("words") or {}).items():
+        cid = "w:" + key
+        st = r.get(cid) or {}
+        v = videos.get(w.get("vid") or "") or {}
+        seg = None
+        try:
+            seg = (v.get("segs") or [])[int(w.get("idx", -1))]
+        except Exception:
+            seg = None
+        ctx = w.get("ctx", "") or ((seg or {}).get("en") or "")
+        cards.append({
+            "id": cid, "kind": "word", "key": key,
+            "answer": w.get("word") or key,
+            "meaning": w.get("meaning", ""),
+            "cloze": _cloze(ctx, w.get("word") or key),
+            "ko": (seg or {}).get("ko", "") or "",
+            "vid": w.get("vid", ""), "idx": int(w.get("idx", -1)),
+            "due": st.get("due") or today, "step": int(st.get("step", 0)),
+            "seen": int(st.get("seen", 0)), "lapses": int(st.get("lapses", 0)),
+        })
+
+    for key, s in (n.get("sentences") or {}).items():
+        cid = "s:" + key
+        st = r.get(cid) or {}
+        cards.append({
+            "id": cid, "kind": "sent", "key": key,
+            "answer": s.get("en", ""), "meaning": s.get("ko", ""),
+            "cloze": s.get("ko", "") or "____",
+            "ko": s.get("ko", ""),
+            "vid": s.get("vid", ""), "idx": int(s.get("idx", -1)),
+            "due": st.get("due") or today, "step": int(st.get("step", 0)),
+            "seen": int(st.get("seen", 0)), "lapses": int(st.get("lapses", 0)),
+        })
+
+    cards.sort(key=lambda c: (c["due"], c["kind"]))
+    due = [c for c in cards if c["due"] <= today]
+    return {"cards": cards, "due": len(due), "today": today,
+            "n_word": len([c for c in cards if c["kind"] == "word"]),
+            "n_sent": len([c for c in cards if c["kind"] == "sent"])}
+
+
+def review_grade(cid: str, grade: int) -> dict:
+    """0=모름(1일 뒤) 1=애매(2일 뒤, 단계 유지) 2=알겠어(다음 단계)"""
+    r = _review()
+    st = r.get(cid) or {"step": 0, "seen": 0, "lapses": 0, "due": ""}
+    g = int(grade)
+    step = int(st.get("step", 0))
+    if g <= 0:
+        days = 1
+        st["step"] = 0
+        st["lapses"] = int(st.get("lapses", 0)) + 1
+    elif g == 1:
+        days = 2
+    else:
+        days = REVIEW_STEPS[min(step, len(REVIEW_STEPS) - 1)]
+        st["step"] = min(step + 1, len(REVIEW_STEPS) - 1)
+    st["seen"] = int(st.get("seen", 0)) + 1
+    st["due"] = (_today() + timedelta(days=int(days))).isoformat()
+    st["last"] = _now()
+    r[cid] = st
+    _save(_p(REVIEW), r)
+    return {"id": cid, "due": st["due"], "step": st["step"], "days": days}
+
+
+def prefetch_words(words) -> int:
+    """등록 시점에 단어 뜻을 미리 받아 캐시에 채운다(사전 오프라인 대비)."""
+    seen, hit = set(), 0
+    for w in (words or []):
+        k = re.sub(r"[^a-z0-9'\- ]", "", (w or "").lower()).strip()
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        if not re.fullmatch(r"[a-z][a-z'\-]*", k):
+            continue
+        if len(seen) > 400:
+            break
+        try:
+            d = _dict_lookup(k)
+        except Exception:
+            continue
+        if (d or {}).get("found"):
+            hit += 1
+    return hit

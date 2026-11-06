@@ -47,6 +47,7 @@ const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 function show(id) {
   if (id !== "s-verify") document.body.classList.remove("vf-focus");
   if (id === "s-script") setTimeout(loadScripts, 0);
+  if (id === "s-notes") setTimeout(refreshReview, 0);
   if (id !== "s-play") closeWord();
   if (id === "s-play") stopAudioBar();
   $$(".screen").forEach((el) => el.classList.toggle("is-active", el.id === id));
@@ -198,7 +199,7 @@ function renderHome() {
   const ns = S.notes.sentences || [];
   setCount("note-count", ns.length);
   const box = $("#note-preview");
-  if (!box) { renderNotesScreen(); return; }
+  if (!box) return;
   if (!ns.length) {
     box.innerHTML = `<div class="note-empty"><b>아직 저장한 문장이 없습니다</b><br />학습 중 자막 위 별표를 누르면 어려운 문장이 여기에 모입니다.</div>`;
   } else {
@@ -221,28 +222,141 @@ const noteCard = (n) => `
     </div>
   </button>`;
 
-function renderNotesScreen() {
-  const ns = S.notes.sentences || [];
-  const nw = S.notes.words || [];
-  setCount("n-count-s", ns.length);
-  setCount("n-count-w", nw.length);
+/* ================= 복습 덱 (단어 + 문장) ================= */
+const RV = { cards: [], due: 0, q: [], i: 0, flip: false, filter: "all" };
 
-  $("#notes-list").innerHTML = ns.length
-    ? ns.map(noteCard).join("")
-    : `<div class="note-empty"><b>북마크가 비어 있어요</b><br />학습 화면 자막 위 별표를 누르면 이곳에 쌓입니다.</div>`;
-  $$("#notes-list .note-card").forEach((el) => {
-    el.onclick = () => jumpTo(el.dataset.vid, +el.dataset.idx);
-  });
-
-  $("#words-list").innerHTML = nw.length
-    ? nw.map((w) => `
-      <div class="note-card" style="cursor:default">
-        <div class="nc-en">${esc(w.word)}</div>
-        <div class="nc-ko">${esc(w.meaning || "뜻을 적어두세요")}</div>
-        <div class="nc-meta"><span class="tag">단어</span><span>${esc((w.ctx || "").slice(0, 40))}</span></div>
-      </div>`).join("")
-    : `<div class="note-empty"><b>단어이 비어 있어요</b><br />자막의 단어를 탭하면 뜻을 확인하고 담을 수 있습니다.</div>`;
+async function refreshReview() {
+  try {
+    const r = await api("/api/review");
+    RV.cards = r.cards || [];
+    RV.due = r.due || 0;
+    setCount("rv-due", RV.due);
+    const sub = $("#rv-sub");
+    if (sub) {
+      sub.textContent = RV.cards.length
+        ? `카드 ${RV.cards.length}장 · 지금 복습할 카드 ${RV.due}장`
+        : "북마크한 단어와 문장이 한 덱으로 모입니다.";
+    }
+    setCount("rv-n-all", RV.cards.length);
+    setCount("rv-n-word", r.n_word || 0);
+    setCount("rv-n-sent", r.n_sent || 0);
+    renderReviewList();
+  } catch { /* 목록은 조용히 비워 둔다 */ }
 }
+
+function clozeHtml(s) {
+  return esc(s || "").replace(/____/g, '<i class="cz">____</i>');
+}
+
+function renderReviewList() {
+  const box = $("#rv-list");
+  if (!box) return;
+  const list = RV.cards.filter((c) => RV.filter === "all" || c.kind === RV.filter);
+  if (!list.length) {
+    box.innerHTML = `<div class="note-empty"><b>아직 담은 카드가 없습니다</b><br />학습 화면에서 단어를 탭하거나 문장을 북마크하면 여기에 카드가 생깁니다.</div>`;
+    return;
+  }
+  box.innerHTML = list.map((c) => {
+    const fresh = c.seen === 0;
+    const due = c.due <= (RV.cards[0] || {}).today ? "" : "";
+    return `<button class="rv-row" data-id="${esc(c.id)}">
+      <span class="rv-k">${c.kind === "word" ? "단어" : "문장"}</span>
+      <span class="rv-main">
+        <span class="rv-a">${esc(c.answer)}</span>
+        <span class="rv-b">${c.kind === "word" ? clozeHtml(c.cloze) : esc(c.meaning || c.cloze)}</span>
+      </span>
+      <span class="rv-m">${c.seen === 0 ? "새" : `D+${c.step}`}</span>
+    </button>`;
+  }).join("");
+  $$("#rv-list .rv-row").forEach((el) => {
+    el.onclick = () => {
+      const c = RV.cards.find((x) => x.id === el.dataset.id);
+      if (!c) return;
+      RV.q = [c]; RV.i = 0; RV.flip = false;
+      $("#sheet-card").hidden = false;
+      renderCard();
+    };
+  });
+}
+
+function startReview() {
+  const today = (RV.cards[0] || {}).today || "";
+  const pool = RV.cards.filter((c) => RV.filter === "all" || c.kind === RV.filter);
+  const due = pool.filter((c) => c.due <= today);
+  RV.q = (due.length ? due : pool).slice(0, 20);
+  if (!RV.q.length) return toast("복습할 카드가 없습니다");
+  RV.i = 0; RV.flip = false;
+  $("#sheet-card").hidden = false;
+  renderCard();
+}
+
+function renderCard() {
+  const c = RV.q[RV.i];
+  if (!c) return closeCard();
+  $("#cd-i").textContent = `${RV.i + 1} / ${RV.q.length}`;
+  $("#cd-kind").textContent = c.kind === "word" ? "단어" : "문장";
+  const body = $("#cd-body");
+  if (c.kind === "word") {
+    body.innerHTML = `
+      <div class="cd-ko">${esc(c.ko || "")}</div>
+      <div class="cd-cloze">${RV.flip ? esc(c.cloze).replace(/____/, `<b class="cd-ans">${esc(c.answer)}</b>`) : clozeHtml(c.cloze)}</div>
+      ${RV.flip ? `<div class="cd-meaning">${esc(c.meaning || "뜻이 비어 있습니다")}</div>` : ""}`;
+  } else {
+    body.innerHTML = RV.flip
+      ? `<div class="cd-ko">${esc(c.meaning || "")}</div><div class="cd-cloze"><b class="cd-ans">${esc(c.answer)}</b></div>`
+      : `<div class="cd-ko">${esc(c.meaning || "이 문장을 영어로 말해보세요")}</div><div class="cd-cloze">____</div>`;
+  }
+  $("#cd-flip").hidden = RV.flip;
+  $("#cd-grades").hidden = !RV.flip;
+  const au = $("#cd-audio");
+  if (au) au.onclick = () => playCardAudio(c);
+}
+
+async function playCardAudio(c) {
+  if (!c.vid) return;
+  let v = S.videos.find((x) => x.id === c.vid);
+  if (!v) { try { v = await api("/api/videos/" + c.vid); } catch { return; } }
+  const s = (v.segs || [])[c.idx];
+  if (!s) return;
+  if (v.audio && v.audio.url) {
+    try {
+      const a = new Audio(v.audio.url);
+      a.currentTime = Math.max(0, s.start - Number(v.audio.offset || 0));
+      await a.play();
+      const stop = setInterval(() => {
+        if (a.currentTime >= s.end - Number(v.audio.offset || 0) || a.paused) {
+          a.pause(); clearInterval(stop);
+        }
+      }, 120);
+      return;
+    } catch {}
+  }
+  toast("이 카드에는 원본 음성이 없습니다");
+}
+
+function closeCard() {
+  $("#sheet-card").hidden = true;
+}
+
+async function gradeCard(g) {
+  const c = RV.q[RV.i];
+  if (!c) return;
+  try { await jsonPost("/api/review/grade", { id: c.id, grade: g }); } catch {}
+  const k = RV.cards.findIndex((x) => x.id === c.id);
+  if (k >= 0) RV.cards.splice(k, 1);
+  if (g >= 1) RV.i += 1;
+  RV.flip = false;
+  if (RV.i >= RV.q.length) {
+    closeCard();
+    toast("복습을 마쳤습니다", 3000);
+    refreshReview();
+    return;
+  }
+  renderCard();
+  refreshReview();
+}
+
+function renderNotesScreen() { /* v7.8: 복습 덱으로 대체 */ }
 
 async function jumpTo(vid, idx) {
   let v = S.videos.find((x) => x.id === vid);
@@ -280,7 +394,7 @@ function renderVideos() {
             <span class="m-l">
               ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
               <span class="m-n">총 ${v.n}문장</span>
-              ${v.complete ? '<span class="m-done">완료</span>' : ""}
+              ${v.complete ? '<span class="m-done gold">암송</span>' : (v.stage1 ? '<span class="m-done">학습</span>' : "")}
             </span>
             ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : `<span class="m-sp"></span>`}
           </div>
@@ -339,6 +453,35 @@ async function openVideo(v, idx = 0) {
   startTick();
 }
 
+const HEARD = new Set();
+const STAGE = { skip: 0 };
+
+async function stageEvent(kind, idx) {
+  if (!S.cur) return null;
+  const key = `${S.cur.id}:${kind}:${idx}`;
+  if (HEARD.has(key)) return null;
+  HEARD.add(key);
+  try {
+    const r = await jsonPost("/api/progress/event", { vid: S.cur.id, kind, idx });
+    const was = !!(S.cur.stage && S.cur.stage.stage1);
+    S.cur.stage = r;
+    S.cur.stage1 = !!r.stage1;
+    const k = S.videos.findIndex((x) => x.id === S.cur.id);
+    if (k >= 0) { S.videos[k].stage = r; S.videos[k].stage1 = !!r.stage1; }
+    if (r.stage1 && !was) {
+      toast("오늘 학습 완료 · 스트릭이 이어집니다", 3600);
+      loadHome().catch(() => {});
+      renderVideos();
+    }
+    return r;
+  } catch { return null; }
+}
+
+function markListen(i) {
+  if (i < 0) return;
+  stageEvent("listen", i);
+}
+
 function startTick() { stopTick(); S.tick = setInterval(onTick, 100); }
 function stopTick() { if (S.tick) { clearInterval(S.tick); S.tick = null; } }
 
@@ -355,6 +498,9 @@ function onTick() {
     const i = S.cur.segs.findIndex((x) => t >= x.start - 0.06 && t < x.end);
     if (i >= 0 && i !== S.idx) selectSeg(i, true);
   }
+
+  // 오늘 학습(Stage 1): 문장 끝까지 재생 = 1회 청취
+  if (playing && S.seg && t >= S.seg.end - 0.12) markListen(S.idx);
 
   if (S.seg) {
     const d = Math.max(0.1, S.seg.end - S.seg.start);
@@ -378,11 +524,11 @@ function renderSeg() {
   $("#p-count").textContent = `${S.idx + 1} / ${v.n}`;
   const s = v.segs[S.idx];
   const en = $("#sub-en"), ko = $("#sub-ko");
-  en.innerHTML = wordsHTML(s.en || s.text || "");
+  en.innerHTML = wordsHTML(s.en || s.text || "", s.phr);
   en.dataset.plain = s.en || s.text || "";
   ko.textContent = s.ko || "";
   ko.style.display = s.ko ? "" : "none";
-  $$("#sub-en .w").forEach((w) => { w.onclick = () => openWord(w.dataset.w, w.dataset.ctx); });
+  $$("#sub-en .w").forEach((w) => { w.onclick = () => openWord(w.dataset.w, w.dataset.ctx, w.dataset.ko || ""); });
   fitSub();
 
   const marked = (S.notes.sentences || []).some((n) => n.vid === v.id && n.idx === S.idx);
@@ -392,15 +538,30 @@ function renderSeg() {
   star.hidden = S.sub === "off";
 }
 
-function wordsHTML(text) {
+function wordsHTML(text, phrases) {
   const plain = String(text || "");
-  return plain.split(/(\s+)/).map((tok) => {
-    if (!tok.trim()) return tok;
-    const m = tok.match(/^([^\w']*)([\w'’-]+)([^\w']*)$/);
-    if (!m) return esc(tok);
-    const [, pre, core, post] = m;
-    return `${esc(pre)}<span class="w" data-w="${esc(core.replace(/’/g, "'"))}" data-ctx="${esc(plain)}">${esc(core)}</span>${esc(post)}`;
-  }).join("");
+  const parts = plain.split(/(\s+)/);
+  const phr = Array.isArray(phrases) ? phrases : [];
+  let ti = -1;
+  const openAt = new Map(), closeAfter = new Set();
+  phr.forEach((p) => { openAt.set(p.from, p); closeAfter.add(p.to); });
+  const out = [];
+  parts.forEach((tok) => {
+    if (!tok.trim()) { out.push(tok); return; }
+    ti += 1;
+    const m = tok.match(/^([^\w']*)([\w'\u2019-]+)([^\w']*)$/);
+    const core = m ? m[2] : tok;
+    const ph = openAt.get(ti);
+    if (ph) {
+      out.push('<span class="w phr" data-w="' + esc(ph.text) + '" data-ctx="' + esc(plain)
+        + '" data-ko="' + esc(ph.meaning || "") + '">');
+    }
+    if (!m) out.push(esc(tok));
+    else out.push(esc(m[1]) + '<span class="w" data-w="' + esc(core.replace(/\u2019/g, "'"))
+      + '" data-ctx="' + esc(plain) + '">' + esc(core) + "</span>" + esc(m[3]));
+    if (closeAfter.has(ti)) out.push("</span>");
+  });
+  return out.join("");
 }
 
 function selectSeg(i, quiet) {
@@ -503,6 +664,98 @@ function openScriptSheet() {
   if (cur) setTimeout(() => cur.scrollIntoView({ block: "center" }), 60);
 }
 
+
+/* ================= 숙어 설정 (관리자) ================= */
+const PHS = { from: -1, to: -1, list: [], tok: [] };
+
+function phraseTokens(seg) {
+  const text = (seg && (seg.en || seg.text)) || "";
+  return text.split(/\s+/).filter(Boolean);
+}
+
+function openPhraseSheet() {
+  if (!S.admin || !S.cur || !S.seg) return toast("재생 중인 문장에서만 설정할 수 있습니다");
+  const seg = S.cur.segs[S.idx];
+  PHS.tok = phraseTokens(seg);
+  PHS.list = (seg.phr || []).map((p) => ({ ...p }));
+  PHS.from = -1; PHS.to = -1;
+  $("#ph-sent").textContent = seg.en || seg.text || "";
+  $("#ph-meaning").value = "";
+  renderPhraseSheet();
+  $("#sheet-phrase").hidden = false;
+}
+
+function renderPhraseSheet() {
+  const box = $("#ph-toks");
+  box.innerHTML = PHS.tok.map((t, i) => {
+    const core = t.replace(/^[^\w']+|[^\w']+$/g, "") || t;
+    const on = PHS.from >= 0 && i >= PHS.from && i <= PHS.to;
+    const used = PHS.list.some((p) => i >= p.from && i <= p.to);
+    return `<button class="ph-t${on ? " on" : ""}${used ? " used" : ""}" data-i="${i}">${esc(core)}</button>`;
+  }).join("");
+  $$("#ph-toks .ph-t").forEach((b) => {
+    b.onclick = () => {
+      const i = +b.dataset.i;
+      if (PHS.from < 0 || i < PHS.from) { PHS.from = i; PHS.to = i; }
+      else { PHS.to = i; }
+      renderPhraseSheet();
+    };
+  });
+  const pick = $("#ph-pick");
+  if (PHS.from >= 0) {
+    const txt = PHS.tok.slice(PHS.from, PHS.to + 1).join(" ");
+    pick.textContent = `선택: ${txt}`;
+    $("#ph-meaning").value = $("#ph-meaning").value || "";
+  } else {
+    pick.textContent = "선택 없음";
+  }
+  const list = $("#ph-list");
+  list.innerHTML = PHS.list.length
+    ? PHS.list.map((p, k) => `<div class="ph-item">
+        <span class="ph-t2">${esc(p.text)}</span>
+        <span class="ph-m2">${esc(p.meaning || "뜻 없음")}</span>
+        <button class="ph-del" data-k="${k}">삭제</button>
+      </div>`).join("")
+    : `<div class="ph-none">저장된 숙어가 없습니다</div>`;
+  $$("#ph-list .ph-del").forEach((b) => {
+    b.onclick = async () => {
+      const k = +b.dataset.k;
+      PHS.list.splice(k, 1);
+      await savePhrases(true);
+    };
+  });
+}
+
+async function savePhrases(keepOpen) {
+  if (!S.cur) return;
+  try {
+    const r = await api(`/api/videos/${S.cur.id}/phrases`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seg: S.idx, list: PHS.list }),
+    });
+    S.cur.segs[S.idx].phr = r.phrases || [];
+    const k = S.videos.findIndex((x) => x.id === S.cur.id);
+    if (k >= 0) S.videos[k].segs = S.cur.segs;
+    delete SCRC[S.cur.id];
+    renderSeg();
+    if (keepOpen) { PHS.list = (r.phrases || []).map((p) => ({ ...p })); renderPhraseSheet(); }
+    else $("#sheet-phrase").hidden = true;
+    toast("숙어를 저장했습니다", 2600);
+  } catch (e) { toast("저장 실패: " + e.message, 4000); }
+}
+
+function savePhraseNow() {
+  if (PHS.from < 0) return toast("묶을 단어를 선택해주세요");
+  const meaning = $("#ph-meaning").value.trim();
+  if (!meaning) return toast("숙어의 뜻을 입력해주세요");
+  const text = PHS.tok.slice(PHS.from, PHS.to + 1)
+    .map((t) => t.replace(/^[^\w']+|[^\w']+$/g, "") || t).join(" ");
+  PHS.list = PHS.list.filter((p) => p.to < PHS.from || p.from > PHS.to);
+  PHS.list.push({ from: PHS.from, to: PHS.to, text, meaning });
+  PHS.list.sort((x, y) => x.from - y.from);
+  savePhrases(true).then(() => { PHS.from = -1; PHS.to = -1; renderPhraseSheet(); });
+}
 
 /* ================= 자막 싱크 미세조정 (관리자) ================= */
 /* mode: end(끝 조정 → 다음 문장이 따라옴) / start(시작 조정 → 앞 문장이 따라옴) / seg(구간 통째로) */
@@ -1104,6 +1357,7 @@ async function submitScore() {
     S.lastResult = r;
     SH.phase = "done";
     SH.score = Math.round(r.total);
+    stageEvent("shadow", S.idx);
     SH.playT = SH.dur;
     waveState("완료", "done");
     const sc = $("#wv-score");
@@ -1619,7 +1873,7 @@ function paintWordStar(on) {
   b.setAttribute("aria-pressed", on ? "true" : "false");
 }
 
-async function openWord(word, ctx) {
+async function openWord(word, ctx, preset) {
   if (!word) return;
   if (!$("#s-play").classList.contains("is-active")) return;
   if (performance.now() < S.lockUntil) return;
@@ -1628,16 +1882,17 @@ async function openWord(word, ctx) {
   if (!pop.hidden && WP.word === word) return;
   const seq = ++WP.seq;
   S.word = { word, ctx };
-  WP.word = word; WP.ctx = ctx || ""; WP.ko = ""; WP.saved = false;
+  WP.word = word; WP.ctx = ctx || ""; WP.ko = preset || ""; WP.saved = false;
   $("#wp-word").textContent = word;
-  $("#wp-ko").textContent = "…";
+  $("#wp-ko").textContent = preset || "…";
   paintWordStar(false);
   pop.hidden = false;
   try {
     const r = await api("/api/words/" + encodeURIComponent(word));
     if (seq !== WP.seq) return;
     const d = (r.definitions || [])[0];
-    WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning : (r.ko || (d ? d.def : ""));
+    WP.ko = (r.saved && r.saved.meaning) ? r.saved.meaning
+          : (preset || r.ko || (d ? d.def : "") || "항목별 뜻이 없는 숙어입니다");
     WP.saved = !!r.saved;
     paintWordStar(WP.saved);
     $("#wp-ko").textContent = WP.ko || "뜻을 찾지 못했어요";
@@ -1847,7 +2102,7 @@ async function toggleWordBook() {
 
 async function reloadNotes() {
   try { S.notes = await api("/api/notes"); } catch {}
-  renderNotesScreen();
+  refreshReview();
   setCount("note-count", (S.notes.sentences || []).length);
 }
 
@@ -1934,6 +2189,24 @@ function bind() {
     closeWord();
   }, true);
 
+  const bPh = $("#btn-phrase");
+  if (bPh) bPh.onclick = () => { try { openPhraseSheet(); } catch (e) { toast("열지 못했습니다: " + e.message, 3000); } };
+  const bPhs = $("#ph-save");
+  if (bPhs) bPhs.onclick = savePhraseNow;
+  const bRs = $("#rv-start");
+  if (bRs) bRs.onclick = startReview;
+  const bCd = $("#cd-x");
+  if (bCd) bCd.onclick = closeCard;
+  const bFl = $("#cd-flip");
+  if (bFl) bFl.onclick = () => { RV.flip = true; renderCard(); };
+  $$("#cd-grades [data-g]").forEach((b) => { b.onclick = () => gradeCard(+b.dataset.g); });
+  $$("#rv-filter .f").forEach((b) => {
+    b.onclick = () => {
+      RV.filter = b.dataset.f;
+      $$("#rv-filter .f").forEach((x) => x.classList.toggle("on", x === b));
+      renderReviewList();
+    };
+  });
   const bNudge = $("#btn-nudge");
   if (bNudge) bNudge.onclick = () => { try { nudgeToggle(); } catch (e) { toast("열지 못했습니다: " + e.message, 3200); } };
   $$("#segadj .mode").forEach((b) => {
@@ -2038,12 +2311,15 @@ window.attachAddAudio = attachAddAudio;
   } catch { S.admin = true; }
   const railNudge = $("#btn-nudge");
   if (railNudge) railNudge.hidden = !S.admin;
+  const railPh = $("#btn-phrase");
+  if (railPh) railPh.hidden = !S.admin;
   if (!S.admin) {
     $("#tab-add").hidden = true;
   }
   bind();
   await loadVideos();
   await loadHome();
+  refreshReview();
 })();
 
 window.loadYT = loadYT;

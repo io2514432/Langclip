@@ -21,6 +21,7 @@ import json
 import math
 import secrets
 import os
+import threading
 import re
 import subprocess
 import tempfile
@@ -441,14 +442,30 @@ def audio_public(v: dict, d: dict) -> dict | None:
 
 def video_public(v: dict, d: dict) -> dict:
     au = audio_public(v, d)
+    st = prog.stage_of(v["id"], len(v["segs"]))
     return {"id": v["id"], "yt": v["yt"], "title": v["title"],
             "segs": v["segs"], "n": len(v["segs"]),
             "audio": au, "has_audio": au is not None,
             "complete": prog.is_complete(v["id"]),
+            "stage": st, "stage1": st["stage1"],
             "verify": prog.verify_of(v["id"])}
 
 
 
+
+
+
+def _prefetch_async(segs) -> None:
+    """등록 직후 단어 뜻을 백그라운드로 미리 받아 둔다."""
+    words: list[str] = []
+    for s in segs or []:
+        words += re.findall(r"[A-Za-z][A-Za-z'\-]*", (s.get("en") or s.get("text") or ""))
+    if not words:
+        return
+    try:
+        threading.Thread(target=prog.prefetch_words, args=(words,), daemon=True).start()
+    except Exception:
+        pass
 
 # --------------------------------------------------------------- API
 LANGCLIP_BUILD = "6.2.0"
@@ -520,6 +537,7 @@ def add_video(payload: dict, request: Request):
     d = db()
     d["videos"][vid] = rec
     save_db(d)
+    _prefetch_async(segs)
     return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
             "markdown": script_md.serialize(rec["title"], vid_yt, segs, rec["duration"])}
 
@@ -767,6 +785,44 @@ def link_audio(vid: str, payload: dict, request: Request):
             "offset": d["audios"].get(aid, {}).get("offset") if aid else None}
 
 
+
+
+# ---- 숙어(연속 단어 묶음) ---------------------------------------------------
+@app.put("/api/videos/{vid}/phrases")
+def put_phrases(vid: str, payload: dict, request: Request):
+    """한 문장 안의 연속 단어를 숙어로 묶고 뜻을 지정한다. list=[] 이면 해제."""
+    require_admin(request)
+    seg_i = int(payload.get("seg", -1))
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    segs = v.get("segs") or []
+    if not (0 <= seg_i < len(segs)):
+        raise HTTPException(404, "문장을 찾을 수 없습니다")
+    text = segs[seg_i].get("en") or segs[seg_i].get("text") or ""
+    toks = [t for t in re.split(r"\s+", text) if t]
+    out = []
+    for it in (payload.get("list") or []):
+        try:
+            a = int(it.get("from"))
+            b = int(it.get("to"))
+        except (TypeError, ValueError):
+            continue
+        if a < 0 or b >= len(toks) or a > b:
+            continue
+        word = " ".join(re.sub(r"^[^\w']+|[^\w']+$", "", t) for t in toks[a:b + 1]).strip()
+        if not word:
+            continue
+        out.append({"from": a, "to": b, "text": word[:80],
+                    "meaning": str(it.get("meaning") or "")[:120]})
+    if out:
+        segs[seg_i]["phr"] = out
+    else:
+        segs[seg_i].pop("phr", None)
+    v["segs"] = segs
+    d["videos"][vid] = v
+    save_db(d)
+    return {"ok": True, "seg": seg_i, "phrases": segs[seg_i].get("phr") or []}
+
 # ---- offset 자동 캘리브레이션
 def _range_response(path: Path, mime: str, request: Request) -> StreamingResponse | FileResponse:
     total = path.stat().st_size
@@ -946,6 +1002,37 @@ def word_info(word: str):
 
 
 
+
+
+# ---- 2단계 완료 · 복습(SRS) -------------------------------------------------
+@app.post("/api/progress/event")
+def progress_event(payload: dict):
+    """오늘 학습(Stage 1) 진행 기록. kind = listen | shadow"""
+    vid = str(payload.get("vid") or "")
+    if not vid:
+        raise HTTPException(422, "영상 id가 없습니다")
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    return {"ok": True, **prog.stage_event(vid, str(payload.get("kind") or "listen"),
+                                           int(payload.get("idx", -1)), len(v["segs"]))}
+
+
+@app.get("/api/review")
+def review_list():
+    return prog.review_deck(db()["videos"])
+
+
+@app.post("/api/review/grade")
+def review_grade(payload: dict):
+    cid = str(payload.get("id") or "")
+    if not cid:
+        raise HTTPException(422, "카드 id가 없습니다")
+    try:
+        g = int(payload.get("grade", 2))
+    except (TypeError, ValueError):
+        g = 2
+    return {"ok": True, **prog.review_grade(cid, g)}
+
 # ---- 유튜브 메타(제목 자동 채우기)
 _YT_META: dict[str, dict] = {}
 
@@ -1098,6 +1185,9 @@ PUBLIC_ALLOW = {
     ("POST", "/api/videos/{vid}/segments/{idx}/score"),
     ("GET", "/api/progress"),
     ("GET", "/api/notes"),
+    ("GET", "/api/review"),
+    ("POST", "/api/review/grade"),
+    ("POST", "/api/progress/event"),
     ("POST", "/api/notes/sentence"),
     ("DELETE", "/api/notes/sentence/{vid}/{idx}"),
     ("POST", "/api/notes/word"),
