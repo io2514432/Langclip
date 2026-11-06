@@ -1658,3 +1658,18 @@ body.vf-focus .screens{height:100%}
   background:#FBBF24;color:#20180A;font-family:inherit;font-size:13px;font-weight:850;cursor:pointer}
 .tcele-x{width:100%;height:34px;margin-top:6px;border:0;background:none;
   color:rgba(226,237,246,.45);font-family:inherit;font-size:11.5px;cursor:pointer}
+
+/* ================= v8.5 · 하단·결과 정리 ================= */
+.vstage > .segadj.top{position:absolute;left:12px;right:12px;top:50px;z-index:9;margin:0}
+.vbottom .gdone{position:absolute;left:0;right:0;top:0;height:40px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:12.5px;font-weight:800;color:#fff;letter-spacing:-.01em;
+  opacity:0;pointer-events:none;transition:opacity .22s ease}
+.vbottom .gdone b{color:#FBBF24;font-size:14px;font-weight:900}
+.vbottom.done .gdone{opacity:1}
+.vbottom.done .goals{opacity:0;transform:translateY(-4px);pointer-events:none}
+.vbottom.explain .gdone{opacity:0}
+body.res-focus .appbar,body.res-focus .tabbar{display:none!important}
+body.res-focus .screens{height:100%}
+#s-result{min-height:0}
+.coach[hidden]{display:none!important}

@@ -46,6 +46,7 @@ const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 
 function show(id) {
   if (id !== "s-verify") document.body.classList.remove("vf-focus");
+  document.body.classList.toggle("res-focus", id === "s-result");
   if (id === "s-script") setTimeout(loadScripts, 0);
   if (id === "s-notes") setTimeout(refreshReview, 0);
   if (id === "s-home") setTimeout(checkCelebrate, 260);
@@ -902,6 +903,8 @@ function goalNoteText(k, g) {
 
 function paintGoals() {
   if (!$("#goals")) return;
+  const vb0 = $(".vbottom");
+  if (vb0 && S.doneShown && !(S.cur && S.cur.stage && S.cur.stage.stage1)) vb0.classList.remove("done");
   const g = goalState();
   const pt = Math.min(1, g.secs / g.goal);
   const pl = g.n ? Math.min(1, g.listen / g.n) : 0;
@@ -944,6 +947,18 @@ async function postStudyTime(secs) {
   } catch { return null; }
 }
 
+function showDone() {
+  const box = $("#gdone"), vb = $(".vbottom");
+  if (!box || !vb) return;
+  const d = ((S.progress && S.progress.streak && S.progress.streak.days) || 1);
+  box.innerHTML = `<b>${d}</b>일 연속 학습 달성`;
+  S.doneShown = true;
+  vb.classList.remove("explain");
+  S.goalSel = "";
+  paintGoals();
+  vb.classList.add("done");
+}
+
 function applyStage(r) {
   if (!r || !S.cur) return;
   const was = !!(S.cur.stage && S.cur.stage.stage1);
@@ -953,9 +968,11 @@ function applyStage(r) {
   if (k >= 0) { S.videos[k].stage = r; S.videos[k].stage1 = !!r.stage1; }
   paintGoals();
   if (r.stage1 && !was) {
-    toast("오늘 학습 완료 · 스트릭이 이어집니다", 3600);
     loadHome().catch(() => {});
     renderVideos();
+    const onRes = $("#s-result") && $("#s-result").classList.contains("is-active");
+    S.pendDone = true;
+    if (!onRes) { S.pendDone = false; showDone(); }
   }
 }
 
@@ -1380,8 +1397,10 @@ function playOriginalSeg(seg) {
 /* ---------------- 쉐도잉 본체 ---------------- */
 function cancelShadow() {
   if (SH.phase === "idle") return;
+  SH.abort = true;
   VF.on = false;
   closeWave();
+  setTimeout(() => { SH.abort = false; }, 900);
   toast("쉐도잉을 취소했습니다");
 }
 
@@ -1569,6 +1588,7 @@ function onTakeStop() {
 }
 
 async function submitScore() {
+  if (SH.abort) return;
   const fd = new FormData();
   fd.append("take", S.takeBlob, "take.webm");
   showScoring(true, 120000);
@@ -1639,12 +1659,12 @@ function renderVerify() {
 function renderRecall() {
   const segs = S.cur.segs;
   $("#vf-body").innerHTML = `
-    <p class="test-desc"><b>${PASS_SCORE}점 이상 통과</b></p>
+    <p class="test-desc"><b>${PASS_SCORE}점 이상 통과</b> · 한국어를 보고 영어로 옮겨 적으세요</p>
     ${segs.map((s, i) => `
       <div class="vf-row" data-i="${i}">
         <div class="vf-ko"><b>${i + 1}</b><span>${esc(s.ko || "(한국어 없음 · 영어만)")}</span></div>
         <textarea class="vf-in" data-i="${i}" rows="1" spellcheck="false" autocapitalize="off"
-          placeholder="${s.ko ? "영어로 옮겨 적기" : esc((s.en || "").slice(0, 1)) + "…"}"></textarea>
+          placeholder="${s.ko ? "" : esc((s.en || "").slice(0, 1)) + "…"}"></textarea>
       </div>`).join("")}
     <div class="vf-pad"></div>`;
   $$("#vf-body .vf-in").forEach((el) => {
@@ -1886,10 +1906,14 @@ function renderResult(r) {
 
   $("#grade").textContent = "";
   $("#verdict").textContent = "";
-  $("#coach").innerHTML = "";
+  const coachEl = $("#coach");
+  if (coachEl) {
+    try { coachEl.innerHTML = coaching(r, acoustic) || ""; } catch (e) { coachEl.innerHTML = ""; }
+    coachEl.hidden = !coachEl.innerHTML.trim();
+  }
 
   MIX.peaks = {};
-  $("#mix-hint").textContent = (S.cur && S.cur.audio) ? "원본 음성 연결됨" : "영상 구간으로 재생";
+  $("#mix-hint").textContent = "";
   initMixUI();
   const dl = $("#dl-take");
   if (dl) {
@@ -1929,7 +1953,7 @@ function coaching(r, acoustic) {
 }
 
 /* ---- 다시 듣기: 파형 3줄 ---- */
-const MIX = { playing: "", raf: 0, t0: 0, dur: 1, audios: [], peaks: {} };
+const MIX = { playing: "", raf: 0, t0: 0, dur: 1, audios: [], peaks: {}, prog: { ref: 0, me: 0, both: 0 } };
 
 function mixCanvas(k) { return $(`.mix-cv[data-k="${k}"]`); }
 
@@ -1991,7 +2015,10 @@ function drawMixRow(k, prog) {
 }
 
 function drawAllMix(prog) {
-  ["ref", "me", "both"].forEach((k) => drawMixRow(k, prog));
+  ["ref", "me", "both"].forEach((k) => {
+    const p = typeof prog === "number" ? prog : (MIX.prog[k] || 0);
+    drawMixRow(k, p);
+  });
 }
 
 async function peaksFor(kind) {
@@ -2031,6 +2058,7 @@ function stopMix() {
   MIX.audios = [];
   pausePlayer();
   MIX.playing = "";
+  MIX.prog = { ref: 0, me: 0, both: 0 };
   $$(".mix-play").forEach((b) => { b.classList.remove("on"); b.innerHTML = ic("i-play", "ic xs"); });
   drawAllMix(0);
   $$(".mix-t").forEach((t) => (t.textContent = "0.0s"));
@@ -2069,7 +2097,8 @@ async function playMix(kind) {
     if (!MIX.playing) return;
     const el = (performance.now() - MIX.t0) / 1000;
     const p = Math.min(1, el / dur);
-    drawAllMix(p);
+    MIX.prog[kind] = p;
+    drawMixRow(kind, p);
     const t = $(`.mix-t[data-k="${kind}"]`);
     if (t) t.textContent = `${Math.min(dur, el).toFixed(1)}s`;
     if (el >= dur + 0.25) { stopMix(); return; }
@@ -2517,7 +2546,10 @@ function bind() {
     SH.skipListen = true;
     setTimeout(() => startShadow(), 180);
   };
-  $("#btn-result-close").onclick = () => { stopMix(); closeWave(true); show("s-play"); startTick(); };
+  $("#btn-result-close").onclick = () => {
+    stopMix(); closeWave(true); show("s-play"); startTick();
+    if (S.pendDone) { S.pendDone = false; setTimeout(showDone, 240); }
+  };
   $("#wv-cancel").onclick = cancelShadow;
   $("#btn-verify-close").onclick = () => exitVerify(true);
   const vfs = $("#vf-submit");
@@ -2668,6 +2700,8 @@ function beginTest(mode) {
   TQ.mode = mode; TQ.idx = 0; TQ.phase = "q"; TQ.res = [];
   TQ.n = S.cur.segs.length; TQ.revealed = false;
   TQ.item = TQ.on ? tqBuild(mode, 0) : null;
+  const vbD = $(".vbottom"); if (vbD) vbD.classList.remove("done");
+  S.doneShown = false;
   VF.on = false; VF.stage = "recall"; VF.typed = {}; VF.n = TQ.n;
   VF.mode = mode;
   document.body.classList.add("vf-focus");

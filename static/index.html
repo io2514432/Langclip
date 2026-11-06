@@ -161,6 +161,19 @@
             <div class="vcount" id="p-count">1 / 1</div>
           </div>
 
+                      <div class="segadj top" id="segadj" hidden>
+              <span class="segadj-lab">자막</span>
+              <button class="mode" data-mode="end">끝</button>
+              <button class="mode" data-mode="start">시작</button>
+              <button class="mode on" data-mode="seg">구간</button>
+              <button class="vbtn xs" data-nudge="-0.5">−0.5</button>
+              <button class="vbtn xs" data-nudge="-0.1">−0.1</button>
+              <button class="vbtn xs" data-nudge="0.1">+0.1</button>
+              <button class="vbtn xs" data-nudge="0.5">+0.5</button>
+              <button class="vbtn xs" id="segadj-all" title="모든 문장을 함께 옮깁니다">모두</button>
+              <span class="segadj-hint" id="segadj-hint"></span>
+            </div>
+
           <div class="vrail">
             <button class="rail" id="btn-script" title="전체 스크립트">
               <svg class="ic"><use href="#i-script"/></svg><span class="rail-lab">대본</span>
@@ -218,18 +231,6 @@
           </div>
 
           <div class="vbottom">
-            <div class="segadj" id="segadj" hidden>
-              <span class="segadj-lab">자막</span>
-              <button class="mode" data-mode="end">끝</button>
-              <button class="mode" data-mode="start">시작</button>
-              <button class="mode on" data-mode="seg">구간</button>
-              <button class="vbtn xs" data-nudge="-0.5">−0.5</button>
-              <button class="vbtn xs" data-nudge="-0.1">−0.1</button>
-              <button class="vbtn xs" data-nudge="0.1">+0.1</button>
-              <button class="vbtn xs" data-nudge="0.5">+0.5</button>
-              <button class="vbtn xs" id="segadj-all" title="모든 문장을 함께 옮깁니다">모두</button>
-              <span class="segadj-hint" id="segadj-hint"></span>
-            </div>
           <div class="vsub" id="vsub">
             <button class="star" id="btn-star" title="이 문장 북마크" hidden><svg class="ic"><use href="#i-star"/></svg></button>
             <div class="sub-en" id="sub-en"></div>
@@ -252,6 +253,7 @@
                 </button>
               </div>
               <div class="goal-note" id="goal-note"></div>
+              <div class="gdone" id="gdone"></div>
             </div>
           </div>
         </div>
@@ -270,7 +272,7 @@
 
           <div class="axis-wrap" id="axis-card">
             <div class="axis" data-k="pitch"><span class="ax-label">억양</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
-            <div class="axis" data-k="rhythm"><span class="ax-label">속도·리듬</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
+            <div class="axis" data-k="rhythm"><span class="ax-label">속도</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
             <div class="axis" data-k="timbre"><span class="ax-label">발음 정확도</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
             <div class="axis" data-k="attack"><span class="ax-label">첫소리 강세</span><div class="ax-bar"><i></i></div><span class="ax-val">0</span></div>
             <div class="note" id="mode-note"></div>
@@ -692,7 +694,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=8.4.0"></script>
-<script src="/sync.js?v=8.4.0"></script>
+<script src="/app.js?v=8.5.0"></script>
+<script src="/sync.js?v=8.5.0"></script>
 </body>
 </html>

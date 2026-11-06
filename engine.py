@@ -261,7 +261,49 @@ def _band(bands, k):
     return (0.45 * d_wrong, d_wrong, 1.35)
 
 
+def _gate(y_ref, y_take):
+    """무음·볼륨 게이트 + 파형(에너지 엔벨로프) 일치도.
+
+    gain : 원본 대비 '실제로 소리를 낸 구간' 비율과 음량. 무음이면 0에 가깝다.
+    env  : DTW 로 시간을 맞춘 뒤 파형 봉우리 위치가 얼마나 겹치는지(상관).
+    """
+    yr, yt = preprocess(y_ref), preprocess(y_take)
+    er, et = energy_feat(yr), energy_feat(yt)
+    rms_r = float(np.sqrt(np.mean(yr ** 2))) + 1e-9
+    rms_t = float(np.sqrt(np.mean(yt ** 2))) + 1e-9
+
+    thr = 0.12 * float(np.max(er))
+    cov_r = float(np.mean(er[:, 0] > thr))
+    cov_t = float(np.mean(et[:, 0] > thr))
+    cover = 0.0 if cov_r <= 1e-6 else min(1.0, cov_t / cov_r)
+    loud = min(1.0, (rms_t / rms_r) / 0.35)
+    gain = max(0.0, min(1.0, 0.5 * cover + 0.5 * loud))
+
+    if float(np.max(et)) <= 1e-8:
+        env = 0.0
+    else:
+        _, path = dtw(er, et, 0.25)
+        ia = np.array([p[0] for p in path])
+        ib = np.array([p[1] for p in path])
+        a, b = er[ia, 0], et[ib, 0]
+        an = (a - a.mean()) / (a.std() + 1e-9)
+        bn = (b - b.mean()) / (b.std() + 1e-9)
+        env = float(np.clip(np.mean(an * bn), -1.0, 1.0))
+
+    return gain, max(0.0, env), {"cov_ref": round(cov_r, 3), "cov_take": round(cov_t, 3),
+                                 "rms_ratio": round(rms_t / rms_r, 3),
+                                 "env_sim": round(float(env), 3)}
+
+
 def score(y_ref, y_take, sr=SR, bands=None):
+    gain, env, ginfo = _gate(y_ref, y_take)
+    if gain < 0.12:
+        return {"total": 0.0, "pitch": 0, "rhythm": 0, "artic": 0, "stress": 0,
+                "timbre": 0, "attack": 0, "mode": "acoustic", "silent": True,
+                "note": "녹음이 거의 무음입니다",
+                "raw": {"pitch": 0, "rhythm": 0, "artic": 0, "stress": 0, **ginfo},
+                "reliable": {}, "bands": {}, "weights": {}}
+
     m = axis_dist(y_ref, y_take)
 
     raw, rel, used_w = {}, {}, {}
@@ -274,6 +316,9 @@ def score(y_ref, y_take, sr=SR, bands=None):
     tot_w = sum(used_w.values()) or 1.0
     total = sum(raw[k] * used_w[k] for k in raw) / tot_w
 
+    # 무음·볼륨 게이트 + 파형 일치도 반영
+    total = total * (0.55 + 0.45 * gain) * (0.78 + 0.22 * env)
+
     return {
         "total": round(float(total), 1),
         "pitch": raw["pitch"], "rhythm": raw["rhythm"],
@@ -281,7 +326,9 @@ def score(y_ref, y_take, sr=SR, bands=None):
         "timbre": raw["artic"], "attack": raw["stress"],
         "mode": "acoustic",
         "raw": {k: round(float(m[k]), 3) for k in ("pitch", "rhythm", "artic", "stress")}
-               | {"dur_ratio": round(m["dur_ratio"], 3), "v_ratio": m["v_ratio"]},
+               | {"dur_ratio": round(m["dur_ratio"], 3), "v_ratio": m["v_ratio"]}
+               | ginfo,
+        "silent": False,
         "reliable": rel,
         "bands": {k: [round(x, 3) for x in _band(bands, k)] for k in raw},
         "weights": {k: round(used_w[k] / tot_w, 3) for k in raw},
