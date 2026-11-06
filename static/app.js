@@ -545,7 +545,13 @@ function renderSeg() {
   en.dataset.plain = s.en || s.text || "";
   ko.textContent = s.ko || "";
   ko.style.display = s.ko ? "" : "none";
-  $$("#sub-en .w").forEach((w) => { w.onclick = () => openWord(w.dataset.w, w.dataset.ctx, w.dataset.ko || ""); });
+  $$("#sub-en .w").forEach((w) => {
+    const band = w.classList.contains("phr");
+    w.onclick = (e) => {
+      if (band && e.target !== w) return;
+      openWord(w.dataset.w, w.dataset.ctx, w.dataset.ko || "");
+    };
+  });
   fitSub();
 
   const marked = (S.notes.sentences || []).some((n) => n.vid === v.id && n.idx === S.idx);
@@ -815,6 +821,22 @@ function setDonut(el, pct) {
   fg.style.strokeDashoffset = String(c * (1 - Math.max(0, Math.min(1, pct))));
 }
 
+const GOAL_DESC = {
+  time: ["학습 시간 3분", "영상을 보거나 자막을 조작하는 동안 채워집니다."],
+  listen: ["대본 전체 1회 청취", "문장을 끝까지 들을 때마다 하나씩 채워집니다."],
+  shadow: ["섀도잉 1문장", "따라 말하고 채점이 끝나면 완료됩니다."]
+};
+
+function goalNoteText(k, g) {
+  const t = `${Math.floor(g.secs / 60)}:${String(g.secs % 60).padStart(2, "0")} / 3:00`;
+  const val = { time: t, listen: `${g.listen} / ${g.n}`, shadow: `${Math.min(1, g.shadow)} / 1` };
+  if (k && GOAL_DESC[k]) {
+    const d = GOAL_DESC[k];
+    return `<b>${d[0]}</b>${d[1]} <i>${val[k]}</i>`;
+  }
+  return `오늘 목표 · 학습 ${t} · 청취 ${g.listen}/${g.n} · 섀도잉 ${Math.min(1, g.shadow)}/1`;
+}
+
 function paintGoals() {
   if (!$("#goals")) return;
   const g = goalState();
@@ -836,6 +858,11 @@ function paintGoals() {
   if (ln) ln.textContent = `${g.listen} / ${g.n}`;
   const sh = $("#gl-shadow-v");
   if (sh) sh.textContent = `${Math.min(1, g.shadow)} / 1`;
+  const note = $("#goal-note");
+  if (note) {
+    note.innerHTML = goalNoteText(S.goalSel || "", g);
+    note.classList.toggle("sel", !!S.goalSel);
+  }
   ["time", "listen", "shadow"].forEach((k) => {
     const row = $("#gl-" + k);
     if (!row) return;
@@ -2320,10 +2347,13 @@ function bind() {
     closeWord();
   }, true);
 
-  const bGoal = $("#goal-time");
-  if (bGoal) {
+  if ($("#goals")) {
     $$(".goal").forEach((g) => {
-      g.onclick = () => { paintGoals(); $("#sheet-goal").hidden = false; };
+      g.onclick = () => {
+        const k = g.dataset.goal || "";
+        S.goalSel = S.goalSel === k ? "" : k;
+        paintGoals();
+      };
     });
   }
   const bCele = $("#cele-close");

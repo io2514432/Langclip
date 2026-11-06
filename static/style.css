@@ -1429,3 +1429,33 @@ body.vf-focus .screens{height:100%}
   font-family:inherit;font-size:13px;font-weight:800;cursor:pointer}
 .cele-close{width:100%;height:34px;margin-top:6px;border:0;background:none;
   color:rgba(226,237,246,.5);font-family:inherit;font-size:11.5px;cursor:pointer}
+
+/* ================= v8.0 : 하단 정리 ================= */
+/* 자막을 재생바 위 흐름으로 (도넛/재생바와 겹침 제거) */
+.vbottom{gap:7px}
+.vbottom > .vsub{position:relative;left:auto;right:auto;top:auto;bottom:auto;z-index:auto;
+  margin:0 0 .30em;padding:0;max-height:none;overflow:visible}
+.vbottom > .vsub .star{top:-30px;right:0}
+
+/* 도넛 설명 : 재생바 아래 한 줄 텍스트 */
+.goal-note{font-family:inherit;font-size:11px;line-height:1.45;font-weight:600;
+  color:rgba(226,237,246,.52);text-align:center;letter-spacing:-.1px;
+  padding:0 2px;transition:color .15s}
+.goal-note b{font-weight:800;color:rgba(226,237,246,.88);margin-right:5px}
+.goal-note i{font-style:normal;font-variant-numeric:tabular-nums;color:rgba(226,237,246,.72)}
+.goal-note.sel{color:rgba(226,237,246,.78)}
+.goal-note.sel i{color:#7BD8FF;font-weight:800}
+
+/* 도넛 3개 균일 크기 */
+.goals{gap:15px;padding:1px 0 2px}
+.goals .goal{width:36px;height:36px}
+.goals .goal .gi{width:26px;height:26px}
+
+/* 숙어 밴드 : 단어 박스와 높이 동일, 내부 박스 제거 */
+#sub-en .w.phr{background:rgba(45,212,191,.30)!important;box-shadow:none!important;
+  border-radius:.26em!important;padding:.09em .26em!important;display:inline-block;
+  line-height:1.16}
+#sub-en .w.phr > .w{background:none!important;box-shadow:none!important;padding:0!important;
+  margin:0!important;border-radius:0!important;display:inline!important;line-height:inherit;
+  text-shadow:0 1px 3px rgba(0,0,0,.35)}
+#sub-en .w.phr:active{background:rgba(45,212,191,.52)!important}
