@@ -953,7 +953,7 @@ function showDone(ms) {
   if (!box || !vb) return;
   const d = ((S.progress && S.progress.streak && S.progress.streak.days) || 1);
   box.innerHTML = `<svg class="gf" viewBox="0 0 24 24" aria-hidden="true">`
-    + `<path d="M12.1 2.2c.3 3.2 1.8 4.8 3.2 6.6 1.2 1.5 2.1 3.1 2.1 5.1 0 3.3-2.4 5.9-5.4 5.9s-5.4-2.6-5.4-5.9c0-2.1.9-3.9 2.4-5.3.1 1.5.6 2.4 1.5 2.9-.6-3.4.2-6.1 1.6-9.3z"/></svg>`
+    + `<path d="M13.5 0.67s0.74 2.65 0.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l0.03-0.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67z"/>`
     + `<b>${d}</b>일 연속 학습 달성`;
   S.doneShown = true;
   vb.classList.remove("explain");

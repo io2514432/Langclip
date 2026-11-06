@@ -1687,7 +1687,6 @@ body.res-focus .screens{height:100%}
 .cele-flame.silver,.cele-flame.gold{background:none!important}
 .cele-flame svg{width:52px;height:52px;display:block}
 .cele-flame .cf-outer{fill:#FF8A00}
-.cele-flame .cf-inner{fill:#FFD08A}
 .cele-title{margin:0;font-size:15.5px;font-weight:850;color:var(--ink);
   letter-spacing:-.02em;line-height:1.5;word-break:keep-all}
 .cele-title b{color:#FF8A00;font-weight:900;margin:0}
@@ -1715,8 +1714,8 @@ body.res-focus .screens{height:100%}
 .tcele-x{color:var(--ink-3);font-weight:700}
 
 /* 도넛 자리 완료 문구 : 연출 + 2초 후 복귀 */
-.vbottom .gdone{overflow:hidden;animation:gdoneIn .38s cubic-bezier(.2,.9,.3,1) both}
-.vbottom .gdone .gf{width:15px;height:15px;display:block;flex:0 0 auto}
+.vbottom .gdone{gap:0;overflow:hidden;animation:gdoneIn .38s cubic-bezier(.2,.9,.3,1) both}
+.vbottom .gdone .gf{width:15px;height:15px;display:block;flex:0 0 auto;margin-right:6px}
 .vbottom .gdone .gf path{fill:#FF8A00}
 .vbottom .gdone b{color:#FFB020;font-size:14.5px;font-weight:900;margin:0 1px 0 0;
   display:inline-block;animation:gdoneNum .5s cubic-bezier(.2,1.3,.4,1) both}
