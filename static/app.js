@@ -314,20 +314,16 @@ function renderDecks() {
     box.innerHTML = `<div class="note-empty"><b>아직 담은 카드가 없어요</b><br />학습 화면에서 단어를 탭하거나 문장을 북마크하면 덱이 만들어집니다.</div>`;
     return;
   }
-  box.innerHTML = `<div class="dk-grid">` + DK.decks.map((d) => {
+  box.innerHTML = `<div class="dk-g3">` + DK.decks.map((d) => {
     const v = dkVideo(d.vid);
     const th = dkThumb(v);
-    const sub = th ? `<img src="${esc(th)}" alt="" loading="lazy">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`;
-    return `<button class="dk-item" data-vid="${esc(d.vid)}">
-      <span class="dk-fld">
-        <span class="dk-th">${sub}</span>
-        <svg class="dk-fbg" viewBox="0 0 96 74" aria-hidden="true"><path d="M4 24v-2a4 4 0 0 1 4-4h18l6 8h56a4 4 0 0 1 4 4v38a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/></svg>
-      </span>
-      <span class="dk-t">${esc(dkTitle(v))}</span>
-      <span class="dk-m">북마크 ${d.n}개 · ${d.pct}%${d.due ? " · 복습 대기" : ""}</span>
+    return `<button class="dc" data-vid="${esc(d.vid)}">
+      <span class="dc-th">${th ? `<img src="${esc(th)}" alt="" loading="lazy">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`}</span>
+      <span class="dc-t">${esc(dkTitle(v))}</span>
+      <span class="dc-m">${d.n}개 · ${d.pct}%${d.due ? " · 복습 대기" : ""}</span>
     </button>`;
   }).join("") + `</div>`;
-  $$("#dk-list .dk-item").forEach((el) => { el.onclick = () => openDeck(el.dataset.vid); });
+  $$("#dk-list .dc").forEach((el) => { el.onclick = () => openDeck(el.dataset.vid); });
 }
 
 function openDeck(vid) {
@@ -594,7 +590,7 @@ function renderVideos() {
     el.className = "vrow-wrap";
     el.innerHTML = `
       ${S.admin ? `<button class="vdel" title="삭제" data-del="${esc(v.id)}">${ic("i-close", "ic xs")}</button>` : ""}
-      <div class="vc-body">
+      <div class="vc-body${S.admin ? "" : " has-med"}">
         <div class="vc-thumb">
           <img src="https://i.ytimg.com/vi/${esc(v.yt)}/mqdefault.jpg" alt="" />
         </div>
@@ -604,12 +600,13 @@ function renderVideos() {
             <span class="m-l">
               ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
               <span class="m-n">총 ${v.n}문장</span>
-              ${v.medals && v.medals.length ? medalHTML(v.medals) : (v.stage1 ? '<span class="m-done">학습</span>' : "")}
+              ${S.admin ? medalHTML(v.medals) : ""}
             </span>
             ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : `<span class="m-sp"></span>`}
           </div>
         </div>
         <div class="vc-pct" hidden></div>
+        ${S.admin ? "" : `<span class="med-corner">${medalHTML(v.medals)}</span>`}
       </div>
       <div class="vexp" hidden>
         <button class="vexp-b" data-open="video">영상 보기</button>
