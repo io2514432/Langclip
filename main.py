@@ -931,8 +931,14 @@ async def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
     take_y = to_wav16k(data, os.path.splitext(take.filename or ".webm")[1] or ".webm")
     seg_dur = max(0.3, float(seg["end"]) - float(seg["start"]))
 
-    au = audio_public(v, d)
-    if au and au["url"]:
+    silent = engine.is_silent(take_y)
+    au = None if silent else audio_public(v, d)
+    if silent:
+        res = {"total": 0.0, "mode": "silent", "silent": True,
+               "pitch": 0, "rhythm": 0, "timbre": 0, "attack": 0,
+               "note": "녹음이 거의 무음입니다", "raw": {},
+               "ref_dur": round(seg_dur, 2)}
+    elif au and au["url"]:
         a = d["audios"][v["audio_id"]]
         off = float(a.get("offset", 0.0))
         try:

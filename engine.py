@@ -261,13 +261,34 @@ def _band(bands, k):
     return (0.45 * d_wrong, d_wrong, 1.35)
 
 
+SIL_RMS = 0.006
+
+
+def is_silent(y) -> bool:
+    """녹음이 사실상 무음인지. (엔진은 무음을 채점하지 않는다)"""
+    try:
+        a = np.asarray(y, dtype=np.float32).ravel()
+    except Exception:
+        return True
+    if a.size < 1600:
+        return True
+    rms = float(np.sqrt(np.mean(a ** 2)))
+    peak = float(np.max(np.abs(a)))
+    return rms < SIL_RMS and peak < 0.05
+
+
 def _gate(y_ref, y_take):
     """무음·볼륨 게이트 + 파형(에너지 엔벨로프) 일치도.
 
     gain : 원본 대비 '실제로 소리를 낸 구간' 비율과 음량. 무음이면 0에 가깝다.
     env  : DTW 로 시간을 맞춘 뒤 파형 봉우리 위치가 얼마나 겹치는지(상관).
     """
-    yr, yt = preprocess(y_ref), preprocess(y_take)
+    if is_silent(y_take):
+        return 0.0, 0.0, {"cov_ref": 1.0, "cov_take": 0.0, "rms_ratio": 0.0, "env_sim": 0.0}
+    try:
+        yr, yt = preprocess(y_ref), preprocess(y_take)
+    except Exception:
+        return 0.0, 0.0, {"cov_ref": 1.0, "cov_take": 0.0, "rms_ratio": 0.0, "env_sim": 0.0}
     er, et = energy_feat(yr), energy_feat(yt)
     rms_r = float(np.sqrt(np.mean(yr ** 2))) + 1e-9
     rms_t = float(np.sqrt(np.mean(yt ** 2))) + 1e-9
