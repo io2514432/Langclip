@@ -530,6 +530,7 @@ function onTick() {
 }
 
 function setPlayBtn(on) {
+  S.playing = !!on;
   const b = $("#btn-play");
   if (!b) return;
   b.classList.toggle("on", !!on);
@@ -822,19 +823,16 @@ function setDonut(el, pct) {
 }
 
 const GOAL_DESC = {
-  time: ["학습 시간 3분", "영상을 보거나 자막을 조작하는 동안 채워집니다."],
-  listen: ["대본 전체 1회 청취", "문장을 끝까지 들을 때마다 하나씩 채워집니다."],
-  shadow: ["섀도잉 1문장", "따라 말하고 채점이 끝나면 완료됩니다."]
+  time: "학습 시간 링을 완성해보세요!",
+  listen: "대본을 끝까지 들어보세요!",
+  shadow: "섀도잉 한 문장을 해보세요!"
 };
 
 function goalNoteText(k, g) {
-  const t = `${Math.floor(g.secs / 60)}:${String(g.secs % 60).padStart(2, "0")} / 3:00`;
-  const val = { time: t, listen: `${g.listen} / ${g.n}`, shadow: `${Math.min(1, g.shadow)} / 1` };
-  if (k && GOAL_DESC[k]) {
-    const d = GOAL_DESC[k];
-    return `<b>${d[0]}</b>${d[1]} <i>${val[k]}</i>`;
-  }
-  return `오늘 목표 · 학습 ${t} · 청취 ${g.listen}/${g.n} · 섀도잉 ${Math.min(1, g.shadow)}/1`;
+  const t = `${Math.floor(g.secs / 60)}:${String(g.secs % 60).padStart(2, "0")}/3:00`;
+  const val = { time: t, listen: `${g.listen}/${g.n}`, shadow: `${Math.min(1, g.shadow)}/1` };
+  if (!GOAL_DESC[k]) return "";
+  return `${GOAL_DESC[k]} ${val[k]}`;
 }
 
 function paintGoals() {
@@ -858,10 +856,11 @@ function paintGoals() {
   if (ln) ln.textContent = `${g.listen} / ${g.n}`;
   const sh = $("#gl-shadow-v");
   if (sh) sh.textContent = `${Math.min(1, g.shadow)} / 1`;
-  const note = $("#goal-note");
+  const note = $("#goal-note"), vb = $(".vbottom");
   if (note) {
-    note.innerHTML = goalNoteText(S.goalSel || "", g);
-    note.classList.toggle("sel", !!S.goalSel);
+    const k = S.goalSel || "";
+    note.textContent = goalNoteText(k, g);
+    if (vb) vb.classList.toggle("explain", !!k);
   }
   ["time", "listen", "shadow"].forEach((k) => {
     const row = $("#gl-" + k);
@@ -2355,6 +2354,8 @@ function bind() {
         paintGoals();
       };
     });
+    const gn = $("#goal-note");
+    if (gn) gn.onclick = () => { S.goalSel = ""; paintGoals(); };
   }
   const bCele = $("#cele-close");
   if (bCele) bCele.onclick = () => { $("#cele").hidden = true; };
@@ -2406,11 +2407,30 @@ function bind() {
     }
     pausePlayer(); stopTick(); show("s-home");
   };
-  $("#btn-play").onclick = togglePlay;
   const vtap = $("#vtap");
-  if (vtap) vtap.onclick = () => { if (SH.phase === "idle") togglePlay(); };
-  $("#btn-prev").onclick = () => step(-1);
-  $("#btn-next-seg").onclick = () => step(1);
+  if (vtap) {
+    vtap.onclick = () => {
+      if (SH.phase !== "idle") return;
+      if (Date.now() - (vtap._sw || 0) < 400) return;   // 스와이프 직후 클릭 무시
+      togglePlay();
+    };
+    let t0 = null;
+    vtap.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) { t0 = null; return; }
+      const t = e.touches[0];
+      t0 = { x: t.clientX, y: t.clientY, ms: Date.now() };
+    }, { passive: true });
+    vtap.addEventListener("touchend", (e) => {
+      const s0 = t0; t0 = null;
+      if (!s0 || SH.phase !== "idle" || !e.changedTouches.length) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+      if (Math.abs(dx) < 52 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (Date.now() - s0.ms > 800) return;
+      vtap._sw = Date.now();
+      step(dx > 0 ? -1 : 1);
+    }, { passive: true });
+  }
   $("#btn-sub").onclick = cycleSub;
   $("#btn-repeat").onclick = toggleRepeat;
   $("#btn-star").onclick = toggleStar;
@@ -2511,7 +2531,7 @@ function fitSub() {
   if (!box) return;
   const plain = box.dataset.plain || "";
   const st = $("#vstage");
-  const room = Math.max(140, (st ? st.clientHeight : 720) * 0.62);
+  const room = Math.max(160, (st ? st.clientHeight : 720) * 0.74);
   let fs = plain.length <= 24 ? 31
     : plain.length <= 40 ? 30
     : plain.length <= 60 ? 28

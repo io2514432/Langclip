@@ -1459,3 +1459,21 @@ body.vf-focus .screens{height:100%}
   margin:0!important;border-radius:0!important;display:inline!important;line-height:inherit;
   text-shadow:0 1px 3px rgba(0,0,0,.35)}
 #sub-en .w.phr:active{background:rgba(45,212,191,.52)!important}
+
+/* ================= v8.1 · 하단 제스처 · 목표 설명 바 ================= */
+/* 우측 레일을 위로 올려 자막 영역 침범 제거 */
+.vrail{top:38%;gap:11px;z-index:9}
+.vrail .rail{width:52px}
+
+/* 자막은 좌우 폭을 넓게 사용 */
+.vbottom > .vsub{padding:0 4px}
+
+/* 목표 설명 : 재생바 아래 검은 바 (도넛 자리) */
+.vbottom .goal-note{display:none}
+.vbottom.explain .goals{display:none}
+.vbottom.explain .goal-note{display:block;
+  margin:0 -14px calc(-14px - env(safe-area-inset-bottom,0px));
+  padding:13px 16px calc(13px + env(safe-area-inset-bottom,0px));
+  background:#000;color:#fff;font-family:inherit;font-size:12px;font-weight:700;
+  line-height:1.4;letter-spacing:-.1px;text-align:center;cursor:pointer;
+  font-variant-numeric:tabular-nums}
