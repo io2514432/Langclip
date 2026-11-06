@@ -491,7 +491,10 @@ async function stageEvent(kind, idx) {
     const r = await jsonPost("/api/progress/event", { vid: S.cur.id, kind, idx });
     applyStage(r);
     return r;
-  } catch { return null; }
+  } catch (e) {
+    HEARD.delete(key);          // 실패한 기록은 다음 기회에 다시 시도
+    return null;
+  }
 }
 
 function vdur() {
@@ -562,13 +565,17 @@ function onTick() {
   if (SH.phase !== "idle" && SH.phase !== "done") return;
   let t = 0;
   try { t = S.player.getCurrentTime() || 0; } catch { return; }
-  const playing = (() => { try { return S.player.getPlayerState() === 1; } catch { return false; } })();
+  let state = -1;
+  try { state = S.player.getPlayerState(); } catch (e) {}
+  const playing = state === 1;
   const dur = vdur();
 
   // 오늘 학습(Stage 1): 문장 끝을 지나친 순간 = 그 문장을 끝까지 들은 것
   // (문장 전환으로 S.seg 가 바뀌기 전에 판정해야 한다)
   if (playing && S.seg && t >= S.seg.end - 0.12) markListen(S.idx);
-  if (S.cur.segs.length && dur > 0 && t >= dur - 0.4) markListen(S.cur.segs.length - 1);
+  if (S.cur.segs.length && dur > 0 && (t >= dur - 0.6 || state === 0)) {
+    markListen(S.cur.segs.length - 1);
+  }
 
   if (S.repeat && S.seg) {
     if (t >= S.seg.end - 0.04) { try { S.player.seekTo(S.seg.start, true); } catch {} }
@@ -1603,22 +1610,19 @@ async function submitScore() {
 function startVerify() {
   if (!S.cur) return;
   if (!S.cur.segs || !S.cur.segs.length) return toast("문장이 없습니다");
-  if (SH.phase !== "idle") closeWave(true);
-  $("#sheet-script").hidden = true;
-  VF.on = false;
-  VF.stage = "recall";
-  VF.typed = {}; VF.n = S.cur.segs.length;
-  document.body.classList.add("vf-focus");
-  stopTick(); pausePlayer();
-  show("s-verify");
-  renderVerify();
+  tqOpenSheet();
 }
 
 function exitVerify(ask) {
   const segs = (S.cur && S.cur.segs) || [];
-  const done = segs.filter((s, i) => String(VF.typed[i] || "").trim()).length;
-  if (ask && done > 0 &&
-      !confirm(`작성한 답변 ${done}개가 사라집니다.\n\n백지 테스트를 나갈까요?`)) return;
+  const done = TQ.on ? TQ.res.length : segs.filter((s, i) => String(VF.typed[i] || "").trim()).length;
+  if (ask && done > 0) {
+    const msg = TQ.on
+      ? `진행한 테스트 ${done}문장이 사라집니다.\n\n나갈까요?`
+      : `작성한 답변 ${done}개가 사라집니다.\n\n백지 테스트를 나갈까요?`;
+    if (!confirm(msg)) return;
+  }
+  TQ.on = false; TQ.res = []; TQ.item = null; TQ.phase = "q";
   VF.on = false;
   VF.typed = {}; VF.stage = "recall";
   document.body.classList.remove("vf-focus");
@@ -2425,6 +2429,11 @@ function bind() {
   };
   bindStudyTimer();
   bindScrub();
+  $$("#sheet-test [data-mode]").forEach((b) => {
+    b.onclick = () => beginTest(b.dataset.mode);
+  });
+  const bNext = $("#vf-next");
+  if (bNext) bNext.onclick = () => tqNext();
   const bPh = $("#btn-phrase");
   if (bPh) bPh.onclick = () => { try { openPhraseSheet(); } catch (e) { toast("열지 못했습니다: " + e.message, 3000); } };
   const bPhs = $("#ph-save");
@@ -2554,6 +2563,305 @@ async function attachAddAudio(vid) {
   toast("원본 음성을 연결했습니다", 3200);
 }
 window.attachAddAudio = attachAddAudio;
+
+
+/* ================= v8.3 · 3단계 테스트 (초급·중급·고급) ================= */
+const TQ = { on: false, mode: "beginner", idx: 0, phase: "q", res: [], item: null, n: 0, revealed: false };
+const TQ_NAME = { beginner: "초급 · 어절 블록", inter: "중급 · 빈칸 채우기", recall: "고급 · 백지 테스트" };
+
+function tqNorm(w) {
+  return String(w || "").toLowerCase().replace(/[.,!?;:"'\u2019\u201c\u201d()\[\]]/g, "").trim();
+}
+function tqTokens(s) {
+  const raw = String((s && (s.en || s.text)) || "").trim();
+  return raw ? raw.split(/\s+/).filter(Boolean) : [];
+}
+function tqShuffle(a) {
+  const x = a.slice();
+  for (let i = x.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = x[i]; x[i] = x[j]; x[j] = t;
+  }
+  return x;
+}
+function tqRec() {
+  try { return JSON.parse(localStorage.getItem("lc_test_" + ((S.cur && S.cur.id) || "")) || "{}") || {}; }
+  catch (e) { return {}; }
+}
+function tqSave(mode, pct) {
+  if (!S.cur) return;
+  const r = tqRec();
+  r[mode] = Math.max(r[mode] || 0, pct);
+  try { localStorage.setItem("lc_test_" + S.cur.id, JSON.stringify(r)); } catch (e) {}
+}
+
+function tqOpenSheet() {
+  if (!S.cur) return;
+  const rec = tqRec();
+  $$("#sheet-test [data-best]").forEach((el) => {
+    const v = rec[el.dataset.best];
+    el.textContent = v ? v + "%" : "";
+  });
+  const box = $("#sheet-test");
+  if (!box) return beginTest("recall");
+  box.hidden = false;
+}
+
+/* 문장 1개분 문제 생성 */
+function tqBuild(mode, i) {
+  const seg = S.cur.segs[i] || {};
+  const toks = tqTokens(seg);
+  const key = tqNorm(toks.join(" "));
+  if (mode === "beginner") {
+    const have = new Set(toks.map(tqNorm));
+    const pool = [];
+    S.cur.segs.forEach((x, k) => {
+      if (k === i) return;
+      tqTokens(x).forEach((t) => {
+        const n = tqNorm(t);
+        if (n && n.length > 1 && !have.has(n)) { have.add(n); pool.push(t); }
+      });
+    });
+    const nEx = Math.min(3, Math.max(2, Math.round(toks.length * 0.28)));
+    const bank = toks.concat(tqShuffle(pool).slice(0, nEx))
+      .map((w, k) => ({ id: "b" + k, w, used: false }));
+    return { toks, key, bank: tqShuffle(bank), ans: new Array(toks.length).fill(null) };
+  }
+  const n = toks.length;
+  let k = n <= 5 ? 1 : n <= 8 ? 2 : n <= 11 ? 3 : 4;
+  k = Math.max(1, Math.min(k, Math.floor(n / 2)));
+  const cand = [];
+  toks.forEach((t, j) => { if (tqNorm(t).length >= 3) cand.push(j); });
+  const pool = cand.length >= k ? cand : toks.map((t, j) => j);
+  const blanks = tqShuffle(pool).slice(0, k).sort((a, b) => a - b);
+  return { toks, key, blanks, vals: {} };
+}
+
+function beginTest(mode) {
+  if (!S.cur || !S.cur.segs || !S.cur.segs.length) return toast("문장이 없습니다");
+  const sh = $("#sheet-test"); if (sh) sh.hidden = true;
+  const shs = $("#sheet-script"); if (shs) shs.hidden = true;
+  if (SH.phase !== "idle") { try { closeWave(true); } catch (e) {} }
+  TQ.on = mode !== "recall";
+  TQ.mode = mode; TQ.idx = 0; TQ.phase = "q"; TQ.res = [];
+  TQ.n = S.cur.segs.length; TQ.revealed = false;
+  TQ.item = TQ.on ? tqBuild(mode, 0) : null;
+  VF.on = false; VF.stage = "recall"; VF.typed = {}; VF.n = TQ.n;
+  document.body.classList.add("vf-focus");
+  stopTick(); pausePlayer();
+  show("s-verify");
+  const feed = $("#vf-feed"); if (feed) feed.hidden = true;
+  $("#vf-title").textContent = TQ_NAME[mode];
+  $("#vf-foot").hidden = false;
+  if (!TQ.on) {
+    $("#tq-bar").style.width = "0%";
+    $("#vf-prog").textContent = "";
+    renderRecall();
+  } else {
+    renderTq();
+  }
+}
+
+function tqBeginnerHtml(seg, it) {
+  const slots = it.ans.map((t, k) => t
+    ? `<button class="tq-tile in" data-a="${k}">${esc(t.w)}</button>`
+    : `<span class="tq-slot" data-a="${k}"></span>`).join("");
+  const bank = it.bank.map((b) => b.used
+    ? `<span class="tq-tile gone">${esc(b.w)}</span>`
+    : `<button class="tq-tile" data-t="${b.id}">${esc(b.w)}</button>`).join("");
+  return `<div class="tq-kicker">${TQ.idx + 1}번째 문장</div>
+    <div class="tq-ko">${esc(seg.ko || "영어 문장을 순서대로 배열하세요")}</div>
+    <div class="tq-drop" id="tq-drop">${slots}</div>
+    <div class="tq-bank" id="tq-bank">${bank}</div>`;
+}
+
+function tqInterHtml(seg, it) {
+  const bset = new Set(it.blanks);
+  const parts = it.toks.map((t, j) => {
+    if (!bset.has(j)) return `<span>${esc(t)}</span>`;
+    const a = tqNorm(t);
+    const w = Math.min(14, Math.max(3, a.length)) * 0.62 + 1.7;
+    return `<input class="tq-bl" data-b="${j}" style="width:${w}em" autocapitalize="off"
+      autocomplete="off" spellcheck="false" placeholder="${esc(t.slice(0, 1))}${".".repeat(Math.max(0, Math.min(13, a.length - 1)))}">`;
+  }).join(" ");
+  return `<div class="tq-kicker">${TQ.idx + 1}번째 문장 · 빈칸 ${it.blanks.length}개</div>
+    <div class="tq-ko">${esc(seg.ko || "빈칸을 채우세요")}</div>
+    <div class="tq-en" id="tq-en">${parts}</div>
+    <div class="tq-tools">
+      <button class="tq-tool" id="tq-hint">힌트 보기</button>
+      <button class="tq-tool" id="tq-reveal">정답 보기</button>
+    </div>
+    <div class="tq-hint" id="tq-hint-box"></div>`;
+}
+
+function renderTq() {
+  const seg = S.cur.segs[TQ.idx] || {};
+  const body = $("#vf-body");
+  const feed = $("#vf-feed");
+  if (feed) feed.hidden = true;
+  const foot = $("#vf-foot"); if (foot) foot.hidden = false;
+  const sub = $("#vf-submit");
+  if (sub) { sub.disabled = false; sub.textContent = "확인"; sub.onclick = tqCheck; }
+  $("#vf-title").textContent = TQ_NAME[TQ.mode];
+  $("#vf-prog").textContent = `${TQ.idx + 1}/${TQ.n}`;
+  $("#tq-bar").style.width = (TQ.idx / TQ.n) * 100 + "%";
+  body.innerHTML = TQ.mode === "beginner" ? tqBeginnerHtml(seg, TQ.item) : tqInterHtml(seg, TQ.item);
+  tqBindBody();
+  body.scrollTop = 0;
+  const f = body.querySelector(".tq-bl");
+  if (f) setTimeout(() => { try { f.focus(); } catch (e) {} }, 80);
+}
+
+function tqBindBody() {
+  const body = $("#vf-body");
+  if (TQ.mode === "beginner") {
+    body.querySelectorAll("#tq-bank [data-t]").forEach((el) => {
+      el.onclick = () => {
+        if (TQ.phase !== "q") return;
+        const it = TQ.item;
+        const tile = it.bank.find((b) => b.id === el.dataset.t);
+        if (!tile || tile.used) return;
+        const slot = it.ans.findIndex((x) => !x);
+        if (slot < 0) return;
+        tile.used = true; it.ans[slot] = tile;
+        renderTq();
+      };
+    });
+    body.querySelectorAll("#tq-drop [data-a]").forEach((el) => {
+      el.onclick = () => {
+        if (TQ.phase !== "q") return;
+        const it = TQ.item;
+        const k = +el.dataset.a;
+        const t = it.ans[k];
+        if (t) { t.used = false; it.ans[k] = null; }
+        else {
+          for (let j = it.ans.length - 1; j >= 0; j--) {
+            if (it.ans[j]) { it.ans[j].used = false; it.ans[j] = null; break; }
+          }
+        }
+        renderTq();
+      };
+    });
+    return;
+  }
+  body.querySelectorAll(".tq-bl").forEach((el) => {
+    el.oninput = () => { TQ.item.vals[el.dataset.b] = el.value; };
+    el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); tqCheck(); } };
+  });
+  const h = $("#tq-hint");
+  if (h) h.onclick = () => {
+    const box = $("#tq-hint-box");
+    const seg = S.cur.segs[TQ.idx] || {};
+    const lens = TQ.item.blanks.map((j) => tqNorm(TQ.item.toks[j]).length).join(" · ");
+    const bits = [];
+    if (seg.ko) bits.push("뜻 · " + seg.ko);
+    bits.push(`빈칸 ${TQ.item.blanks.length}개 · 글자수 ${lens}`);
+    box.textContent = bits.join("   |   ");
+    box.classList.add("on");
+  };
+  const r = $("#tq-reveal");
+  if (r) r.onclick = () => {
+    if (TQ.phase !== "q") return;
+    TQ.item.blanks.forEach((j) => {
+      const el = body.querySelector(`.tq-bl[data-b="${j}"]`);
+      if (el) { el.value = TQ.item.toks[j]; TQ.item.vals[j] = TQ.item.toks[j]; }
+    });
+    TQ.revealed = true;
+    toast("정답을 채웠습니다 · 이 문장은 오답으로 기록됩니다", 2800);
+  };
+}
+
+function tqCheck() {
+  if (!TQ.on || TQ.phase !== "q") return;
+  const seg = S.cur.segs[TQ.idx] || {};
+  let ok = !TQ.revealed;
+  if (TQ.mode === "beginner") {
+    if (TQ.item.ans.some((x) => !x)) ok = false;
+    else if (tqNorm(TQ.item.ans.map((t) => t.w).join(" ")) !== TQ.item.key) ok = false;
+  } else {
+    TQ.item.blanks.forEach((j) => {
+      const el = $("#vf-body").querySelector(`.tq-bl[data-b="${j}"]`);
+      if (tqNorm((el && el.value) || "") !== tqNorm(TQ.item.toks[j])) ok = false;
+    });
+  }
+  TQ.phase = "check";
+  TQ.res.push({ i: TQ.idx, ok, ko: seg.ko || "", en: seg.en || seg.text || "" });
+  if (TQ.mode === "inter") {
+    $("#vf-body").querySelectorAll(".tq-bl").forEach((el) => {
+      el.disabled = true;
+      const j = +el.dataset.b;
+      el.classList.add(tqNorm(el.value) === tqNorm(TQ.item.toks[j]) ? "ok" : "no");
+    });
+  }
+  $("#tq-bar").style.width = ((TQ.idx + 1) / TQ.n) * 100 + "%";
+  $("#vf-prog").textContent = `${TQ.idx + 1}/${TQ.n}`;
+  showTqFeed(ok, seg);
+}
+
+function showTqFeed(ok, seg) {
+  const feed = $("#vf-feed");
+  const foot = $("#vf-foot");
+  if (foot) foot.hidden = true;
+  if (!feed) return;
+  feed.hidden = false;
+  feed.classList.toggle("no", !ok);
+  const t = $("#vf-feed-t"), sx = $("#vf-feed-s"), next = $("#vf-next");
+  if (t) t.textContent = ok ? "정답이에요!" : "아쉬워요";
+  if (sx) sx.innerHTML = ok
+    ? esc(seg.ko || "")
+    : `정답 · <b>${esc(seg.en || seg.text || "")}</b>`;
+  if (next) {
+    next.textContent = TQ.idx + 1 >= TQ.n ? "결과 보기" : "다음 문제";
+    next.onclick = () => tqNext();
+  }
+}
+
+function tqNext() {
+  const feed = $("#vf-feed"); if (feed) feed.hidden = true;
+  if (TQ.idx + 1 >= TQ.n) return tqResult();
+  TQ.idx += 1; TQ.phase = "q"; TQ.revealed = false;
+  TQ.item = tqBuild(TQ.mode, TQ.idx);
+  renderTq();
+}
+
+function tqResult() {
+  const okN = TQ.res.filter((r) => r.ok).length;
+  const n = TQ.n || 1;
+  const pct = Math.round((okN / n) * 100);
+  tqSave(TQ.mode, pct);
+  TQ.phase = "done";
+  $("#vf-foot").hidden = true;
+  $("#vf-feed").hidden = true;
+  $("#vf-prog").textContent = `${n}/${n}`;
+  $("#tq-bar").style.width = "100%";
+  $("#vf-title").textContent = TQ_NAME[TQ.mode];
+  const pass = pct >= 90;
+  const upTo = TQ.mode === "beginner" ? "inter" : TQ.mode === "inter" ? "recall" : "beginner";
+  const upLab = TQ.mode === "beginner" ? "중급으로 도전" : TQ.mode === "inter" ? "고급으로 도전" : "초급부터 다시";
+  $("#vf-body").innerHTML = `
+    <div class="tq-hero ${pass ? "ok" : "no"}">
+      <div class="tq-score">${pct}<small>점</small></div>
+      <div class="tq-hero-tx">
+        <b>${pass ? "잘했어요" : "조금 더 연습해볼까요"}</b>
+        <em>${okN} / ${n} 문장 정답${pass && TQ.mode !== "recall" ? " · 다음 난이도로 넘어가 보세요" : ""}</em>
+      </div>
+    </div>
+    <div class="tq-lines">
+      ${TQ.res.map((r) => `<div class="tq-line">
+        <span class="tq-mark${r.ok ? "" : " no"}">${r.ok ? "\u2713" : "!"}</span>
+        <span class="tq-line-b"><span>${esc(r.ko || "")}</span><b>${esc(r.en || "")}</b></span>
+      </div>`).join("")}
+    </div>
+    <div class="tq-acts">
+      <button class="btn primary" id="tq-again">같은 난이도 다시</button>
+      <button class="btn ghost" id="tq-up">${upLab}</button>
+      <button class="btn ghost" id="tq-out">학습으로 돌아가기</button>
+    </div>`;
+  const again = $("#tq-again"); if (again) again.onclick = () => beginTest(TQ.mode);
+  const up = $("#tq-up"); if (up) up.onclick = () => beginTest(upTo);
+  const out = $("#tq-out"); if (out) out.onclick = () => exitVerify(false);
+  $("#vf-body").scrollTop = 0;
+}
 
 /* ================= 시작 ================= */
 (async function boot() {

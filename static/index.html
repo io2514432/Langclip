@@ -366,9 +366,16 @@
       <section class="screen" id="s-verify">
         <div class="test-head">
           <button class="vf-back" id="btn-verify-close" aria-label="나가기"><svg class="ic"><use href="#i-left"/></svg></button>
-          <div class="test-title">백지 테스트</div>
+          <div class="test-title" id="vf-title">테스트</div>
+          <div class="test-prog" id="vf-prog"></div>
         </div>
+        <div class="tq-gauge"><i id="tq-bar"></i></div>
         <div class="scroll vf-scroll" id="vf-body"></div>
+        <div class="vf-feed" id="vf-feed" hidden>
+          <div class="vf-feed-t" id="vf-feed-t"></div>
+          <div class="vf-feed-s" id="vf-feed-s"></div>
+          <button class="vf-next" id="vf-next">다음 문제</button>
+        </div>
         <div class="vf-foot" id="vf-foot">
           <button class="vf-submit" id="vf-submit">채점하기</button>
         </div>
@@ -496,6 +503,33 @@ Sure. What size would you like?
 
 
     <!-- ===== 오늘 학습 목표 ===== -->
+    <div class="sheet-wrap" id="sheet-test" hidden>
+      <div class="sheet-bg" data-close></div>
+      <div class="sheet">
+        <div class="sheet-grip"></div>
+        <h3>테스트 난이도</h3>
+        <p class="sheet-desc">쇼츠를 학습한 뒤 단계별로 확인해보세요. 초급·중급은 한 문장씩, 고급은 전체 문장을 한 번에 봅니다.</p>
+        <div class="tm-list">
+          <button class="tm-row" data-mode="beginner">
+            <span class="tm-n">1</span>
+            <span class="tm-tx"><b>초급 · 어절 블록</b><em>흩어진 단어를 순서대로 배열합니다.</em></span>
+            <span class="tm-best" data-best="beginner"></span>
+          </button>
+          <button class="tm-row" data-mode="inter">
+            <span class="tm-n">2</span>
+            <span class="tm-tx"><b>중급 · 빈칸 채우기</b><em>핵심 단어 몇 개만 직접 입력합니다.</em></span>
+            <span class="tm-best" data-best="inter"></span>
+          </button>
+          <button class="tm-row" data-mode="recall">
+            <span class="tm-n">3</span>
+            <span class="tm-tx"><b>고급 · 백지 테스트</b><em>한국어만 보고 전체 문장을 영작합니다.</em></span>
+            <span class="tm-best" data-best="recall"></span>
+          </button>
+        </div>
+        <p class="tm-note">고급 통과(90점)만 암송 완료로 기록됩니다.</p>
+      </div>
+    </div>
+
     <div class="sheet-wrap" id="sheet-goal" hidden>
       <div class="sheet-bg" data-close></div>
       <div class="sheet">
@@ -647,7 +681,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=8.2.0"></script>
-<script src="/sync.js?v=8.2.0"></script>
+<script src="/app.js?v=8.3.0"></script>
+<script src="/sync.js?v=8.3.0"></script>
 </body>
 </html>

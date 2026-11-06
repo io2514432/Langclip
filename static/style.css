@@ -1518,3 +1518,96 @@ body.vf-focus .screens{height:100%}
 .vsub.sw-in-l{transform:translateX(36%);opacity:0;transition:none}
 .vsub.sw-in-r{transform:translateX(-34%);opacity:0;transition:none}
 .vtap{touch-action:manipulation}
+
+/* ================= v8.3 · 3단계 테스트 ================= */
+/* 모바일 스크롤 안정화 */
+.screen{min-height:0}
+.screen > .scroll,.scroll{-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior-y:contain}
+.vtap{touch-action:pan-y}
+
+#s-verify .tq-gauge{flex:0 0 auto;height:3px;margin:0 12px 2px;border-radius:99px;
+  background:#E4EEF7;overflow:hidden}
+#s-verify .tq-gauge i{display:block;height:100%;width:0;background:var(--sky-d);
+  border-radius:99px;transition:width .28s cubic-bezier(.2,.8,.3,1)}
+.test-prog{font-size:10.5px;font-weight:850;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+/* 문제 카드 */
+.tq-kicker{font-size:10px;font-weight:850;color:var(--ink-3);letter-spacing:.02em;margin:10px 0 5px}
+.tq-ko{font-size:16px;font-weight:800;color:var(--ink);line-height:1.5;letter-spacing:-.02em;margin:0 0 16px}
+.tq-drop{min-height:44px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  padding:4px 2px 9px;border-bottom:1.5px solid #E4EEF7;margin-bottom:14px}
+.tq-slot{flex:0 0 62px;height:34px;border-radius:8px;background:#F4F9FD}
+.tq-bank{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 12px}
+.tq-tile{border:1px solid #DCE7F1;background:#fff;border-radius:10px;padding:8px 11px;
+  font-family:inherit;font-size:15px;font-weight:750;color:var(--ink);letter-spacing:-.01em;
+  cursor:pointer;line-height:1.1;transition:transform .1s,box-shadow .12s,border-color .12s}
+.tq-tile:active{transform:scale(.96)}
+.tq-tile.in{border-color:#BFE6FB;background:#F2FAFF;color:var(--sky-d);
+  box-shadow:0 1px 0 rgba(14,165,233,.18)}
+.tq-tile.gone{visibility:hidden}
+
+/* 중급 빈칸 */
+.tq-en{font-size:15.5px;line-height:2.35;font-weight:650;color:var(--ink);letter-spacing:-.01em}
+.tq-bl{border:0;border-bottom:2px solid var(--sky);background:#F0F9FF;border-radius:7px 7px 0 0;
+  font-family:inherit;font-size:15px;font-weight:800;color:var(--sky-d);text-align:center;
+  padding:1px 5px;margin:0 2px;min-width:44px;outline:none}
+.tq-bl:focus{background:#E4F4FF;border-bottom-color:var(--sky-d)}
+.tq-bl.ok{border-bottom-color:#22B884;background:#F1FCF7;color:#15803D}
+.tq-bl.no{border-bottom-color:#F97362;background:#FFF4F2;color:#C2410C}
+.tq-tools{display:flex;align-items:center;gap:16px;margin-top:14px}
+.tq-tool{border:0;background:none;padding:0;font-family:inherit;font-size:11.5px;font-weight:750;
+  color:var(--ink-3);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.tq-tool:active{color:var(--sky-d)}
+.tq-hint{margin-top:10px;padding:9px 11px;border-radius:10px;background:#F5F8FB;
+  font-size:11.5px;line-height:1.55;color:var(--ink-2);display:none}
+.tq-hint.on{display:block}
+
+/* 피드백 바 */
+.vf-feed{flex:0 0 auto;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));
+  background:#F0FBF5;border-top:1px solid #C8EBDD;animation:feedUp .18s ease}
+.vf-feed.no{background:#FFF6F3;border-top-color:#FBD3D0}
+@keyframes feedUp{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+.vf-feed-t{font-size:13.5px;font-weight:850;color:#15803D;letter-spacing:-.01em}
+.vf-feed.no .vf-feed-t{color:#C2410C}
+.vf-feed-s{margin-top:4px;font-size:11.5px;line-height:1.5;color:#5B7A6A}
+.vf-feed-s b{color:#15803D;font-weight:850}
+.vf-feed.no .vf-feed-s{color:#8A6A62}
+.vf-feed.no .vf-feed-s b{color:#C2410C}
+.vf-next{width:100%;height:44px;margin-top:10px;border:0;border-radius:12px;background:#22B884;
+  color:#fff;font-family:inherit;font-size:13.5px;font-weight:850;cursor:pointer;letter-spacing:-.01em}
+.vf-feed.no .vf-next{background:#F97362}
+
+/* 난이도 시트 */
+.tm-list{display:flex;flex-direction:column;gap:8px;margin:12px 0 6px}
+.tm-row{display:flex;align-items:center;gap:11px;width:100%;padding:13px 12px;border:1px solid var(--line);
+  border-radius:12px;background:#fff;text-align:left;cursor:pointer;font-family:inherit}
+.tm-row:active{background:var(--bg)}
+.tm-n{flex:0 0 22px;height:22px;border-radius:7px;background:var(--sky-l);color:var(--sky-d);
+  font-size:10.5px;font-weight:900;display:grid;place-items:center}
+.tm-tx{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tm-tx b{font-size:12.5px;font-weight:850;color:var(--ink)}
+.tm-tx em{font-style:normal;font-size:10.5px;color:var(--ink-3);line-height:1.4}
+.tm-best{flex:0 0 auto;font-size:10px;font-weight:850;color:#22B884;font-variant-numeric:tabular-nums}
+.tm-note{font-size:10px;color:var(--ink-3);margin:6px 0 2px;line-height:1.5}
+
+/* 결과 */
+.tq-hero{display:flex;align-items:center;gap:13px;padding:16px;border-radius:16px;
+  border:1px solid var(--line);background:#fff;margin:10px 0 12px}
+.tq-hero.ok{background:linear-gradient(180deg,#F7FDFA,#EFFBF4);border-color:#C8EBDD}
+.tq-hero.no{background:linear-gradient(180deg,#FFFBFA,#FFF4F1);border-color:#FBD3D0}
+.tq-score{font-size:26px;font-weight:900;color:var(--sky-d);letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums}
+.tq-hero.ok .tq-score{color:#16A34A}
+.tq-hero.no .tq-score{color:#E2564F}
+.tq-score small{font-size:11px;font-weight:800;margin-left:1px}
+.tq-hero-tx b{display:block;font-size:13.5px;font-weight:850;color:var(--ink)}
+.tq-hero-tx em{font-style:normal;font-size:10.5px;color:var(--ink-3)}
+.tq-line{display:flex;align-items:flex-start;gap:7px;padding:8px 0;border-bottom:1px solid #F1F5F9}
+.tq-line:last-child{border-bottom:0}
+.tq-mark{flex:0 0 15px;height:15px;border-radius:50%;display:grid;place-items:center;margin-top:2px;
+  font-size:9px;font-weight:900;color:#fff;background:#22B884}
+.tq-mark.no{background:#F97362}
+.tq-line-b{flex:1 1 auto;min-width:0}
+.tq-line-b span{display:block;font-size:10.5px;color:var(--ink-3);line-height:1.45}
+.tq-line-b b{display:block;font-size:11.5px;font-weight:700;color:var(--ink);line-height:1.5;margin-top:1px}
+.tq-acts{display:flex;flex-direction:column;gap:7px;margin:16px 0 4px}
