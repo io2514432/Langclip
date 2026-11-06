@@ -1673,3 +1673,57 @@ body.res-focus .appbar,body.res-focus .tabbar{display:none!important}
 body.res-focus .screens{height:100%}
 #s-result{min-height:0}
 .coach[hidden]{display:none!important}
+
+/* ================= v8.6 · 축하 모달 화이트 · 완료 문구 연출 ================= */
+/* 스트릭 포인트 컬러 통일 */
+.streak .ic{color:#FF8A00}
+
+/* 학습 완료 모달 */
+.cele-bg{background:rgba(15,23,42,.42);backdrop-filter:blur(3px)}
+.cele-box{background:#fff;border:0;border-radius:20px;box-shadow:0 18px 48px -18px rgba(16,42,67,.28);
+  padding:28px 22px 16px;text-align:center}
+.cele-flame{width:52px;height:52px;margin:0 auto 12px;border-radius:0;background:none!important;
+  display:block;line-height:0}
+.cele-flame.silver,.cele-flame.gold{background:none!important}
+.cele-flame svg{width:52px;height:52px;display:block}
+.cele-flame .cf-outer{fill:#FF8A00}
+.cele-flame .cf-inner{fill:#FFD08A}
+.cele-title{margin:0;font-size:15.5px;font-weight:850;color:var(--ink);
+  letter-spacing:-.02em;line-height:1.5;word-break:keep-all}
+.cele-title b{color:#FF8A00;font-weight:900;margin:0}
+.cele-msg{margin:9px 0 20px;font-size:12.5px;line-height:1.75;color:var(--ink-2);
+  word-break:keep-all;text-wrap:balance}
+.cele-cta{width:100%;height:46px;border:0;border-radius:12px;background:#0085FF;color:#fff;
+  font-family:inherit;font-size:13.5px;font-weight:850;letter-spacing:-.01em;cursor:pointer}
+.cele-cta:active{background:#0070D9}
+.cele-close{width:100%;height:36px;margin-top:2px;border:0;background:none;
+  color:var(--ink-3);font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
+
+/* 테스트 완료 모달 : 같은 화이트 톤 */
+.tcele-bg{background:rgba(15,23,42,.42);backdrop-filter:blur(3px)}
+.tcele-box{background:#fff;border:0;border-radius:20px;box-shadow:0 18px 48px -18px rgba(16,42,67,.28);
+  padding:26px 22px 16px}
+.tcele-score{color:#0085FF}
+.tcele-t{color:var(--ink);font-size:16px;font-weight:900;letter-spacing:-.02em}
+.tcele-m{color:var(--ink-2);word-break:keep-all;text-wrap:balance}
+.tcele-rows{border-top:1px solid #EEF3F8}
+.tcele-r{border-bottom:1px solid #EEF3F8}
+.tcele-r span{color:var(--ink-3)}
+.tcele-r b{color:var(--ink)}
+.tcele-cta{background:#0085FF;color:#fff;font-weight:850}
+.tcele-cta:active{background:#0070D9}
+.tcele-x{color:var(--ink-3);font-weight:700}
+
+/* 도넛 자리 완료 문구 : 연출 + 2초 후 복귀 */
+.vbottom .gdone{overflow:hidden;animation:gdoneIn .38s cubic-bezier(.2,.9,.3,1) both}
+.vbottom .gdone .gf{width:15px;height:15px;display:block;flex:0 0 auto}
+.vbottom .gdone .gf path{fill:#FF8A00}
+.vbottom .gdone b{color:#FFB020;font-size:14.5px;font-weight:900;margin:0 1px 0 0;
+  display:inline-block;animation:gdoneNum .5s cubic-bezier(.2,1.3,.4,1) both}
+.vbottom .gdone::after{content:"";position:absolute;top:-40%;bottom:-40%;width:42%;
+  left:0;background:linear-gradient(100deg,transparent,rgba(255,255,255,.26),transparent);
+  transform:translateX(-140%) skewX(-12deg);animation:gdoneSweep .95s .22s ease-out both}
+@keyframes gdoneIn{0%{opacity:0;transform:translateY(7px) scale(.93)}
+  62%{opacity:1;transform:translateY(0) scale(1.035)}100%{transform:none}}
+@keyframes gdoneNum{0%{opacity:0;transform:scale(.55)}100%{opacity:1;transform:none}}
+@keyframes gdoneSweep{to{transform:translateX(360%) skewX(-12deg)}}

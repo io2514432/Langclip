@@ -524,7 +524,7 @@ Sure. What size would you like?
             <span class="tm-best" data-best="recall"></span>
           </button>
         </div>
-        <p class="tm-note">80점 이상이면 암송 완료로 기록됩니다.</p>
+        <p class="tm-note">80점 이상이면 학습 완료로 기록됩니다.</p>
       </div>
     </div>
 
@@ -560,7 +560,7 @@ Sure. What size would you like?
       <div class="tcele-bg"></div>
       <div class="tcele-box" id="tcele-box">
         <div class="tcele-score"><b id="tcele-num">0</b><small>점</small></div>
-        <div class="tcele-t" id="tcele-t">암송 완료</div>
+        <div class="tcele-t" id="tcele-t">학습 완료</div>
         <p class="tcele-m" id="tcele-m"></p>
         <div class="tcele-rows">
           <div class="tcele-r"><span>정답</span><b id="tcele-ok">0 / 0</b></div>
@@ -574,10 +574,15 @@ Sure. What size would you like?
     <div class="cele-wrap" id="cele" hidden>
       <div class="cele-bg"></div>
       <div class="cele-box">
-        <div class="cele-flame" id="cele-flame"><svg class="ic"><use href="#i-flame"/></svg></div>
-        <div class="cele-num"><b id="cele-n">1</b>일 연속 학습 달성</div>
-        <p class="cele-msg" id="cele-msg">오늘 학습을 완료했습니다.</p>
-        <button class="cele-cta" id="cele-cta">백지 테스트 하러 가기</button>
+        <div class="cele-flame" id="cele-flame">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="cf-outer" d="M12.1 1.6c.3 3.5 1.9 5.2 3.4 7.1 1.3 1.6 2.2 3.4 2.2 5.5 0 3.6-2.6 6.4-5.8 6.4s-5.8-2.8-5.8-6.4c0-2.3 1-4.2 2.6-5.7.1 1.6.6 2.6 1.6 3.1-.7-3.6.2-6.6 1.8-10z"/>
+            <path class="cf-inner" d="M12 11.2c.6 1.2.2 2.1-.4 3 .9.5 1.5 1.4 1.5 2.5 0 1.4-1.1 2.5-2.6 2.5s-2.6-1.1-2.6-2.5c0-1.3.7-2.2 1.4-3.1.5-.6.9-1.3 1.1-2.1.3.6.9 1.2 1.6 1.7z"/>
+          </svg>
+        </div>
+        <h3 class="cele-title"><b id="cele-n">1</b>일 연속 학습 달성</h3>
+        <p class="cele-msg" id="cele-msg"></p>
+        <button class="cele-cta" id="cele-cta">테스트 하러가기</button>
         <button class="cele-close" id="cele-close">나중에 할게요</button>
       </div>
     </div>
@@ -694,7 +699,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=8.5.0"></script>
-<script src="/sync.js?v=8.5.0"></script>
+<script src="/app.js?v=8.6.0"></script>
+<script src="/sync.js?v=8.6.0"></script>
 </body>
 </html>

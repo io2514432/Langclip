@@ -181,10 +181,11 @@ function checkCelebrate() {
   if (!box) return;
   $("#cele-n").textContent = days;
   $("#cele-flame").className = "cele-flame " + lvl;
-  $("#cele-msg").textContent = done
-    ? "오늘 대본을 완전히 외웠습니다. 내일도 이어가요."
-    : "오늘 학습을 완료했습니다. 백지 테스트로 암송까지 마무리해보세요.";
-  $("#cele-cta").textContent = done ? "다시 연습하기" : "백지 테스트 하러 가기";
+  $("#cele-msg").innerHTML = done
+    ? "모든 문장을 완벽하게 익혔어요.<br>내일도 이어가요."
+    : "오늘 학습을 완료했어요.<br>백지 테스트로 완벽하게 학습해보세요.";
+  $("#cele-cta").textContent = done ? "다시 연습하기" : "테스트 하러가기";
+  $("#cele-cta").dataset.kind = done ? "done" : "test";
   box.hidden = false;
   try { localStorage.setItem(key, "1"); } catch {}
 }
@@ -418,7 +419,7 @@ function renderVideos() {
             <span class="m-l">
               ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
               <span class="m-n">총 ${v.n}문장</span>
-              ${v.complete ? '<span class="m-done gold">암송</span>' : (v.stage1 ? '<span class="m-done">학습</span>' : "")}
+              ${v.complete ? '<span class="m-done gold">완성</span>' : (v.stage1 ? '<span class="m-done">학습</span>' : "")}
             </span>
             ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : `<span class="m-sp"></span>`}
           </div>
@@ -947,16 +948,25 @@ async function postStudyTime(secs) {
   } catch { return null; }
 }
 
-function showDone() {
+function showDone(ms) {
   const box = $("#gdone"), vb = $(".vbottom");
   if (!box || !vb) return;
   const d = ((S.progress && S.progress.streak && S.progress.streak.days) || 1);
-  box.innerHTML = `<b>${d}</b>일 연속 학습 달성`;
+  box.innerHTML = `<svg class="gf" viewBox="0 0 24 24" aria-hidden="true">`
+    + `<path d="M12.1 2.2c.3 3.2 1.8 4.8 3.2 6.6 1.2 1.5 2.1 3.1 2.1 5.1 0 3.3-2.4 5.9-5.4 5.9s-5.4-2.6-5.4-5.9c0-2.1.9-3.9 2.4-5.3.1 1.5.6 2.4 1.5 2.9-.6-3.4.2-6.1 1.6-9.3z"/></svg>`
+    + `<b>${d}</b>일 연속 학습 달성`;
   S.doneShown = true;
   vb.classList.remove("explain");
   S.goalSel = "";
   paintGoals();
+  vb.classList.remove("done");
+  void vb.offsetWidth;
   vb.classList.add("done");
+  clearTimeout(S.doneTimer);
+  S.doneTimer = setTimeout(() => {
+    vb.classList.remove("done");
+    S.doneShown = false;
+  }, ms || 2000);          // 2초 뒤 도넛으로 복귀
 }
 
 function applyStage(r) {
@@ -2459,8 +2469,14 @@ function bind() {
   const bCta = $("#cele-cta");
   if (bCta) bCta.onclick = () => {
     $("#cele").hidden = true;
+    if (bCta.dataset.kind === "done") {
+      const f2 = S.progress && S.progress.focus;
+      if (f2 && f2.id) jumpTo(f2.id, 0);
+      return;
+    }
     const f = S.progress && S.progress.focus;
     if (f && f.id) jumpTo(f.id, 0);
+    setTimeout(() => { try { startVerify(); } catch (e) {} }, 460);
   };
   bindStudyTimer();
   bindScrub();
@@ -2903,7 +2919,7 @@ async function tqResult() {
     <div class="tq-hero ${pass ? "ok" : "no"}">
       <div class="tq-score">${pct}<small>점</small></div>
       <div class="tq-hero-tx">
-        <b>${pass ? "암송 완료" : "80점이 통과선이에요"}</b>
+        <b>${pass ? "학습 완료" : "80점이 통과선이에요"}</b>
         <em>${okN} / ${n} 문장 정답${pass && TQ.mode !== "recall" ? " · 다음 난이도로 넘어가 보세요" : ""}</em>
       </div>
     </div>
@@ -2942,10 +2958,10 @@ function tqCelebrate(pct, okN, n, best) {
   const box = $("#tcele");
   if (!box || !S.cur) return;
   $("#tcele-num").textContent = pct;
-  $("#tcele-t").textContent = "암송 완료";
-  $("#tcele-m").textContent = TQ.mode === "recall"
-    ? "한국어만 보고 문장 전체를 영작했습니다. 이제 이 쇼츠는 완전히 내 것이에요."
-    : "빈칸을 모두 맞혔습니다. 고급까지 가면 문장 전체를 영작할 수 있어요.";
+  $("#tcele-t").textContent = "학습 완료";
+  $("#tcele-m").innerHTML = TQ.mode === "recall"
+    ? "한국어만 보고 문장 전체를 영작했어요.<br>이제 이 쇼츠는 완전히 내 것이에요."
+    : "빈칸을 모두 맞혔어요.<br>고급까지 가면 문장 전체를 영작할 수 있어요.";
   $("#tcele-ok").textContent = `${okN} / ${n}`;
   $("#tcele-mode").textContent = TQ_NAME[TQ.mode].split(" · ")[0];
   $("#tcele-best").textContent = best ? best + "점" : pct + "점";
