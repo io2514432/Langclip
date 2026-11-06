@@ -519,15 +519,22 @@ def _stage() -> dict:
     return d if isinstance(d, dict) else {}
 
 
+GOAL_SECS = 180
+
+
 def stage_of(vid: str, n_segs: int = 0) -> dict:
     rec = (_stage().get(_today().isoformat()) or {}).get(vid) or {}
     hear = len(rec.get("listen") or [])
     sh = len(rec.get("shadow") or [])
+    secs = int(rec.get("secs", 0))
     n = int(n_segs or 0)
-    return {"listen": hear, "shadow": sh, "n": n,
-            "listen_ok": bool(n) and hear >= n,
-            "shadow_ok": sh >= 1,
-            "stage1": bool(rec.get("ok"))}
+    time_ok = secs >= GOAL_SECS
+    listen_ok = bool(n) and hear >= n
+    shadow_ok = sh >= 1
+    return {"listen": hear, "shadow": sh, "n": n, "secs": min(secs, GOAL_SECS),
+            "goal": GOAL_SECS, "time_ok": time_ok,
+            "listen_ok": listen_ok, "shadow_ok": shadow_ok,
+            "stage1": bool(rec.get("ok")) or (time_ok and listen_ok and shadow_ok)}
 
 
 def stage_event(vid: str, kind: str, idx: int, n_segs: int = 0) -> dict:
@@ -536,13 +543,21 @@ def stage_event(vid: str, kind: str, idx: int, n_segs: int = 0) -> dict:
     d = _stage()
     day = _today().isoformat()
     d.setdefault(day, {})
-    rec = d[day].setdefault(vid, {"listen": [], "shadow": [], "ok": False})
-    key = "listen" if kind == "listen" else "shadow"
-    i = int(idx)
-    if i >= 0 and i not in rec[key]:
-        rec[key].append(i)
+    rec = d[day].setdefault(vid, {"listen": [], "shadow": [], "secs": 0, "ok": False})
+    rec.setdefault("secs", 0)
+    if kind == "time":
+        try:
+            add = max(0, min(120, int(idx)))
+        except (TypeError, ValueError):
+            add = 0
+        rec["secs"] = min(GOAL_SECS, int(rec.get("secs", 0)) + add)
+    else:
+        key = "listen" if kind == "listen" else "shadow"
+        i = int(idx)
+        if i >= 0 and i not in rec[key]:
+            rec[key].append(i)
     n = int(n_segs or 0)
-    if n > 0 and len(rec["listen"]) >= n and len(rec["shadow"]) >= 1:
+    if n > 0 and len(rec["listen"]) >= n and len(rec["shadow"]) >= 1 and int(rec.get("secs", 0)) >= GOAL_SECS:
         rec["ok"] = True
     d[day][vid] = rec
     while len(d) > 90:

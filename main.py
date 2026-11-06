@@ -802,18 +802,23 @@ def put_phrases(vid: str, payload: dict, request: Request):
     toks = [t for t in re.split(r"\s+", text) if t]
     out = []
     for it in (payload.get("list") or []):
-        try:
-            a = int(it.get("from"))
-            b = int(it.get("to"))
-        except (TypeError, ValueError):
+        raw = it.get("toks")
+        if isinstance(raw, list) and raw:
+            idxs = sorted({int(x) for x in raw if str(x).lstrip("-").isdigit()})
+        else:
+            try:
+                a, b = int(it.get("from")), int(it.get("to"))
+                idxs = list(range(a, b + 1))
+            except (TypeError, ValueError):
+                continue
+        idxs = [i for i in idxs if 0 <= i < len(toks)]
+        if not idxs:
             continue
-        if a < 0 or b >= len(toks) or a > b:
-            continue
-        word = " ".join(re.sub(r"^[^\w']+|[^\w']+$", "", t) for t in toks[a:b + 1]).strip()
+        word = " ".join(re.sub(r"^[^\w']+|[^\w']+$", "", toks[i]) for i in idxs).strip()
         if not word:
             continue
-        out.append({"from": a, "to": b, "text": word[:80],
-                    "meaning": str(it.get("meaning") or "")[:120]})
+        out.append({"toks": idxs, "from": idxs[0], "to": idxs[-1],
+                    "text": word[:80], "meaning": str(it.get("meaning") or "")[:120]})
     if out:
         segs[seg_i]["phr"] = out
     else:
@@ -1013,8 +1018,9 @@ def progress_event(payload: dict):
         raise HTTPException(422, "영상 id가 없습니다")
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
-    return {"ok": True, **prog.stage_event(vid, str(payload.get("kind") or "listen"),
-                                           int(payload.get("idx", -1)), len(v["segs"]))}
+    kind = str(payload.get("kind") or "listen")
+    arg = int(payload.get("secs", 0)) if kind == "time" else int(payload.get("idx", -1))
+    return {"ok": True, **prog.stage_event(vid, kind, arg, len(v["segs"]))}
 
 
 @app.get("/api/review")

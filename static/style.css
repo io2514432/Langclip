@@ -1379,7 +1379,53 @@ body.vf-focus .screens{height:100%}
 .ph-del{border:0;background:none;color:#94A3B8;font-family:inherit;font-size:11px;cursor:pointer}
 .ph-none{font-size:11.5px;color:#B6C2CF;padding:10px 0}
 
-#sub-en .w.phr{background:#FFF7E6;border-radius:5px;box-shadow:inset 0 -2px 0 #F5C970;
-  padding:1px 0;cursor:pointer}
-#sub-en .w.phr .w{background:none;box-shadow:none;padding:0}
+/* v7.9 숙어: 기존 단어 박스 모양 유지, 색만 민트 */
+#sub-en .w.phr{background:rgba(45,212,191,.30)!important;box-shadow:none!important}
+#sub-en .w.phr .w{background:none!important}
 .m-done.gold{color:#B26A00}
+
+/* ================= v7.9 · 오늘 학습 목표 도넛 ================= */
+.goals{display:flex;align-items:center;justify-content:center;gap:16px;padding:2px 0 3px}
+.goal{position:relative;width:34px;height:34px;border:0;background:none;padding:0;cursor:pointer;
+  display:grid;place-items:center}
+.goal:first-child{width:40px;height:40px}
+.gk{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.gk-bg{fill:none;stroke:rgba(255,255,255,.20);stroke-width:2.4}
+.gk-fg{fill:none;stroke:#7BD8FF;stroke-width:2.4;stroke-linecap:round;
+  transition:stroke-dashoffset .4s linear}
+.goal.done .gk-fg{stroke:#4ADE80}
+.gi{position:relative;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;
+  background:rgba(8,20,32,.55)}
+.goal:first-child .gi{width:30px;height:30px}
+.gi .ic{width:14px;height:14px;stroke:#E6F3FB;stroke-width:1.9}
+.goal.done .gi .ic{stroke:#4ADE80}
+
+.gl-list{margin:10px 0 4px;border-top:1px solid #F1F5F9}
+.gl-row{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid #F1F5F9}
+.gl-ic{flex:0 0 18px;color:#94A3B8;padding-top:1px}
+.gl-row.ok .gl-ic{color:#16A34A}
+.gl-tx{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gl-tx b{font-size:12px;font-weight:750;color:#0F172A}
+.gl-tx em{font-style:normal;font-size:11px;color:#94A3B8;line-height:1.5}
+.gl-v{flex:0 0 auto;font-size:12px;font-weight:800;color:#64748B;font-variant-numeric:tabular-nums}
+.gl-row.ok .gl-v{color:#16A34A}
+
+.cele-wrap{position:fixed;inset:0;z-index:9998;display:grid;place-items:center}
+.cele-wrap[hidden]{display:none}
+.cele-bg{position:absolute;inset:0;background:rgba(6,14,22,.72);backdrop-filter:blur(4px)}
+.cele-box{position:relative;width:min(88vw,330px);padding:30px 22px 18px;border-radius:20px;
+  background:#0F172A;text-align:center;box-shadow:0 24px 60px -24px rgba(0,0,0,.8)}
+.cele-flame{width:76px;height:76px;margin:0 auto 14px;display:grid;place-items:center;border-radius:50%}
+.cele-flame .ic{width:52px;height:52px;stroke-width:1.6;fill:none}
+.cele-flame.silver{background:radial-gradient(circle at 50% 55%,rgba(123,216,255,.36),rgba(123,216,255,0) 70%)}
+.cele-flame.silver .ic{stroke:#7BD8FF}
+.cele-flame.gold{background:radial-gradient(circle at 50% 55%,rgba(251,191,36,.42),rgba(251,191,36,0) 70%)}
+.cele-flame.gold .ic{stroke:#FBBF24;fill:rgba(251,191,36,.22)}
+.cele-num{color:#E2EDF6;font-size:14px;font-weight:700}
+.cele-num b{font-size:26px;font-weight:850;color:#7BD8FF;margin-right:3px}
+.cele-flame.gold ~ .cele-num b{color:#FBBF24}
+.cele-msg{margin:10px 0 18px;font-size:12px;line-height:1.65;color:rgba(226,237,246,.7)}
+.cele-cta{width:100%;height:42px;border:0;border-radius:12px;background:#fff;color:#0F172A;
+  font-family:inherit;font-size:13px;font-weight:800;cursor:pointer}
+.cele-close{width:100%;height:34px;margin-top:6px;border:0;background:none;
+  color:rgba(226,237,246,.5);font-family:inherit;font-size:11.5px;cursor:pointer}

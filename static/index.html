@@ -100,6 +100,8 @@
     <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.2M8 7.4v9.2M12 4.6v14.8M16 8.6v6.8M20.8 10.8v2.4"/></symbol>
   <symbol id="i-head" viewBox="0 0 24 24"><path d="M4.4 14.6v-2.2a7.6 7.6 0 0 1 15.2 0v2.2"/><rect x="2.8" y="13.4" width="4" height="6.2" rx="2"/><rect x="17.2" y="13.4" width="4" height="6.2" rx="2"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.8 10 17.6 19.4 6.6"/></symbol>
+  <symbol id="i-abc" viewBox="0 0 24 24"><path d="M2.6 17.4 6.4 7.2l3.8 10.2"/><path d="M3.9 14.2h5"/><path d="M13 17.4V7.2h2.7a2.7 2.7 0 0 1 0 5.4H13"/><path d="M15.9 12.6h.5a2.4 2.4 0 0 1 0 4.8H13"/><path d="M20.4 7.6a2.2 2.2 0 1 0-1.9 3.4"/><path d="M20.4 14.2a2.2 2.2 0 1 0-1.9 3.4"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13.4" r="7.4"/><path d="M12 9.8v3.9l2.5 1.6"/><path d="M9.4 2.8h5.2"/></symbol>
   <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2.6c.3 3.1 2.2 4.4 3.5 6.3A8.2 8.2 0 0 1 17 13.4c0 3.6-2.6 6.4-5.9 6.4S5.2 17 5.2 13.4c0-2.3 1.1-4 2.7-5.4.1 1.4.6 2.3 1.5 2.7-.5-3.2.5-5.9 2.6-8.1z"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.6 12 4l8 6.6V20a1 1 0 0 1-1 1h-4.2v-6.2H9.2V21H5a1 1 0 0 1-1-1z"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><rect x="3.2" y="4.4" width="17.6" height="15.2" rx="3"/><path d="M10 9.4l5 2.6-5 2.6z"/></symbol>
@@ -173,7 +175,7 @@
               <svg class="ic"><use href="#i-loop"/></svg><span class="rail-lab" id="loop-lab">반복</span>
             </button>
             <button class="rail" id="btn-phrase" title="숙어 설정" hidden>
-              <svg class="ic"><use href="#i-note"/></svg><span class="rail-lab">숙어</span>
+              <svg class="ic"><use href="#i-abc"/></svg><span class="rail-lab">숙어</span>
             </button>
             <button class="rail" id="btn-nudge" title="자막 싱크 미세조정" hidden>
               <svg class="ic"><use href="#i-list"/></svg><span class="rail-lab">싱크</span>
@@ -234,6 +236,20 @@
               <span class="segadj-hint" id="segadj-hint"></span>
             </div>
             <div class="vprog"><i id="vprog"></i></div>
+            <div class="goals" id="goals">
+              <button class="goal" id="goal-time" data-goal="time">
+                <svg class="gk" viewBox="0 0 44 44"><circle class="gk-bg" cx="22" cy="22" r="19"/><circle class="gk-fg" cx="22" cy="22" r="19"/></svg>
+                <span class="gi"><svg class="ic"><use href="#i-timer"/></svg></span>
+              </button>
+              <button class="goal" id="goal-listen" data-goal="listen">
+                <svg class="gk" viewBox="0 0 44 44"><circle class="gk-bg" cx="22" cy="22" r="19"/><circle class="gk-fg" cx="22" cy="22" r="19"/></svg>
+                <span class="gi"><svg class="ic"><use href="#i-list"/></svg></span>
+              </button>
+              <button class="goal" id="goal-shadow" data-goal="shadow">
+                <svg class="gk" viewBox="0 0 44 44"><circle class="gk-bg" cx="22" cy="22" r="19"/><circle class="gk-fg" cx="22" cy="22" r="19"/></svg>
+                <span class="gi"><svg class="ic"><use href="#i-mic"/></svg></span>
+              </button>
+            </div>
             <div class="vrow">
               <button class="vbtn" id="btn-prev"><svg class="ic"><use href="#i-left"/></svg> 이전</button>
               <button class="vbtn grow" id="btn-play"><svg class="ic"><use href="#i-play"/></svg> 재생</button>
@@ -480,6 +496,46 @@ Sure. What size would you like?
     </div>
 
 
+
+    <!-- ===== 오늘 학습 목표 ===== -->
+    <div class="sheet-wrap" id="sheet-goal" hidden>
+      <div class="sheet-bg" data-close></div>
+      <div class="sheet">
+        <div class="sheet-grip"></div>
+        <h3>오늘 학습 목표</h3>
+        <p class="sheet-desc">세 가지를 모두 채우면 오늘 학습이 완료되고 스트릭이 이어집니다.</p>
+        <div class="gl-list">
+          <div class="gl-row" id="gl-time">
+            <span class="gl-ic"><svg class="ic xs"><use href="#i-timer"/></svg></span>
+            <span class="gl-tx"><b>학습 시간 3분</b><em>영상을 보거나 자막을 조작하는 동안 채워집니다.</em></span>
+            <span class="gl-v" id="gl-time-v">0:00</span>
+          </div>
+          <div class="gl-row" id="gl-listen">
+            <span class="gl-ic"><svg class="ic xs"><use href="#i-list"/></svg></span>
+            <span class="gl-tx"><b>대본 전체 1회 청취</b><em>문장을 끝까지 들을 때마다 하나씩 채워집니다.</em></span>
+            <span class="gl-v" id="gl-listen-v">0 / 0</span>
+          </div>
+          <div class="gl-row" id="gl-shadow">
+            <span class="gl-ic"><svg class="ic xs"><use href="#i-mic"/></svg></span>
+            <span class="gl-tx"><b>섀도잉 1문장</b><em>따라 말하고 채점이 끝나면 완료됩니다.</em></span>
+            <span class="gl-v" id="gl-shadow-v">0 / 1</span>
+          </div>
+        </div>
+        <button class="btn text" data-close>닫기</button>
+      </div>
+    </div>
+
+    <!-- ===== 오늘 완료 축하 ===== -->
+    <div class="cele-wrap" id="cele" hidden>
+      <div class="cele-bg"></div>
+      <div class="cele-box">
+        <div class="cele-flame" id="cele-flame"><svg class="ic"><use href="#i-flame"/></svg></div>
+        <div class="cele-num"><b id="cele-n">1</b>일 연속 학습 달성</div>
+        <p class="cele-msg" id="cele-msg">오늘 학습을 완료했습니다.</p>
+        <button class="cele-cta" id="cele-cta">백지 테스트 하러 가기</button>
+        <button class="cele-close" id="cele-close">나중에 할게요</button>
+      </div>
+    </div>
     <!-- ===== 숙어 설정 (관리자) ===== -->
     <div class="sheet-wrap" id="sheet-phrase" hidden>
       <div class="sheet-bg" data-close></div>
