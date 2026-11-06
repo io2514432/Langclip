@@ -494,6 +494,61 @@ async function stageEvent(kind, idx) {
   } catch { return null; }
 }
 
+function vdur() {
+  try { return (S.player && S.player.getDuration) ? (S.player.getDuration() || 0) : 0; } catch { return 0; }
+}
+
+function bindScrub() {
+  const bar = document.querySelector(".vprog");
+  if (!bar || bar._scrub) return;
+  bar._scrub = true;
+  const ratio = (e) => {
+    const b = bar.getBoundingClientRect();
+    return (e.clientX - b.left) / Math.max(1, b.width);
+  };
+  const seek = (e) => {
+    const d = vdur();
+    if (!d) return;
+    try { S.player.seekTo(Math.max(0, Math.min(1, ratio(e))) * d, true); } catch {}
+  };
+  bar.addEventListener("pointerdown", (e) => {
+    if (!S.ready) return;
+    bar.classList.add("drag");
+    try { bar.setPointerCapture(e.pointerId); } catch {}
+    seek(e);
+  });
+  bar.addEventListener("pointermove", (e) => { if (bar.classList.contains("drag")) seek(e); });
+  const end = () => {
+    if (!bar.classList.contains("drag")) return;
+    bar.classList.remove("drag");
+    const t = (() => { try { return S.player.getCurrentTime() || 0; } catch { return 0; } })();
+    const i = (S.cur.segs || []).findIndex((x) => t >= x.start - 0.06 && t < x.end);
+    if (i >= 0) selectSeg(i, true);
+  };
+  bar.addEventListener("pointerup", end);
+  bar.addEventListener("pointercancel", end);
+}
+
+/* 스와이프 : 자막이 밀려 나간 뒤 다음 문장으로 교체 */
+let SLIDING = false;
+function slideTo(dir) {
+  if (SLIDING || SH.phase !== "idle" || !S.cur) return;
+  const box = $("#vsub");
+  if (!box) { step(dir); return; }
+  SLIDING = true;
+  const outC = dir > 0 ? "sw-out-l" : "sw-out-r";
+  const inC = dir > 0 ? "sw-in-r" : "sw-in-l";
+  box.classList.add(outC);
+  setTimeout(() => {
+    box.classList.remove(outC);
+    step(dir);
+    box.classList.add(inC);
+    void box.offsetWidth;
+    box.classList.remove(inC);
+    setTimeout(() => { SLIDING = false; }, 220);
+  }, 190);
+}
+
 function markListen(i) {
   if (i < 0) return;
   stageEvent("listen", i);
@@ -508,6 +563,12 @@ function onTick() {
   let t = 0;
   try { t = S.player.getCurrentTime() || 0; } catch { return; }
   const playing = (() => { try { return S.player.getPlayerState() === 1; } catch { return false; } })();
+  const dur = vdur();
+
+  // 오늘 학습(Stage 1): 문장 끝을 지나친 순간 = 그 문장을 끝까지 들은 것
+  // (문장 전환으로 S.seg 가 바뀌기 전에 판정해야 한다)
+  if (playing && S.seg && t >= S.seg.end - 0.12) markListen(S.idx);
+  if (S.cur.segs.length && dur > 0 && t >= dur - 0.4) markListen(S.cur.segs.length - 1);
 
   if (S.repeat && S.seg) {
     if (t >= S.seg.end - 0.04) { try { S.player.seekTo(S.seg.start, true); } catch {} }
@@ -516,16 +577,13 @@ function onTick() {
     if (i >= 0 && i !== S.idx) selectSeg(i, true);
   }
 
-  // 오늘 학습(Stage 1): 문장 끝까지 재생 = 1회 청취
-  if (playing && S.seg && t >= S.seg.end - 0.12) markListen(S.idx);
-
-  if (S.seg) {
-    const d = Math.max(0.1, S.seg.end - S.seg.start);
-    const p = Math.min(100, Math.max(0, ((t - S.seg.start) / d) * 100));
-    $("#vprog").style.width = p + "%";
-    const adj = $("#segadj");
-    if (adj && !adj.hidden) { NUDGE.now = t; nudgeLabel(); }
+  const vp = $("#vprog"), vw = vp && vp.parentNode;
+  if (vp && !(vw && vw.classList.contains("drag"))) {
+    const r = dur > 0 ? (t / dur) * 100 : 0;
+    vp.style.width = Math.min(100, Math.max(0, r)) + "%";
   }
+  const adj = $("#segadj");
+  if (adj && !adj.hidden) { NUDGE.now = t; nudgeLabel(); }
   setPlayBtn(playing);
 }
 
@@ -2366,6 +2424,7 @@ function bind() {
     if (f && f.id) jumpTo(f.id, 0);
   };
   bindStudyTimer();
+  bindScrub();
   const bPh = $("#btn-phrase");
   if (bPh) bPh.onclick = () => { try { openPhraseSheet(); } catch (e) { toast("열지 못했습니다: " + e.message, 3000); } };
   const bPhs = $("#ph-save");
@@ -2409,27 +2468,24 @@ function bind() {
   };
   const vtap = $("#vtap");
   if (vtap) {
-    vtap.onclick = () => {
-      if (SH.phase !== "idle") return;
-      if (Date.now() - (vtap._sw || 0) < 400) return;   // 스와이프 직후 클릭 무시
-      togglePlay();
-    };
-    let t0 = null;
-    vtap.addEventListener("touchstart", (e) => {
-      if (e.touches.length !== 1) { t0 = null; return; }
-      const t = e.touches[0];
-      t0 = { x: t.clientX, y: t.clientY, ms: Date.now() };
-    }, { passive: true });
-    vtap.addEventListener("touchend", (e) => {
-      const s0 = t0; t0 = null;
-      if (!s0 || SH.phase !== "idle" || !e.changedTouches.length) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
-      if (Math.abs(dx) < 52 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      if (Date.now() - s0.ms > 800) return;
-      vtap._sw = Date.now();
-      step(dx > 0 ? -1 : 1);
-    }, { passive: true });
+    let p0 = null;
+    vtap.onclick = null;
+    vtap.addEventListener("pointerdown", (e) => {
+      if (SH.phase !== "idle") { p0 = null; return; }
+      p0 = { x: e.clientX, y: e.clientY, ms: Date.now() };
+    });
+    vtap.addEventListener("pointerup", (e) => {
+      const s0 = p0; p0 = null;
+      if (!s0 || SH.phase !== "idle") return;
+      const dx = e.clientX - s0.x, dy = e.clientY - s0.y;
+      const ms = Date.now() - s0.ms;
+      if (Math.abs(dx) >= 52 && Math.abs(dx) > Math.abs(dy) * 1.4 && ms < 900) {
+        slideTo(dx > 0 ? -1 : 1);
+        return;
+      }
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && ms < 500) togglePlay();
+    });
+    vtap.addEventListener("pointercancel", () => { p0 = null; });
   }
   $("#btn-sub").onclick = cycleSub;
   $("#btn-repeat").onclick = toggleRepeat;
@@ -2503,7 +2559,7 @@ window.attachAddAudio = attachAddAudio;
 (async function boot() {
   try {
     const h = await api("/api/health");
-    S.admin = !h.locked;
+    S.admin = !h.locked && h.mode !== "public";
   } catch { S.admin = true; }
   const railNudge = $("#btn-nudge");
   if (railNudge) railNudge.hidden = !S.admin;
@@ -2531,7 +2587,7 @@ function fitSub() {
   if (!box) return;
   const plain = box.dataset.plain || "";
   const st = $("#vstage");
-  const room = Math.max(160, (st ? st.clientHeight : 720) * 0.74);
+  const room = Math.max(160, (st ? st.clientHeight : 720) * 0.90);
   let fs = plain.length <= 24 ? 31
     : plain.length <= 40 ? 30
     : plain.length <= 60 ? 28

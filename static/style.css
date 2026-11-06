@@ -1477,3 +1477,44 @@ body.vf-focus .screens{height:100%}
   background:#000;color:#fff;font-family:inherit;font-size:12px;font-weight:700;
   line-height:1.4;letter-spacing:-.1px;text-align:center;cursor:pointer;
   font-variant-numeric:tabular-nums}
+
+/* ================= v8.2 · 하단 고정 · 전환 · 스와이프 ================= */
+/* 숨김 속성이 display:flex 에 먹히지 않던 문제 (관리자 전용 레일) */
+.rail[hidden]{display:none!important}
+
+/* 하단 : 높이 고정 슬롯 */
+.vbottom{padding:0 14px}
+.vbottom .gbar{position:relative;height:40px;margin:0 -14px;
+  padding:0 14px calc(14px + env(safe-area-inset-bottom,0px));
+  transition:background .2s ease}
+.vbottom.explain .gbar{background:#000}
+.vbottom .goals{position:absolute;left:0;right:0;top:0;height:40px;display:flex!important;
+  margin:0;padding:0;transition:opacity .2s ease,transform .2s ease}
+.vbottom .goal-note{display:flex!important;position:absolute;left:0;right:0;top:0;height:40px;
+  align-items:center;justify-content:center;margin:0!important;padding:0 16px!important;
+  background:none!important;color:#fff;font-family:inherit;font-size:12px;font-weight:700;
+  line-height:1.35;text-align:center;letter-spacing:-.1px;font-variant-numeric:tabular-nums;
+  cursor:pointer;opacity:0;transform:translateY(5px);pointer-events:none;
+  transition:opacity .2s ease,transform .2s ease}
+.vbottom.explain .goals{opacity:0;transform:translateY(-5px);pointer-events:none}
+.vbottom.explain .goal-note{opacity:1;transform:none;pointer-events:auto}
+
+/* 도넛은 완료해도 색 유지 */
+.goal.done .gk-fg{stroke:#7BD8FF}
+.goal.done .gi .ic{stroke:#E6F3FB}
+
+/* 재생바 : 전체 길이 + 드래그 스크럽 */
+.vprog{position:relative;cursor:pointer;touch-action:none}
+.vprog::after{content:"";position:absolute;left:0;right:0;top:-11px;bottom:-11px}
+.vprog.drag i{transition:none}
+.vprog.drag{background:rgba(255,255,255,.34)}
+
+/* 자막 스와이프 전환 */
+.vbottom > .vsub{transition:transform .2s cubic-bezier(.2,.8,.3,1),opacity .2s ease}
+.vsub.sw-out-l{transform:translateX(-34%);opacity:0;
+  transition:transform .19s cubic-bezier(.45,0,.75,1),opacity .19s ease}
+.vsub.sw-out-r{transform:translateX(36%);opacity:0;
+  transition:transform .19s cubic-bezier(.45,0,.75,1),opacity .19s ease}
+.vsub.sw-in-l{transform:translateX(36%);opacity:0;transition:none}
+.vsub.sw-in-r{transform:translateX(-34%);opacity:0;transition:none}
+.vtap{touch-action:manipulation}
