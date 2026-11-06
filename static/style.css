@@ -1726,3 +1726,138 @@ body.res-focus .screens{height:100%}
   62%{opacity:1;transform:translateY(0) scale(1.035)}100%{transform:none}}
 @keyframes gdoneNum{0%{opacity:0;transform:scale(.55)}100%{opacity:1;transform:none}}
 @keyframes gdoneSweep{to{transform:translateX(360%) skewX(-12deg)}}
+
+/* ================= v8.7 · 북마크 Anki 덱 ================= */
+body.study-focus .appbar,body.study-focus .tabbar{display:none!important}
+body.study-focus .screens{height:100%}
+
+/* Level 1 : 덱 목록 */
+.dk-banner{display:flex;align-items:center;gap:12px;width:100%;margin:14px 0 16px;padding:15px 16px;
+  border:0;border-radius:14px;background:#0085FF;color:#fff;font-family:inherit;text-align:left;cursor:pointer}
+.dk-banner.off{background:#DCE9F6;cursor:default}
+.dk-b-tx{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0}
+.dk-b-tx b{font-size:14px;font-weight:850;letter-spacing:-.02em}
+.dk-b-tx em{font-style:normal;font-size:11px;opacity:.82}
+.dk-b-n{flex:0 0 auto;font-size:13px;font-weight:850;font-variant-numeric:tabular-nums}
+.dk-sec{font-size:11px;font-weight:850;color:var(--ink-3);margin:0 0 9px}
+.dk-sec b{color:var(--ink);margin-left:2px}
+.dk-row{display:flex;align-items:center;gap:12px;width:100%;padding:11px;margin-bottom:8px;
+  border:1px solid var(--line);border-radius:14px;background:#fff;font-family:inherit;
+  text-align:left;cursor:pointer}
+.dk-row:active{background:var(--bg)}
+.dk-th{flex:0 0 46px;width:46px;height:46px;border-radius:11px;overflow:hidden;background:#EAF2F9;
+  display:grid;place-items:center}
+.dk-th img{width:100%;height:100%;object-fit:cover;display:block}
+.dk-th i{font-style:normal;font-size:16px;font-weight:900;color:#7C9AB3}
+.dk-th.big{flex:0 0 58px;width:58px;height:58px;border-radius:13px}
+.dk-mid{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.dk-t{font-size:12.5px;font-weight:800;color:var(--ink);letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dk-m{font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.dk-bar{display:block;height:3px;border-radius:99px;background:#E9F1F8;overflow:hidden;margin-top:2px}
+.dk-bar i{display:block;height:100%;background:#0085FF;border-radius:99px}
+.dk-bar.wide{width:100%;margin-top:5px}
+.dk-pct{flex:0 0 auto;font-size:11.5px;font-weight:850;color:#0085FF;
+  font-variant-numeric:tabular-nums;align-self:flex-end;padding-bottom:2px}
+
+/* Level 2 : 덱 상세 */
+#s-deck{display:none;flex-direction:column;background:var(--bg)}
+#s-deck.is-active{display:flex}
+.dk-top{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:14px 12px 6px}
+.dk-hero{display:flex;align-items:center;gap:13px;padding:14px;margin:2px 0 14px;
+  border:1px solid var(--line);border-radius:14px;background:#fff}
+.dk-hero-tx{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.dk-hero-tx b{font-size:13px;font-weight:850;color:var(--ink);line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dk-hero-tx em{font-style:normal;font-size:10.5px;color:var(--ink-3)}
+.dk-start{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;height:56px;
+  border:0;border-radius:13px;background:#0085FF;color:#fff;font-family:inherit;
+  font-size:14px;font-weight:850;letter-spacing:-.02em;cursor:pointer;justify-content:center}
+.dk-start em{font-style:normal;font-size:10.5px;font-weight:700;opacity:.82}
+.dk-count{margin:18px 0 8px;font-size:10.5px;font-weight:850;color:var(--ink-3)}
+.dk-card{position:relative;padding:12px 40px 12px 13px;margin-bottom:8px;border:1px solid var(--line);
+  border-radius:13px;background:#fff}
+.dk-w{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.dk-mean{margin-top:2px;font-size:14px;font-weight:500;color:#3E5566}
+.dk-ctx{margin-top:6px;font-size:13px;line-height:1.6;color:#8AA0B2}
+.dk-ctx mark{background:rgba(0,133,255,.16);color:#0B6BC4;font-weight:700;
+  padding:0 2px;border-radius:3px}
+.dk-del{position:absolute;top:10px;right:8px;width:26px;height:26px;border:0;border-radius:8px;
+  background:none;color:#B6C6D4;display:grid;place-items:center;cursor:pointer;padding:0}
+.dk-del:active{background:#F2F6FA;color:#E2564F}
+
+/* Level 3 : Anki 학습 */
+#s-study{display:none;flex-direction:column;position:absolute;inset:0;z-index:120;
+  background:#F7FAFD}
+#s-study.is-active{display:flex}
+.ak-top{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+.ak-x{border:0;background:none;font-family:inherit;font-size:12px;font-weight:750;
+  color:var(--ink-3);cursor:pointer;padding:0}
+.ak-i{flex:1 1 auto;text-align:center;font-size:12px;font-weight:850;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.ak-snd{flex:0 0 auto;width:30px;height:30px;border:1px solid var(--line);border-radius:9px;
+  background:#fff;color:var(--ink-2);display:grid;place-items:center;cursor:pointer;padding:0}
+.ak-snd .ic{width:15px;height:15px}
+.ak-bar{flex:0 0 auto;height:3px;margin:0 16px 4px;border-radius:99px;background:#E4EEF7;overflow:hidden}
+.ak-bar i{display:block;height:100%;width:0;background:#0085FF;border-radius:99px;
+  transition:width .3s cubic-bezier(.2,.8,.3,1)}
+.ak-wrap{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;
+  padding:8px 18px}
+.ak-card{width:100%;padding:22px 20px;border-radius:18px;background:#fff;border:1px solid var(--line);
+  animation:akIn .22s ease}
+@keyframes akIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ak-meta{font-size:10.5px;font-weight:800;color:var(--ink-3);letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ak-ko{margin:12px 0 16px;font-size:14.5px;font-weight:750;line-height:1.6;color:var(--ink);
+  word-break:keep-all}
+.ak-en{font-size:17px;font-weight:650;line-height:2.1;color:var(--ink);letter-spacing:-.01em}
+.ak-blank{display:inline-block;min-width:62px;height:1.55em;margin:0 3px;border:1.5px dashed #9ECBF2;
+  border-radius:8px;background:#F1F8FF;color:#0085FF;font-family:inherit;font-size:.78em;
+  font-weight:900;vertical-align:middle;cursor:pointer;line-height:1.4em}
+.ak-ans{background:rgba(0,133,255,.14);color:#0B6BC4;font-weight:850;padding:1px 5px;
+  border-radius:5px;margin:0 2px}
+.ak-hint{margin-top:16px;border:1px solid var(--line);border-radius:9px;background:#fff;
+  font-family:inherit;font-size:11px;font-weight:750;color:var(--ink-3);padding:7px 11px;
+  cursor:pointer}
+.ak-hintbox{margin-top:10px;font-size:11.5px;color:var(--ink-2);padding:9px 11px;
+  border-radius:9px;background:#F4F8FC}
+.ak-hintbox b{color:#0085FF;font-weight:850;letter-spacing:.06em}
+.ak-split{height:1px;background:#EDF3F9;margin:16px 0 12px}
+.ak-word{font-size:18px;font-weight:850;color:#0085FF;letter-spacing:-.01em}
+.ak-mean{margin-top:4px;font-size:13px;font-weight:600;color:#3E5566}
+.ak-foot{flex:0 0 auto;padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px))}
+.ak-flip{width:100%;height:50px;border:0;border-radius:13px;background:#0085FF;color:#fff;
+  font-family:inherit;font-size:14px;font-weight:850;cursor:pointer}
+.ak-flip[hidden]{display:none}
+.ak-grades{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.ak-grades[hidden]{display:none}
+.ak-grades button{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;height:56px;border:0;border-radius:12px;background:#fff;border-top:3px solid #0085FF;
+  font-family:inherit;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line)}
+.ak-grades button:nth-child(1){border-top-color:#F87171}
+.ak-grades button:nth-child(2){border-top-color:#FB923C}
+.ak-grades button:nth-child(3){border-top-color:#38BDF8}
+.ak-grades button:nth-child(4){border-top-color:#22B884}
+.ak-grades em{font-style:normal;font-size:9.5px;font-weight:750;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.ak-grades b{font-size:11.5px;font-weight:850;color:var(--ink)}
+.ak-card.done{text-align:center;padding:34px 22px}
+.ak-fin-t{font-size:13px;font-weight:850;color:var(--ink-3)}
+.ak-fin-n{margin:8px 0 18px;font-size:46px;font-weight:900;color:#0085FF;letter-spacing:-.03em;
+  line-height:1}
+.ak-fin-n small{font-size:15px;font-weight:800;margin-left:3px}
+.ak-fin-rows{display:flex;justify-content:center;gap:26px;padding:14px 0 20px;
+  border-top:1px solid #EDF3F9;border-bottom:1px solid #EDF3F9}
+.ak-fin-rows div{display:flex;flex-direction:column;gap:3px}
+.ak-fin-rows span{font-size:10px;color:var(--ink-3)}
+.ak-fin-rows b{font-size:15px;font-weight:850;color:var(--ink);font-variant-numeric:tabular-nums}
+.ak-fin-cta{width:100%;height:50px;margin-top:20px;border:0;border-radius:13px;background:#0085FF;
+  color:#fff;font-family:inherit;font-size:13.5px;font-weight:850;cursor:pointer}
+.ak-fin-x{width:100%;height:38px;margin-top:4px;border:0;background:none;font-family:inherit;
+  font-size:11.5px;font-weight:700;color:var(--ink-3);cursor:pointer}
+
+/* 테스트 완료 모달 : X 닫기 · 홈 버튼 */
+.tcele-x{position:absolute;top:10px;right:12px;width:30px;height:30px;border:0;background:none;
+  color:var(--ink-3);font-size:15px;font-weight:700;cursor:pointer;line-height:1}
+.tcele-home{width:100%;height:38px;margin-top:4px;border:0;background:none;
+  color:var(--ink-3);font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer}

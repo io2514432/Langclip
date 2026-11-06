@@ -591,6 +591,18 @@ def _cloze(text: str, word: str) -> str:
     return pat.sub("____", text, count=1)
 
 
+def _due_ok(due: str) -> bool:
+    """복습 예정 도달 여부. 날짜(YYYY-MM-DD) 또는 분 단위(YYYY-MM-DDTHH:MM)."""
+    if not due:
+        return True
+    try:
+        if "T" in due:
+            return due <= datetime.now().isoformat(timespec="minutes")
+        return due <= _today().isoformat()
+    except Exception:
+        return True
+
+
 def review_deck(videos: dict) -> dict:
     """단어·문장을 하나의 복습 덱으로 합친다 (문맥 Cloze 카드)."""
     n = _notes()
@@ -617,6 +629,7 @@ def review_deck(videos: dict) -> dict:
             "vid": w.get("vid", ""), "idx": int(w.get("idx", -1)),
             "due": st.get("due") or today, "step": int(st.get("step", 0)),
             "seen": int(st.get("seen", 0)), "lapses": int(st.get("lapses", 0)),
+            "is_due": _due_ok(st.get("due") or ""),
         })
 
     for key, s in (n.get("sentences") or {}).items():
@@ -630,36 +643,46 @@ def review_deck(videos: dict) -> dict:
             "vid": s.get("vid", ""), "idx": int(s.get("idx", -1)),
             "due": st.get("due") or today, "step": int(st.get("step", 0)),
             "seen": int(st.get("seen", 0)), "lapses": int(st.get("lapses", 0)),
+            "is_due": _due_ok(st.get("due") or ""),
         })
 
     cards.sort(key=lambda c: (c["due"], c["kind"]))
-    due = [c for c in cards if c["due"] <= today]
+    due = [c for c in cards if c["is_due"]]
     return {"cards": cards, "due": len(due), "today": today,
             "n_word": len([c for c in cards if c["kind"] == "word"]),
             "n_sent": len([c for c in cards if c["kind"] == "sent"])}
 
 
 def review_grade(cid: str, grade: int) -> dict:
-    """0=모름(1일 뒤) 1=애매(2일 뒤, 단계 유지) 2=알겠어(다음 단계)"""
+    """0=모름(10분 뒤) 1=어려움(1일) 2=괜찮음(3일) 3=쉬움(7일)"""
     r = _review()
     st = r.get(cid) or {"step": 0, "seen": 0, "lapses": 0, "due": ""}
     g = int(grade)
     step = int(st.get("step", 0))
+    now = datetime.now()
     if g <= 0:
-        days = 1
         st["step"] = 0
         st["lapses"] = int(st.get("lapses", 0)) + 1
+        due = (now + timedelta(minutes=10)).isoformat(timespec="minutes")
+        days, mins = 0, 10
     elif g == 1:
-        days = 2
-    else:
-        days = REVIEW_STEPS[min(step, len(REVIEW_STEPS) - 1)]
+        st["step"] = max(step, 1)
+        due = (_today() + timedelta(days=1)).isoformat()
+        days, mins = 1, 0
+    elif g == 2:
         st["step"] = min(step + 1, len(REVIEW_STEPS) - 1)
+        due = (_today() + timedelta(days=3)).isoformat()
+        days, mins = 3, 0
+    else:
+        st["step"] = min(step + 2, len(REVIEW_STEPS) - 1)
+        due = (_today() + timedelta(days=7)).isoformat()
+        days, mins = 7, 0
     st["seen"] = int(st.get("seen", 0)) + 1
-    st["due"] = (_today() + timedelta(days=int(days))).isoformat()
+    st["due"] = due
     st["last"] = _now()
     r[cid] = st
     _save(_p(REVIEW), r)
-    return {"id": cid, "due": st["due"], "step": st["step"], "days": days}
+    return {"id": cid, "due": due, "step": st["step"], "days": days, "minutes": mins}
 
 
 def prefetch_words(words) -> int:

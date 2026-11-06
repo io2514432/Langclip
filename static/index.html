@@ -348,19 +348,41 @@
 
       <section class="screen" id="s-notes">
         <div class="scroll">
-          <div class="rv-head">
-            <div class="rv-h-t">오늘 복습 <b id="rv-due">0</b>장</div>
-            <button class="rv-start" id="rv-start">복습 시작</button>
-          </div>
-          <div class="rv-sub" id="rv-sub">북마크한 단어와 문장이 한 덱으로 모입니다.</div>
+          <button class="dk-banner" id="dk-all">
+            <span class="dk-b-tx"><b>오늘 전체 복습하기</b><em id="dk-all-sub">여러 덱의 카드를 한 번에</em></span>
+            <span class="dk-b-n" id="dk-all-n">0장</span>
+          </button>
+          <div class="dk-sec">내 덱 <b id="dk-n">0</b></div>
+          <div id="dk-list"></div>
+        </div>
+      </section>
 
-          <div class="rv-filter" id="rv-filter">
-            <button class="f on" data-f="all">전체 <b id="rv-n-all">0</b></button>
-            <button class="f" data-f="word">단어 <b id="rv-n-word">0</b></button>
-            <button class="f" data-f="sent">문장 <b id="rv-n-sent">0</b></button>
-          </div>
+      <!-- ===== 덱 상세 (Level 2) ===== -->
+      <section class="screen" id="s-deck">
+        <div class="dk-top">
+          <button class="vf-back" id="dk-back" aria-label="뒤로"><svg class="ic"><use href="#i-left"/></svg></button>
+          <div class="test-title" id="dk-title">덱</div>
+        </div>
+        <div class="scroll" id="dk-body"></div>
+      </section>
 
-          <div id="rv-list"></div>
+      <!-- ===== Anki 학습 (Level 3) ===== -->
+      <section class="screen" id="s-study">
+        <div class="ak-top">
+          <button class="ak-x" id="ak-x">&#10005; 닫기</button>
+          <div class="ak-i" id="ak-i">1 / 1</div>
+          <button class="ak-snd" id="ak-snd"><svg class="ic"><use href="#i-sound"/></svg></button>
+        </div>
+        <div class="ak-bar"><i id="ak-bar"></i></div>
+        <div class="ak-wrap"><div class="ak-card" id="ak-card"></div></div>
+        <div class="ak-foot">
+          <button class="ak-flip" id="ak-flip">정답 확인하기</button>
+          <div class="ak-grades" id="ak-grades" hidden>
+            <button data-g="0"><em>10분 후</em><b>모름</b></button>
+            <button data-g="1"><em>1일 후</em><b>어려움</b></button>
+            <button data-g="2"><em>3일 후</em><b>괜찮음</b></button>
+            <button data-g="3"><em>7일 후</em><b>쉬움</b></button>
+          </div>
         </div>
       </section>
 
@@ -559,16 +581,16 @@ Sure. What size would you like?
     <div class="tcele" id="tcele" hidden>
       <div class="tcele-bg"></div>
       <div class="tcele-box" id="tcele-box">
+        <button class="tcele-x" id="tcele-x" aria-label="결과 보기">&#10005;</button>
         <div class="tcele-score"><b id="tcele-num">0</b><small>점</small></div>
         <div class="tcele-t" id="tcele-t">학습 완료</div>
-        <p class="tcele-m" id="tcele-m"></p>
         <div class="tcele-rows">
           <div class="tcele-r"><span>정답</span><b id="tcele-ok">0 / 0</b></div>
           <div class="tcele-r"><span>난이도</span><b id="tcele-mode">-</b></div>
           <div class="tcele-r"><span>이 쇼츠 최고 기록</span><b id="tcele-best">-</b></div>
         </div>
         <button class="tcele-cta" id="tcele-cta">학습으로 돌아가기</button>
-        <button class="tcele-x" id="tcele-x">결과 다시 보기</button>
+        <button class="tcele-home" id="tcele-home">홈으로 가기</button>
       </div>
     </div>
     <div class="cele-wrap" id="cele" hidden>
@@ -604,22 +626,6 @@ Sure. What size would you like?
     </div>
 
     <!-- ===== 복습 카드 ===== -->
-    <div class="sheet-wrap" id="sheet-card" hidden>
-      <div class="sheet">
-        <div class="cd-top">
-          <span class="cd-i" id="cd-i">1 / 1</span>
-          <span class="cd-kind" id="cd-kind"></span>
-          <button class="cd-x" id="cd-x" aria-label="닫기">&times;</button>
-        </div>
-        <div class="cd-body" id="cd-body"></div>
-        <button class="cd-flip" id="cd-flip">정답 보기</button>
-        <div class="cd-grades" id="cd-grades" hidden>
-          <button data-g="0">모름</button>
-          <button data-g="1">애매</button>
-          <button data-g="2">알겠어</button>
-        </div>
-      </div>
-    </div>
     <!-- ===== 원본 음성 등록 ===== -->
     <div class="sheet-wrap" id="sheet-audio" hidden>
       <div class="sheet-bg" data-close></div>
@@ -698,7 +704,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=8.6.1"></script>
-<script src="/sync.js?v=8.6.1"></script>
+<script src="/app.js?v=8.7.0"></script>
+<script src="/sync.js?v=8.7.0"></script>
 </body>
 </html>

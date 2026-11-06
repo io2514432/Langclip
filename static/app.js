@@ -47,6 +47,7 @@ const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 function show(id) {
   if (id !== "s-verify") document.body.classList.remove("vf-focus");
   document.body.classList.toggle("res-focus", id === "s-result");
+  document.body.classList.toggle("study-focus", id === "s-study" || id === "s-deck");
   if (id === "s-script") setTimeout(loadScripts, 0);
   if (id === "s-notes") setTimeout(refreshReview, 0);
   if (id === "s-home") setTimeout(checkCelebrate, 260);
@@ -248,140 +249,279 @@ const noteCard = (n) => `
   </button>`;
 
 /* ================= 복습 덱 (단어 + 문장) ================= */
-const RV = { cards: [], due: 0, q: [], i: 0, flip: false, filter: "all" };
+/* ================= v8.7 · 북마크 (Anki 덱 3단계) ================= */
+const DK = { cards: [], due: 0, today: "", vid: "", decks: [] };
+const AK = { q: [], i: 0, flip: false, n: 0, good: 0, again: 0, vid: "", hint: false };
+
+function dkVideo(vid) { return (S.videos || []).find((x) => x.id === vid) || null; }
+function dkTitle(v) { return (v && (v.title || v.name)) || "영상"; }
+function dkThumb(v) {
+  if (!v) return "";
+  const yid = v.yt || v.youtube_id || v.yid || "";
+  return v.thumb || v.thumbnail || v.cover || (yid ? `https://i.ytimg.com/vi/${yid}/mqdefault.jpg` : "");
+}
+function dkPct(list) {
+  if (!list.length) return 0;
+  const s = list.reduce((a, c) => a + Math.min(4, Number(c.step || 0)) / 4, 0);
+  return Math.round((s / list.length) * 100);
+}
+function dkCtx(c) {
+  const parts = String(c.cloze || "").split("____");
+  let out = esc(parts[0] || "");
+  for (let i = 1; i < parts.length; i++) out += `<mark>${esc(c.answer || "")}</mark>` + esc(parts[i] || "");
+  return out || esc(c.ko || "");
+}
 
 async function refreshReview() {
   try {
     const r = await api("/api/review");
-    RV.cards = r.cards || [];
-    RV.due = r.due || 0;
-    setCount("rv-due", RV.due);
-    const sub = $("#rv-sub");
-    if (sub) {
-      sub.textContent = RV.cards.length
-        ? `카드 ${RV.cards.length}장 · 지금 복습할 카드 ${RV.due}장`
-        : "북마크한 단어와 문장이 한 덱으로 모입니다.";
-    }
-    setCount("rv-n-all", RV.cards.length);
-    setCount("rv-n-word", r.n_word || 0);
-    setCount("rv-n-sent", r.n_sent || 0);
-    renderReviewList();
-  } catch { /* 목록은 조용히 비워 둔다 */ }
+    DK.cards = r.cards || [];
+    DK.due = r.due || 0;
+    DK.today = r.today || "";
+    dkBuild();
+    renderDecks();
+    if ($("#s-deck") && $("#s-deck").classList.contains("is-active")) renderDeck();
+  } catch (e) { /* 목록은 비워둔다 */ }
 }
 
-function clozeHtml(s) {
-  return esc(s || "").replace(/____/g, '<i class="cz">____</i>');
+function dkBuild() {
+  const map = new Map();
+  DK.cards.forEach((c) => {
+    if (!c.vid) return;
+    if (!map.has(c.vid)) map.set(c.vid, []);
+    map.get(c.vid).push(c);
+  });
+  DK.decks = [...map.entries()].map(([vid, cards]) => {
+    cards.sort((a, b) => (a.idx - b.idx) || (a.kind === "word" ? -1 : 1));
+    return { vid, cards, n: cards.length, due: cards.filter((c) => c.is_due).length, pct: dkPct(cards) };
+  }).sort((a, b) => b.n - a.n);
 }
 
-function renderReviewList() {
-  const box = $("#rv-list");
+function renderDecks() {
+  const box = $("#dk-list");
   if (!box) return;
-  const list = RV.cards.filter((c) => RV.filter === "all" || c.kind === RV.filter);
-  if (!list.length) {
-    box.innerHTML = `<div class="note-empty"><b>아직 담은 카드가 없습니다</b><br />학습 화면에서 단어를 탭하거나 문장을 북마크하면 여기에 카드가 생깁니다.</div>`;
+  const nd = $("#dk-n"); if (nd) nd.textContent = DK.decks.length;
+  const an = $("#dk-all-n"); if (an) an.textContent = DK.due + "장";
+  const as = $("#dk-all-sub");
+  if (as) as.textContent = DK.due ? "여러 덱의 카드를 한 번에" : "오늘 복습할 카드가 없어요";
+  const ab = $("#dk-all"); if (ab) ab.classList.toggle("off", !DK.cards.length);
+  if (!DK.decks.length) {
+    box.innerHTML = `<div class="note-empty"><b>아직 담은 카드가 없어요</b><br />학습 화면에서 단어를 탭하거나 문장을 북마크하면 덱이 만들어집니다.</div>`;
     return;
   }
-  box.innerHTML = list.map((c) => {
-    const fresh = c.seen === 0;
-    const due = c.due <= (RV.cards[0] || {}).today ? "" : "";
-    return `<button class="rv-row" data-id="${esc(c.id)}">
-      <span class="rv-k">${c.kind === "word" ? "단어" : "문장"}</span>
-      <span class="rv-main">
-        <span class="rv-a">${esc(c.answer)}</span>
-        <span class="rv-b">${c.kind === "word" ? clozeHtml(c.cloze) : esc(c.meaning || c.cloze)}</span>
+  box.innerHTML = DK.decks.map((d) => {
+    const v = dkVideo(d.vid);
+    const th = dkThumb(v);
+    return `<button class="dk-row" data-vid="${esc(d.vid)}">
+      <span class="dk-th">${th ? `<img src="${esc(th)}" alt="" loading="lazy">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`}</span>
+      <span class="dk-mid">
+        <span class="dk-t">${esc(dkTitle(v))}</span>
+        <span class="dk-m">북마크 ${d.n}개${d.due ? ` · 복습 대기 ${d.due}` : ""}</span>
+        <span class="dk-bar"><i style="width:${d.pct}%"></i></span>
       </span>
-      <span class="rv-m">${c.seen === 0 ? "새" : `D+${c.step}`}</span>
+      <span class="dk-pct">${d.pct}%</span>
     </button>`;
   }).join("");
-  $$("#rv-list .rv-row").forEach((el) => {
-    el.onclick = () => {
-      const c = RV.cards.find((x) => x.id === el.dataset.id);
-      if (!c) return;
-      RV.q = [c]; RV.i = 0; RV.flip = false;
-      $("#sheet-card").hidden = false;
-      renderCard();
-    };
+  $$("#dk-list .dk-row").forEach((el) => { el.onclick = () => openDeck(el.dataset.vid); });
+}
+
+function openDeck(vid) {
+  DK.vid = vid;
+  renderDeck();
+  show("s-deck");
+}
+
+function renderDeck() {
+  const d = DK.decks.find((x) => x.vid === DK.vid);
+  const body = $("#dk-body");
+  if (!d || !body) return;
+  const v = dkVideo(d.vid);
+  const th = dkThumb(v);
+  const tt = $("#dk-title"); if (tt) tt.textContent = dkTitle(v);
+  body.innerHTML = `
+    <div class="dk-hero">
+      <span class="dk-th big">${th ? `<img src="${esc(th)}" alt="">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`}</span>
+      <div class="dk-hero-tx">
+        <b>${esc(dkTitle(v))}</b>
+        <em>북마크 ${d.n}개 · 복습 대기 ${d.due}장</em>
+      </div>
+    </div>
+    <button class="dk-start" id="dk-start">${d.due
+      ? `이 덱 학습 시작하기<em>복습 대기 ${d.due}장</em>`
+      : `이 덱 전체 학습하기<em>${d.n}장</em>`}</button>
+    <div class="dk-count">카드 ${d.n}개</div>
+    <div class="dk-cards">${d.cards.map((c) => `
+      <div class="dk-card">
+        <button class="dk-del" data-id="${esc(c.id)}" aria-label="삭제"><svg class="ic xs"><use href="#i-close"/></svg></button>
+        <div class="dk-w">${esc(c.answer)}</div>
+        ${c.meaning ? `<div class="dk-mean">${esc(c.meaning)}</div>` : ""}
+        <div class="dk-ctx">${dkCtx(c)}</div>
+      </div>`).join("")}</div>`;
+  const st = $("#dk-start");
+  if (st) st.onclick = () => startStudy(d.due ? d.cards.filter((c) => c.is_due) : d.cards);
+  $$("#dk-body .dk-del").forEach((el) => {
+    el.onclick = (e) => { e.stopPropagation(); delCard(el.dataset.id); };
   });
 }
 
-function startReview() {
-  const today = (RV.cards[0] || {}).today || "";
-  const pool = RV.cards.filter((c) => RV.filter === "all" || c.kind === RV.filter);
-  const due = pool.filter((c) => c.due <= today);
-  RV.q = (due.length ? due : pool).slice(0, 20);
-  if (!RV.q.length) return toast("복습할 카드가 없습니다");
-  RV.i = 0; RV.flip = false;
-  $("#sheet-card").hidden = false;
-  renderCard();
+async function delCard(id) {
+  const c = DK.cards.find((x) => x.id === id);
+  if (!c) return;
+  if (!confirm(`"${c.answer}" 카드를 삭제할까요?`)) return;
+  try {
+    if (c.kind === "word") await jsonPost("/api/notes/word", { word: c.answer, toggle_only: true });
+    else await api(`/api/notes/sentence/${c.vid}/${c.idx}`, { method: "DELETE" });
+  } catch (e) { return toast("삭제하지 못했습니다: " + e.message); }
+  await refreshReview();
+  renderDeck();
 }
 
-function renderCard() {
-  const c = RV.q[RV.i];
-  if (!c) return closeCard();
-  $("#cd-i").textContent = `${RV.i + 1} / ${RV.q.length}`;
-  $("#cd-kind").textContent = c.kind === "word" ? "단어" : "문장";
-  const body = $("#cd-body");
-  if (c.kind === "word") {
-    body.innerHTML = `
-      <div class="cd-ko">${esc(c.ko || "")}</div>
-      <div class="cd-cloze">${RV.flip ? esc(c.cloze).replace(/____/, `<b class="cd-ans">${esc(c.answer)}</b>`) : clozeHtml(c.cloze)}</div>
-      ${RV.flip ? `<div class="cd-meaning">${esc(c.meaning || "뜻이 비어 있습니다")}</div>` : ""}`;
-  } else {
-    body.innerHTML = RV.flip
-      ? `<div class="cd-ko">${esc(c.meaning || "")}</div><div class="cd-cloze"><b class="cd-ans">${esc(c.answer)}</b></div>`
-      : `<div class="cd-ko">${esc(c.meaning || "이 문장을 영어로 말해보세요")}</div><div class="cd-cloze">____</div>`;
-  }
-  $("#cd-flip").hidden = RV.flip;
-  $("#cd-grades").hidden = !RV.flip;
-  const au = $("#cd-audio");
-  if (au) au.onclick = () => playCardAudio(c);
+/* ---- Level 3 : Anki 학습 ---- */
+function startStudy(cards) {
+  AK.q = (cards || []).slice();
+  if (!AK.q.length) return toast("학습할 카드가 없습니다");
+  AK.i = 0; AK.flip = false; AK.hint = false;
+  AK.n = AK.q.length; AK.good = 0; AK.again = 0;
+  show("s-study");
+  akRender();
 }
 
-async function playCardAudio(c) {
-  if (!c.vid) return;
-  let v = S.videos.find((x) => x.id === c.vid);
-  if (!v) { try { v = await api("/api/videos/" + c.vid); } catch { return; } }
-  const s = (v.segs || [])[c.idx];
-  if (!s) return;
-  if (v.audio && v.audio.url) {
+function akCloze(c, open) {
+  const parts = String(c.cloze || "").split("____");
+  const cap = open
+    ? `<span class="ak-ans">${esc(c.answer || "")}</span>`
+    : `<button class="ak-blank" id="ak-blank">?</button>`;
+  let out = esc(parts[0] || "");
+  for (let i = 1; i < parts.length; i++) out += cap + esc(parts[i] || "");
+  return out;
+}
+
+function akRender() {
+  const c = AK.q[AK.i];
+  if (!c) return akFinish();
+  AK.flip = false; AK.hint = false;
+  const v = dkVideo(c.vid);
+  const done = Math.max(0, AK.i);
+  const pct = Math.round((done / Math.max(1, AK.n)) * 100);
+  $("#ak-i").textContent = `${Math.min(AK.i + 1, AK.n)} / ${AK.n}`;
+  $("#ak-bar").style.width = Math.max(4, pct) + "%";
+  $("#ak-flip").hidden = false;
+  $("#ak-grades").hidden = true;
+  const card = $("#ak-card");
+  card.className = "ak-card";
+  card.innerHTML = `
+    <div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>
+    <div class="ak-ko">${esc(c.ko || c.meaning || "이 카드를 기억해보세요")}</div>
+    <div class="ak-en">${akCloze(c, false)}</div>
+    <button class="ak-hint" id="ak-hint">힌트 보기</button>
+    <div class="ak-hintbox" id="ak-hintbox" hidden></div>`;
+  const h = $("#ak-hint");
+  if (h) h.onclick = (e) => {
+    e.stopPropagation();
+    const box = $("#ak-hintbox");
+    if (box) {
+      box.innerHTML = `<b>${esc(String(c.answer || "").slice(0, 1))}${"_".repeat(Math.max(0, String(c.answer || "").length - 1))}</b>`
+        + (c.meaning ? ` · ${esc(c.meaning)}` : "");
+      box.hidden = false;
+    }
+    h.hidden = true;
+  };
+}
+
+function akFlip() {
+  const c = AK.q[AK.i];
+  if (!c || AK.flip) return;
+  AK.flip = true;
+  const v = dkVideo(c.vid);
+  const card = $("#ak-card");
+  card.className = "ak-card back";
+  card.innerHTML = `
+    <div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>
+    <div class="ak-ko">${esc(c.ko || "")}</div>
+    <div class="ak-en">${akCloze(c, true)}</div>
+    <div class="ak-split"></div>
+    <div class="ak-word">${esc(c.answer || "")}</div>
+    ${c.meaning ? `<div class="ak-mean">${esc(c.meaning)}</div>` : ""}`;
+  $("#ak-flip").hidden = true;
+  $("#ak-grades").hidden = false;
+  akSpeak(c);
+}
+
+function akSpeak(c) {
+  if (!c) return;
+  const text = String(c.cloze || "").replace(/____/g, " " + (c.answer || "") + " ").trim()
+    || String(c.answer || "");
+  if (!text) return;
+  try {
+    const u = window.speechSynthesis;
+    if (!u) return;
+    u.cancel();
+    const sp = new SpeechSynthesisUtterance(text);
+    sp.lang = "en-US"; sp.rate = 0.92; sp.pitch = 1;
+    u.speak(sp);
+  } catch (e) {}
+}
+
+async function akAudio(c) {
+  if (!c) return;
+  let v = dkVideo(c.vid);
+  if (!v) { try { v = await api("/api/videos/" + c.vid); } catch { return akSpeak(c); } }
+  const seg = (v.segs || [])[c.idx];
+  if (v.audio && v.audio.url && seg) {
     try {
       const a = new Audio(v.audio.url);
-      a.currentTime = Math.max(0, s.start - Number(v.audio.offset || 0));
+      a.currentTime = Math.max(0, seg.start - Number(v.audio.offset || 0));
       await a.play();
       const stop = setInterval(() => {
-        if (a.currentTime >= s.end - Number(v.audio.offset || 0) || a.paused) {
+        if (a.currentTime >= seg.end - Number(v.audio.offset || 0) || a.paused) {
           a.pause(); clearInterval(stop);
         }
       }, 120);
       return;
-    } catch {}
+    } catch (e) {}
   }
-  toast("이 카드에는 원본 음성이 없습니다");
+  akSpeak(c);
 }
 
-function closeCard() {
-  $("#sheet-card").hidden = true;
-}
-
-async function gradeCard(g) {
-  const c = RV.q[RV.i];
+async function akGrade(g) {
+  const c = AK.q[AK.i];
   if (!c) return;
-  try { await jsonPost("/api/review/grade", { id: c.id, grade: g }); } catch {}
-  const k = RV.cards.findIndex((x) => x.id === c.id);
-  if (k >= 0) RV.cards.splice(k, 1);
-  if (g >= 1) RV.i += 1;
-  RV.flip = false;
-  if (RV.i >= RV.q.length) {
-    closeCard();
-    toast("복습을 마쳤습니다", 3000);
-    refreshReview();
-    return;
+  try { await jsonPost("/api/review/grade", { id: c.id, grade: g }); } catch (e) {}
+  if (g === 0) {
+    AK.again += 1;
+    AK.q.push({ ...c, is_due: false });      // 모름 → 세션 맨 뒤로 재삽입
+  } else {
+    AK.good += 1;
   }
-  renderCard();
-  refreshReview();
+  AK.i += 1;
+  if (AK.i >= AK.q.length || AK.again > 40) return akFinish();
+  akRender();
 }
 
-function renderNotesScreen() { /* v7.8: 복습 덱으로 대체 */ }
+function akFinish() {
+  const box = $("#ak-card");
+  if (!box) return;
+  $("#ak-flip").hidden = true;
+  $("#ak-grades").hidden = true;
+  $("#ak-i").textContent = "완료";
+  $("#ak-bar").style.width = "100%";
+  box.className = "ak-card done";
+  box.innerHTML = `
+    <div class="ak-fin-t">오늘 복습 완료</div>
+    <div class="ak-fin-n">${AK.good + AK.again}<small>장</small></div>
+    <div class="ak-fin-rows">
+      <div><span>익힘</span><b>${AK.good}</b></div>
+      <div><span>다시 본 카드</span><b>${AK.again}</b></div>
+    </div>
+    <button class="ak-fin-cta" id="ak-fin-deck">덱으로 돌아가기</button>
+    <button class="ak-fin-x" id="ak-fin-home">홈으로 가기</button>`;
+  const d = $("#ak-fin-deck");
+  if (d) d.onclick = () => { refreshReview(); show(DK.vid ? "s-deck" : "s-notes"); };
+  const h = $("#ak-fin-home");
+  if (h) h.onclick = () => { refreshReview(); show("s-home"); loadHome().catch(() => {}); };
+}
+
+function renderNotesScreen() { /* v8.7: Anki 덱 3단계로 대체 */ }
 
 async function jumpTo(vid, idx) {
   let v = S.videos.find((x) => x.id === vid);
@@ -1643,12 +1783,22 @@ function startVerify() {
   tqOpenSheet();
 }
 
+function goHome() {
+  TQ.on = false; TQ.res = []; TQ.phase = "q";
+  VF.on = false; VF.typed = {}; VF.stage = "recall";
+  document.body.classList.remove("vf-focus");
+  try { closeWave(true); } catch (e) {}
+  show("s-home");
+  loadHome().catch(() => {});
+}
+
 function exitVerify(ask) {
+  if (TQ.phase === "done") ask = false;        // 결과 화면에서는 확인창 없이 닫기
   const segs = (S.cur && S.cur.segs) || [];
   const done = TQ.on ? TQ.res.length : segs.filter((s, i) => String(VF.typed[i] || "").trim()).length;
   if (ask && done > 0) {
     const msg = TQ.on
-      ? `진행한 테스트 ${done}문장이 사라집니다.\n\n나갈까요?`
+      ? `진행 중인 테스트 ${done}문항이 사라집니다.\n\n나갈까요?`
       : `작성한 답변 ${done}개가 사라집니다.\n\n백지 테스트를 나갈까요?`;
     if (!confirm(msg)) return;
   }
@@ -2489,20 +2639,25 @@ function bind() {
   if (bPh) bPh.onclick = () => { try { openPhraseSheet(); } catch (e) { toast("열지 못했습니다: " + e.message, 3000); } };
   const bPhs = $("#ph-save");
   if (bPhs) bPhs.onclick = savePhraseNow;
-  const bRs = $("#rv-start");
-  if (bRs) bRs.onclick = startReview;
-  const bCd = $("#cd-x");
-  if (bCd) bCd.onclick = closeCard;
-  const bFl = $("#cd-flip");
-  if (bFl) bFl.onclick = () => { RV.flip = true; renderCard(); };
-  $$("#cd-grades [data-g]").forEach((b) => { b.onclick = () => gradeCard(+b.dataset.g); });
-  $$("#rv-filter .f").forEach((b) => {
-    b.onclick = () => {
-      RV.filter = b.dataset.f;
-      $$("#rv-filter .f").forEach((x) => x.classList.toggle("on", x === b));
-      renderReviewList();
-    };
-  });
+  const bAllDk = $("#dk-all");
+  if (bAllDk) bAllDk.onclick = () => startStudy(DK.cards.filter((c) => c.is_due));
+  const bDkBack = $("#dk-back");
+  if (bDkBack) bDkBack.onclick = () => { refreshReview(); show("s-notes"); };
+  const bAkX = $("#ak-x");
+  if (bAkX) bAkX.onclick = () => { AK.q = []; refreshReview(); show(DK.vid ? "s-deck" : "s-notes"); };
+  const bAkFlip = $("#ak-flip");
+  if (bAkFlip) bAkFlip.onclick = akFlip;
+  const bAkSnd = $("#ak-snd");
+  if (bAkSnd) bAkSnd.onclick = () => akAudio(AK.q[AK.i]);
+  $$("#ak-grades [data-g]").forEach((b) => { b.onclick = () => akGrade(+b.dataset.g); });
+  const akCard = $("#ak-card");
+  if (akCard) akCard.onclick = (e) => {
+    if (e.target.closest("#ak-hint") || e.target.closest("#ak-hintbox")) return;
+    if (!AK.flip && !AK.q[AK.i]) return;
+    if (!AK.flip) akFlip();
+  };
+  const bCd = null;
+  const bFl = null;
   const bNudge = $("#btn-nudge");
   if (bNudge) bNudge.onclick = () => { try { nudgeToggle(); } catch (e) { toast("열지 못했습니다: " + e.message, 3200); } };
   $$("#segadj .mode").forEach((b) => {
@@ -2930,13 +3085,11 @@ async function tqResult() {
       </div>`).join("")}
     </div>
     <div class="tq-acts">
-      <button class="btn primary" id="tq-again">같은 난이도 다시</button>
-      <button class="btn ghost" id="tq-up">${upLab}</button>
-      <button class="btn ghost" id="tq-out">학습으로 돌아가기</button>
+      ${pct >= 100 ? "" : '<button class="btn primary" id="tq-again">같은 난이도 다시</button>'}
+      <button class="btn ghost" id="tq-out">닫기</button>
     </div>`;
   const again = $("#tq-again"); if (again) again.onclick = () => beginTest(TQ.mode);
-  const up = $("#tq-up"); if (up) up.onclick = () => beginTest(upTo);
-  const out = $("#tq-out"); if (out) out.onclick = () => exitVerify(false);
+  const out = $("#tq-out"); if (out) out.onclick = () => goHome();
   $("#vf-body").scrollTop = 0;
 
   // 서버 기록 (초급·중급·고급 모두 암송 판정에 반영)
@@ -2959,14 +3112,13 @@ function tqCelebrate(pct, okN, n, best) {
   if (!box || !S.cur) return;
   $("#tcele-num").textContent = pct;
   $("#tcele-t").textContent = "학습 완료";
-  $("#tcele-m").innerHTML = TQ.mode === "recall"
-    ? "한국어만 보고 문장 전체를 영작했어요.<br>이제 이 쇼츠는 완전히 내 것이에요."
-    : "빈칸을 모두 맞혔어요.<br>고급까지 가면 문장 전체를 영작할 수 있어요.";
   $("#tcele-ok").textContent = `${okN} / ${n}`;
   $("#tcele-mode").textContent = TQ_NAME[TQ.mode].split(" · ")[0];
   $("#tcele-best").textContent = best ? best + "점" : pct + "점";
   box.hidden = false;
   $("#tcele-cta").onclick = () => { box.hidden = true; exitVerify(false); };
+  const homeBtn = $("#tcele-home");
+  if (homeBtn) homeBtn.onclick = () => { box.hidden = true; goHome(); };
   $("#tcele-x").onclick = () => { box.hidden = true; };
 }
 
