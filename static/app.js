@@ -375,6 +375,13 @@ async function delCard(id) {
     else await api(`/api/notes/sentence/${c.vid}/${c.idx}`, { method: "DELETE" });
   } catch (e) { return toast("삭제하지 못했습니다: " + e.message); }
   await refreshReview();
+  const still = DK.decks.some((d) => d.vid === DK.vid);
+  if (!still) {                      // 마지막 카드였다 → 덱이 사라짐
+    DK.vid = "";
+    show("s-notes");
+    toast("북마크를 모두 지워 덱을 삭제했습니다", 2600);
+    return;
+  }
   renderDeck();
 }
 
@@ -473,7 +480,8 @@ async function akMeaning(c) {
   if (!el || !c) return;
   try {
     const r = await api("/api/words/" + encodeURIComponent(c.answer || ""));
-    const m = (r && (r.meaning || r.ko || r.def || r.translation)) || "";
+    const defs = (r && Array.isArray(r.ko_defs)) ? r.ko_defs : [];
+    const m = (r && (r.ko || (defs[0] && defs[0].ko) || r.meaning)) || "";
     if (m && el.isConnected) { el.textContent = m; el.classList.add("fade"); }
   } catch (e) {}
 }

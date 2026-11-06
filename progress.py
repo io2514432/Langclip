@@ -326,7 +326,7 @@ def toggle_word(word: str, meaning: str = "", ctx: str = "", vid: str = "",
         n["words"].pop(key)
         _save_notes(n)
         return {"ok": True, "bookmarked": False, "key": key}
-    n["words"][key] = {"word": key, "meaning": meaning.strip()[:200],
+    n["words"][key] = {"word": key, "meaning": (meaning.strip() or _ko_cached(key))[:200],
                        "ctx": (ctx or "")[:200], "vid": vid, "idx": int(idx),
                        "count": 1, "created": _now()}
     _save_notes(n)
@@ -448,6 +448,18 @@ def _translate(text: str, maxlen: int = 80) -> str:
     except Exception:
         pass
     return ""
+
+
+def _ko_cached(word: str) -> str:
+    """이미 번역해 둔 한글 뜻만 꺼낸다(네트워크 없음)."""
+    w = (word or "").strip().lower()
+    if not w:
+        return ""
+    try:
+        _ko_load()
+        return _KO.get(w, "") or ""
+    except Exception:
+        return ""
 
 
 def _ko_of(word: str) -> tuple[str, str | None]:
@@ -623,7 +635,7 @@ def review_deck(videos: dict) -> dict:
         cards.append({
             "id": cid, "kind": "word", "key": key,
             "answer": w.get("word") or key,
-            "meaning": w.get("meaning", ""),
+            "meaning": (w.get("meaning") or _ko_cached(w.get("word") or key)),
             "cloze": _cloze(ctx, w.get("word") or key),
             "ko": (seg or {}).get("ko", "") or "",
             "vid": w.get("vid", ""), "idx": int(w.get("idx", -1)),
