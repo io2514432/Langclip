@@ -29,7 +29,6 @@ USERS = DATA / "users"
 
 MAX_ATTEMPTS = 8000
 PASS_SCORE = 70.0
-XP_PER_LEVEL = 120
 
 _UID = contextvars.ContextVar("langclip_uid", default="")
 _UID_RE = re.compile(r"^[A-Za-z0-9]{6,40}$")
@@ -118,29 +117,73 @@ def _verifies() -> dict:
 
 
 def record_verify(vid: str, result: dict) -> dict:
-    """3단계 검증 결과 저장. 한 번 통과하면 유지된다."""
+    """3단계 검증 결과 저장. 난이도별 최고 점수는 지우지 않고 누적한다."""
     prev = _verifies().get(vid) or {}
     passed = bool(result.get("passed"))
     now_ok = passed or bool(prev.get("ok"))
+    stages: dict = {}
+    for k, v in (prev.get("stages") or {}).items():
+        if isinstance(v, dict):
+            stages[k] = dict(v)
+    for k, v in (result.get("stages") or {}).items():
+        if not isinstance(v, dict):
+            continue
+        old = stages.get(k) or {}
+        try:
+            nsc = float(v.get("score") or 0)
+        except (TypeError, ValueError):
+            nsc = 0.0
+        try:
+            osc = float(old.get("score") or 0)
+        except (TypeError, ValueError):
+            osc = 0.0
+        if osc > nsc:
+            best = dict(old)
+            best["passed"] = bool(old.get("passed")) or bool(v.get("passed"))
+            if best.get("at") is None:
+                best["at"] = old.get("at") or ""
+        else:
+            best = dict(v)
+            best["score"] = round(nsc, 1)
+            for f in ("hit", "total", "avg"):
+                if best.get(f) is None:
+                    best[f] = old.get(f)
+            best["passed"] = bool(old.get("passed")) or bool(v.get("passed"))
+            if v.get("passed") and not old.get("passed"):
+                best["at"] = _now()
+            else:
+                best["at"] = old.get("at") or (best.get("at") or "")
+        stages[k] = best
     rec = {
         "ok": now_ok,
         "done_at": (prev.get("done_at") or _now()) if now_ok else "",
         "score": round(max(float(result.get("score", 0)), float(prev.get("score", 0))), 1),
         "at": _now(),
         "tries": int(prev.get("tries", 0)) + 1,
-        "headline": result.get("headline", ""),
-        "stages": {k: {"passed": bool(v.get("passed")), "hit": v.get("hit"),
-                       "total": v.get("total"), "avg": v.get("avg"), "score": v.get("score")}
-                   for k, v in (result.get("stages") or {}).items() if isinstance(v, dict)},
+        "headline": result.get("headline", "") or prev.get("headline", ""),
+        "stages": stages,
     }
     d = _verifies()
     d[vid] = rec
     _save(_p("verify.json"), d)
-    return {"record": rec, "first_clear": passed and not prev.get("ok")}
+    return {"record": rec, "first_clear": passed and not prev.get("ok"), "medals": medals(vid)}
 
 
 def verify_of(vid: str) -> dict:
     return _verifies().get(vid, {})
+
+
+MEDAL_OF = {"beginner": "bronze", "intermediate": "silver", "advanced": "gold"}
+
+
+def medals(vid: str) -> list:
+    """통과한 난이도의 메달 목록 (bronze/silver/gold)."""
+    st = (_verifies().get(vid) or {}).get("stages") or {}
+    out = []
+    for k, m in MEDAL_OF.items():
+        if (st.get(k) or {}).get("passed"):
+            out.append(m)
+    return out
 
 
 def is_complete(vid: str) -> bool:
@@ -198,27 +241,6 @@ def memorized(vid: str, n_segs: int) -> dict:
     return {"pct": round(s / n_segs, 1), "done": 0, "total": n_segs, "tried": tried}
 
 
-# ---------------------------------------------------------------- XP / level
-def xp_total() -> int:
-    xp = sum(min(10, round(float(r.get("total", 0)) / 10)) for r in attempts())
-    xp += 120 * completed_count()
-    return int(xp)
-
-
-def level_of(xp: int | None = None) -> int:
-    x = xp_total() if xp is None else int(xp)
-    return 1 + max(0, x) // XP_PER_LEVEL
-
-
-def level_info() -> dict:
-    xp = xp_total()
-    lv = level_of(xp)
-    into = xp % XP_PER_LEVEL
-    return {"xp": xp, "level": lv, "into": into, "need": XP_PER_LEVEL,
-            "pct": round(100 * into / XP_PER_LEVEL, 1),
-            "next": (lv + 1) * XP_PER_LEVEL - xp}
-
-
 # ---------------------------------------------------------------- 현황
 def today_focus(videos: dict) -> dict | None:
     if not videos:
@@ -244,7 +266,7 @@ def today_focus(videos: dict) -> dict | None:
 
 def progress(videos: dict) -> dict:
     return {"focus": today_focus(videos), "streak": streak(),
-            "xp": level_info(), "completed": completed_count(),
+            "completed": completed_count(),
             "total_attempts": len(attempts())}
 
 

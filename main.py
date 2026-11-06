@@ -448,6 +448,7 @@ def video_public(v: dict, d: dict) -> dict:
             "audio": au, "has_audio": au is not None,
             "complete": prog.is_complete(v["id"]),
             "stage": st, "stage1": st["stage1"],
+            "medals": prog.medals(v["id"]),
             "verify": prog.verify_of(v["id"])}
 
 
@@ -1175,7 +1176,7 @@ def verify_check(vid: str, payload: dict):
     res = verify.judge(v["segs"], payload.get("typed") or {})
     rec = prog.record_verify(vid, res)
     return {**res, **rec, "complete": prog.is_complete(vid),
-            "completed": prog.completed_count(), "xp": prog.level_info()}
+            "completed": prog.completed_count()}
 
 
 @app.post("/api/videos/{vid}/test/grade")
@@ -1198,8 +1199,7 @@ def test_grade(vid: str, payload: dict):
     }
     rec = prog.record_verify(vid, res)
     return {**rec, "mode": mode, "score": pct, "passed": passed,
-            "complete": prog.is_complete(vid), "completed": prog.completed_count(),
-            "xp": prog.level_info()}
+            "complete": prog.is_complete(vid), "completed": prog.completed_count()}
 
 
 @app.delete("/api/videos/{vid}/verify")

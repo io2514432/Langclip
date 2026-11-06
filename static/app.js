@@ -43,6 +43,11 @@ const fmt = (n) => (isFinite(n) ? Number(n).toFixed(1) : "0.0");
 const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+const MEDALS = ["bronze", "silver", "gold"];
+const medalHTML = (on) => {
+  const set = new Set(on || []);
+  return `<span class="m-med">${MEDALS.map((k) => `<svg class="med ${k}${set.has(k) ? " on" : ""}"><use href="#i-medal"/></svg>`).join("")}</span>`;
+};
 
 function show(id) {
   if (id !== "s-verify") document.body.classList.remove("vf-focus");
@@ -309,20 +314,20 @@ function renderDecks() {
     box.innerHTML = `<div class="note-empty"><b>아직 담은 카드가 없어요</b><br />학습 화면에서 단어를 탭하거나 문장을 북마크하면 덱이 만들어집니다.</div>`;
     return;
   }
-  box.innerHTML = DK.decks.map((d) => {
+  box.innerHTML = `<div class="dk-grid">` + DK.decks.map((d) => {
     const v = dkVideo(d.vid);
     const th = dkThumb(v);
-    return `<button class="dk-row" data-vid="${esc(d.vid)}">
-      <span class="dk-th">${th ? `<img src="${esc(th)}" alt="" loading="lazy">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`}</span>
-      <span class="dk-mid">
-        <span class="dk-t">${esc(dkTitle(v))}</span>
-        <span class="dk-m">북마크 ${d.n}개${d.due ? ` · 복습 대기 ${d.due}` : ""}</span>
-        <span class="dk-bar"><i style="width:${d.pct}%"></i></span>
+    const sub = th ? `<img src="${esc(th)}" alt="" loading="lazy">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`;
+    return `<button class="dk-item" data-vid="${esc(d.vid)}">
+      <span class="dk-fld">
+        <span class="dk-th">${sub}</span>
+        <svg class="dk-fbg" viewBox="0 0 96 74" aria-hidden="true"><path d="M4 24v-2a4 4 0 0 1 4-4h18l6 8h56a4 4 0 0 1 4 4v38a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/></svg>
       </span>
-      <span class="dk-pct">${d.pct}%</span>
+      <span class="dk-t">${esc(dkTitle(v))}</span>
+      <span class="dk-m">북마크 ${d.n}개 · ${d.pct}%${d.due ? " · 복습 대기" : ""}</span>
     </button>`;
-  }).join("");
-  $$("#dk-list .dk-row").forEach((el) => { el.onclick = () => openDeck(el.dataset.vid); });
+  }).join("") + `</div>`;
+  $$("#dk-list .dk-item").forEach((el) => { el.onclick = () => openDeck(el.dataset.vid); });
 }
 
 function openDeck(vid) {
@@ -599,7 +604,7 @@ function renderVideos() {
             <span class="m-l">
               ${v.has_audio ? '<span class="tag ok">원본 음성</span>' : ""}
               <span class="m-n">총 ${v.n}문장</span>
-              ${v.complete ? '<span class="m-done gold">완성</span>' : (v.stage1 ? '<span class="m-done">학습</span>' : "")}
+              ${v.medals && v.medals.length ? medalHTML(v.medals) : (v.stage1 ? '<span class="m-done">학습</span>' : "")}
             </span>
             ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : `<span class="m-sp"></span>`}
           </div>
