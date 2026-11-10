@@ -1578,17 +1578,6 @@ body.vf-focus .screens{height:100%}
 .vf-feed.no .vf-next{background:#F97362}
 
 /* 난이도 시트 */
-.tm-list{display:flex;flex-direction:column;gap:8px;margin:12px 0 6px}
-.tm-row{display:flex;align-items:center;gap:11px;width:100%;padding:13px 12px;border:1px solid var(--line);
-  border-radius:12px;background:#fff;text-align:left;cursor:pointer;font-family:inherit}
-.tm-row:active{background:var(--bg)}
-.tm-n{flex:0 0 22px;height:22px;border-radius:7px;background:var(--sky-l);color:var(--sky-d);
-  font-size:10.5px;font-weight:900;display:grid;place-items:center}
-.tm-tx{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0}
-.tm-tx b{font-size:12.5px;font-weight:850;color:var(--ink)}
-.tm-tx em{font-style:normal;font-size:10.5px;color:var(--ink-3);line-height:1.4}
-.tm-best{flex:0 0 auto;font-size:10px;font-weight:850;color:#22B884;font-variant-numeric:tabular-nums}
-.tm-note{font-size:10px;color:var(--ink-3);margin:6px 0 2px;line-height:1.5}
 
 /* 결과 */
 .tq-hero{display:flex;align-items:center;gap:13px;padding:16px;border-radius:16px;
@@ -1623,7 +1612,6 @@ body.vf-focus .screens{height:100%}
 .vf-feed,.vf-next,.vf-submit,#s-verify .sheet,.tq-blnk{box-shadow:none!important}
 
 /* 난이도 시트 : 번호 캡슐 제거 */
-.tm-row .tm-n{display:none!important}
 
 /* 초급 : 문장 속 빈칸 */
 .tq-blnk{display:inline-block;height:1.5em;min-width:2.6em;margin:0 .12em;padding:0 .3em;
@@ -1958,9 +1946,12 @@ body.study-focus .screens{height:100%}
 .tm-row[data-mode="recall"] .tm-lv rect{fill:#0085FF}
 .tm-tx{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
 .tm-tx b{font-size:13.5px;font-weight:850;color:#0F172A;letter-spacing:-.02em}
-.tm-tx em{font-style:normal;font-size:11.5px;font-weight:600;color:#8A94A6;letter-spacing:-.01em}
+.tm-tx em{font-style:normal;font-size:11.5px;font-weight:600;color:#8A94A6;
+  letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tm-best{flex:0 0 auto;font-size:11.5px;font-weight:800;color:#64748B;
   font-variant-numeric:tabular-nums}
+.tm-row .tm-best{color:#64748B}
+.tm-row .tm-best.ok{color:#0085FF}
 .tm-best.ok{color:#0085FF}
 .tm-best.ok::before{content:"✓ ";font-weight:900}
 .tm-chev{flex:0 0 auto;width:16px;height:16px;color:#CBD5E1;stroke-width:2}
