@@ -2159,10 +2159,8 @@ body.tab-home #head-streak{display:none!important}
 .ob-step.is-pick .ob-d{margin-bottom:22px}
 .ob-step.is-pick .ob-langs{margin-top:4px}
 .ob-lang{position:relative;height:54px;font-size:13.5px}
-.ob-lang.on::after{content:"";position:absolute;right:11px;top:50%;width:14px;height:14px;
-  margin-top:-7px;border-radius:50%;background:rgba(255,255,255,.9);
-  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5 12.6 10 17.4 19 6.8' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/11px no-repeat;
-  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5 12.6 10 17.4 19 6.8' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/11px no-repeat}
+.ob-lang.on::after{content:"¹3";position:absolute;right:11px;top:50%;
+  transform:translateY(-50%);font-size:11px;font-weight:900;color:#fff;line-height:1}
 
 /* 쉐도잉 : 미니 플레이어 목업 + 실제 결과 화면 겹침 */
 .art-shadow{display:block}
@@ -2220,7 +2218,7 @@ body.tab-home #head-streak{display:none!important}
   .an-card.back{top:88px}
 }
 
-.as-shot{position:absolute;left:-8%;bottom:-9%;width:74%;border-radius:9px;border:2px solid #fff;
+.as-shot{position:absolute;left:9px;bottom:9px;width:56%;border-radius:9px;border:2px solid #fff;
   background:#0B1524;padding:6px 7px 5px;box-shadow:0 10px 22px -14px rgba(15,23,42,.5);display:block}
 .as-sh-t{display:block;font-size:5.5px;font-weight:750;color:#7BD8FF;letter-spacing:-.02em}
 .as-sh-w{display:flex;align-items:flex-end;gap:2px;height:22px;margin:3px 0 4px}
