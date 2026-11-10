@@ -3,9 +3,6 @@ data/
 !data/.gitkeep
 *.log
 
-# --- 버전 백업 스냅샷 (version.py 가 만든다)
-backups/
-
 # --- 비밀
 .env
 admin_token.txt

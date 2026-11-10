@@ -26,7 +26,7 @@ start.bat                        # 관리자 서버  http://127.0.0.1:8000
 tunnel.bat                       # 공개 서버    https://....trycloudflare.com (친구용)
 ```
 
-Python 3.11 이상, ffmpeg 는 음원 변환을 쓸 때만 필요하다.
+Python 3.11 이상. **ffmpeg 는 필수다** — 모든 녹음 채점이 ffmpeg 로 16kHz 모노 WAV 를 만들기 때문이다. (없으면 채점이 400 으로 실패한다)
 
 ## 포트
 
@@ -48,7 +48,6 @@ synclib.py       대본-영상 싱크 계산
 script_md.py     대본 파싱
 static/          index.html · app.js · style.css · sync.js
 test_*.py        회귀 테스트 (python test_parse.py 등)
-version.py       버전 스냅샷 / 되돌리기
 data/            실행 데이터 — git 에 올리지 않는다
 ```
 
@@ -64,7 +63,7 @@ node --check static/app.js
 ## 데이터는 git 에 넣지 않는다
 
 `data/` 는 기기마다 다르고(학습기록·업로드 음원) 커밋하면 충돌만 난다.
-대신 `python version.py save` 로 스냅샷을 남긴다 (`backups/`).
+코드·문서·설정은 git 으로 관리하고, `data/` 는 각 기기에만 둔다.
 
 ## 비밀
 

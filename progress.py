@@ -31,6 +31,7 @@ USERS = DATA / "users"
 
 MAX_ATTEMPTS = 8000
 PASS_SCORE = 70.0
+VERIFY = "verify.json"
 
 _UID = contextvars.ContextVar("langclip_uid", default="")
 _UID_RE = re.compile(r"^[A-Za-z0-9]{6,40}$")
@@ -114,7 +115,7 @@ def _day_of(ts: str) -> str:
 
 # ---------------------------------------------------------------- 검증 기록
 def _verifies() -> dict:
-    d = _load(_p("verify.json"), {})
+    d = _load(_p(VERIFY), {})
     if not isinstance(d, dict):
         return {}
     for rec in d.values():
@@ -200,8 +201,16 @@ def record_verify(vid: str, result: dict) -> dict:
     }
     d = _verifies()
     d[vid] = rec
-    _save(_p("verify.json"), d)
+    _save(_p(VERIFY), d)
     return {"record": rec, "first_clear": passed and not prev.get("ok"), "medals": medals(vid)}
+
+
+def reset_verify(vid: str) -> None:
+    """검증(백지테스트) 기록을 지운다. 관리자 전용."""
+    d = _verifies()
+    if vid in d:
+        d.pop(vid, None)
+        _save(_p(VERIFY), d)
 
 
 def verify_of(vid: str) -> dict:

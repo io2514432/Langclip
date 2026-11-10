@@ -970,13 +970,14 @@ def video_bands(v: dict):
 
 
 @app.post("/api/videos/{vid}/segments/{idx}/score")
-async def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
+def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     if not (0 <= idx < len(v["segs"])):
         raise HTTPException(404, "문장을 찾을 수 없습니다")
     seg = v["segs"][idx]
-    data = await take.read()
+    take.file.seek(0)
+    data = take.file.read()
     if not data:
         raise HTTPException(422, "빈 녹음입니다")
     if len(data) > MAX_UPLOAD:
@@ -1260,9 +1261,7 @@ def test_grade(vid: str, payload: dict):
 @app.delete("/api/videos/{vid}/verify")
 def reset_verify(vid: str, request: Request):
     require_admin(request)
-    d = prog._verifies()
-    d.pop(vid, None)
-    prog._save(prog.VERIFY, d)
+    prog.reset_verify(vid)
     return {"ok": True, "complete": False}
 
 
