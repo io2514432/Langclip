@@ -39,6 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import build
 import engine
 import progress as prog
 import script_md
@@ -66,7 +67,7 @@ CAL_HOP = 0.02
 CAL_SMOOTH = 0.12
 CAL_MIN_OVERLAP = 2.0
 
-app = FastAPI(title="Langclip Shadowing API", version="4.2")
+app = FastAPI(title="Langclip Shadowing API", version=build.VERSION)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -151,7 +152,14 @@ def db() -> dict:
     if DB.exists():
         try:
             raw = json.loads(DB.read_text("utf-8"))
-        except Exception:
+        except Exception as ex:
+            # 조용히 버리면 다음 저장에서 원본이 사라진다. 사본을 남기고 빈 상태로 시작.
+            try:
+                bad = DATA / f"videos.corrupt-{int(time.time())}.json"
+                bad.write_bytes(DB.read_bytes())
+                print(f"[Langclip] videos.json 파싱 실패({ex}) → {bad.name} 보존")
+            except Exception:
+                pass
             raw = {}
     if "videos" in raw or "audios" in raw:
         raw.setdefault("videos", {})
@@ -161,8 +169,11 @@ def db() -> dict:
 
 
 def save_db(d: dict) -> None:
+    """videos.json 을 통째로 다시 쓴다. 임시 파일 → 교체라 중간에 죽어도 원본이 남는다."""
     DATA.mkdir(parents=True, exist_ok=True)
-    DB.write_text(json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
+    tmp = DB.with_suffix(DB.suffix + ".tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
+    os.replace(tmp, DB)
 
 
 def get_video(vid: str) -> dict:
@@ -472,7 +483,7 @@ def _prefetch_async(segs, lang: str = "en") -> None:
         pass
 
 # --------------------------------------------------------------- API
-LANGCLIP_BUILD = "6.2.0"
+LANGCLIP_BUILD = build.VERSION
 
 
 @app.get("/api/health")

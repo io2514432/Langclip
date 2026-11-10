@@ -23,8 +23,9 @@ import re
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 DATA = Path(__file__).resolve().parent / "data"
 USERS = DATA / "users"
@@ -35,6 +36,18 @@ VERIFY = "verify.json"
 
 _UID = contextvars.ContextVar("langclip_uid", default="")
 _UID_RE = re.compile(r"^[A-Za-z0-9]{6,40}$")
+# 서버가 UTC(GCP 등)에서 돌아도 학습일·연속일·복습 예정일을 한국 시간으로 센다.
+try:
+    TZ = ZoneInfo(os.getenv("LANGCLIP_TZ", "Asia/Seoul"))
+except Exception:
+    # Windows 처럼 tzdata 가 없는 환경 → 고정 +09:00 으로 폴백
+    TZ = timezone(timedelta(hours=9), "KST")
+
+
+def _nowdt() -> datetime:
+    """항상 같은 시간대(기본 Asia/Seoul)의 지금."""
+    return datetime.now(TZ)
+
 
 
 def set_uid(uid: str | None) -> None:
@@ -74,11 +87,11 @@ def _save(path: Path, obj) -> None:
 
 
 def _today() -> date:
-    return datetime.now().date()
+    return _nowdt().date()
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return _nowdt().isoformat(timespec="seconds")
 
 
 # ---------------------------------------------------------------- attempts
@@ -699,7 +712,7 @@ def _due_ok(due: str) -> bool:
         return True
     try:
         if "T" in due:
-            return due <= datetime.now().isoformat(timespec="minutes")
+            return due <= _nowdt().isoformat(timespec="minutes")
         return due <= _today().isoformat()
     except Exception:
         return True
@@ -761,7 +774,7 @@ def review_grade(cid: str, grade: int) -> dict:
     st = r.get(cid) or {"step": 0, "seen": 0, "lapses": 0, "due": ""}
     g = int(grade)
     step = int(st.get("step", 0))
-    now = datetime.now()
+    now = _nowdt()
     if g <= 0:
         st["step"] = 0
         st["lapses"] = int(st.get("lapses", 0)) + 1

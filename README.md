@@ -48,6 +48,7 @@ synclib.py       대본-영상 싱크 계산
 script_md.py     대본 파싱
 static/          index.html · app.js · style.css · sync.js
 test_*.py        회귀 테스트 (python test_parse.py 등)
+backup_data.py   data/ 스냅샷 백업 (zip)
 data/            실행 데이터 — git 에 올리지 않는다
 ```
 
@@ -64,6 +65,7 @@ node --check static/app.js
 
 `data/` 는 기기마다 다르고(학습기록·업로드 음원) 커밋하면 충돌만 난다.
 코드·문서·설정은 git 으로 관리하고, `data/` 는 각 기기에만 둔다.
+`python backup_data.py` 로 `data/` 스냅샷(zip)을 `backups/` 에 남긴다. 기본 14개 보관.
 
 ## 비밀
 
