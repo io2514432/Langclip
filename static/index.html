@@ -7,7 +7,7 @@
 <title>Langclip — 문장별 셰도잉</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237BD8FF'/%3E%3Cstop offset='1' stop-color='%230EA5E9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M16 5.6c7.4 0 13.3 4.6 13.3 10.4S23.4 26.4 16 26.4c-1.3 0-2.6-.14-3.8-.41l-5.2 2.3 1.2-5c-2.8-1.9-4.6-4.6-4.6-7.7C3.6 9.9 8.6 5.6 16 5.6z' fill='url(%23g)'/%3E%3Ccircle cx='12.2' cy='16.2' r='1.8' fill='%23fff'/%3E%3Ccircle cx='19.8' cy='16.2' r='1.8' fill='%23fff'/%3E%3Cpath d='M13.7 19.9q2.3 2 4.6 0' fill='none' stroke='%23fff' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-<link rel="stylesheet" href="/style.css?v=8.14.0" />
+<link rel="stylesheet" href="/style.css?v=8.14.1" />
 </head>
 <body>
   <!-- ================= 스플래시 (첫 접속 1회) ================= -->
@@ -186,7 +186,7 @@
               <svg class="ic"><use href="#i-script"/></svg><span class="rail-lab">대본</span>
             </button>
             <button class="rail" id="btn-test" title="백지 테스트 · 전체 타이핑">
-              <svg class="ic"><use href="#i-check"/></svg><span class="rail-lab">테스트</span>
+              <i class="icw"><svg class="ic"><use href="#i-check"/></svg></i><span class="rail-lab">테스트</span>
             </button>
             <button class="rail" id="btn-sub" title="자막 표시">
               <svg class="ic"><use href="#i-cc"/></svg><span class="rail-lab" id="sub-lab">둘 다</span>
@@ -201,7 +201,7 @@
               <svg class="ic"><use href="#i-list"/></svg><span class="rail-lab">싱크</span>
             </button>
             <button class="rail" id="btn-shadow" title="쉐도잉 (다시 누르면 취소)">
-              <svg class="ic"><use href="#i-mic"/></svg><span class="rail-lab" id="shadow-lab">쉐도잉</span>
+              <i class="icw"><svg class="ic"><use href="#i-mic"/></svg></i><span class="rail-lab" id="shadow-lab">쉐도잉</span>
             </button>
           </div>
 
@@ -256,7 +256,7 @@
                 </button>
                 <button class="goal" id="goal-shadow" data-goal="shadow">
                   <svg class="gk" viewBox="0 0 44 44"><circle class="gk-bg" cx="22" cy="22" r="19"/><circle class="gk-fg" cx="22" cy="22" r="19"/></svg>
-                  <span class="gi"><svg class="ic"><use href="#i-mic"/></svg></span>
+                  <span class="gi"><i class="icw"><svg class="ic"><use href="#i-mic"/></svg></i></span>
                 </button>
               </div>
               <div class="goal-note" id="goal-note"></div>
@@ -496,11 +496,11 @@
                   <em>아기가 가장 먼저 배우는 단어는 엄마입니다.</em>
                 </div>
                 <div class="as-rail">
-                  <span><svg class="ic"><use href="#i-note"/></svg><em>대본</em></span>
-                  <span><svg class="ic"><use href="#i-check"/></svg><em>테스트</em></span>
-                  <span><b class="as-cc">CC</b><em>한/영 자막</em></span>
-                  <span><svg class="ic"><use href="#i-repeat"/></svg><em>반복</em></span>
-                  <span class="on"><svg class="ic"><use href="#i-mic"/></svg><em>쉐도잉</em></span>
+                  <span><i class="icw"><svg class="ic"><use href="#i-note"/></svg></i><em>대본</em></span>
+                  <span><i class="icw"><svg class="ic"><use href="#i-check"/></svg></i><em>테스트</em></span>
+                  <span><i class="icw"><b class="as-cc">CC</b></i><em>한/영 자막</em></span>
+                  <span><i class="icw"><svg class="ic"><use href="#i-repeat"/></svg></i><em>반복</em></span>
+                  <span class="on"><i class="icw"><svg class="ic"><use href="#i-mic"/></svg></i><em>쉐도잉</em></span>
                 </div>
               </div>
               <div class="as-shot">
@@ -509,7 +509,6 @@
                 <div class="as-sh-l"><span class="k1">원본</span><span class="k2">내 목소리</span></div>
               </div>
             </div>
-          </div>
           </div>
           <h2 class="ob-t">따라 말하면<br />네 가지로 알려드려요</h2>
           <p class="ob-d">영상 오른쪽 <b>쉐도잉</b> 버튼을 누르고 따라 말해보세요<br />억양·속도·발음·첫소리 강세를 견줘 채점해요</p>
@@ -824,7 +823,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=8.14.0"></script>
-<script src="/sync.js?v=8.14.0"></script>
+<script src="/app.js?v=8.14.1"></script>
+<script src="/sync.js?v=8.14.1"></script>
 </body>
 </html>
