@@ -40,9 +40,10 @@ function toast(msg, ms = 2600) {
   clearTimeout(t._h);
   t._h = setTimeout(() => (t.hidden = true), ms);
 }
-const fmt = (n) => (isFinite(n) ? Number(n).toFixed(1) : "0.0");
-const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const LC = window.LCUtil;
+const fmt = LC.fmt;
+const esc = LC.esc;
+const mmss = LC.mmss;
 const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 const MEDALS = ["bronze", "silver", "gold"];
 const LANG_LIST = [
@@ -1896,7 +1897,8 @@ function stopTake() {
 }
 
 function onTakeStop() {
-  const mime = SH.chunks[0]?.type || "audio/webm";
+  const mime = SH.chunks[0]?.type || SH.rec?.mimeType || "audio/webm";
+  SH.takeExt = mime.includes("mp4") ? ".m4a" : mime.includes("ogg") ? ".ogg" : mime.includes("wav") ? ".wav" : ".webm";
   S.takeBlob = new Blob(SH.chunks, { type: mime });
   if (S.takeUrl) URL.revokeObjectURL(S.takeUrl);
   S.takeUrl = S.takeBlob.size ? URL.createObjectURL(S.takeBlob) : null;
@@ -1913,7 +1915,7 @@ function onTakeStop() {
 async function submitScore() {
   if (SH.abort) return;
   const fd = new FormData();
-  fd.append("take", S.takeBlob, "take.webm");
+  fd.append("take", S.takeBlob, `take${SH.takeExt || ".webm"}`);
   showScoring(true, 120000);
   try {
     const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}/score`, { method: "POST", body: fd });
