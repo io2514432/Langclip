@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import json
+from collections import OrderedDict
 import math
 import secrets
 import os
@@ -243,7 +244,7 @@ def _to_mono(y) -> np.ndarray:
     return y.astype(np.float32)
 
 
-def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
+def _load_ref_slice_uncached(key: str, t0: float, t1: float) -> np.ndarray:
     """저장소(로컬/원격)에서 [t0, t1) 구간만 16kHz 모노로 디코드."""
     t0 = max(0.0, float(t0))
     t1 = max(t0 + 0.05, float(t1))
@@ -277,6 +278,29 @@ def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
     with sf.SoundFile(io.BytesIO(p.stdout)) as snd:
         y = snd.read(dtype="float32", always_2d=False)
     return _to_mono(y)
+
+
+_REF_CACHE: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
+_REF_CACHE_MAX = 32
+_REF_CACHE_LOCK = threading.Lock()
+
+
+def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
+    """같은 구간을 다시 채점할 때 디코드를 재사용한다 (LRU 32개)."""
+    t0 = round(max(0.0, float(t0)), 3)
+    t1 = round(max(t0 + 0.05, float(t1)), 3)
+    ck = (str(key), t0, t1)
+    with _REF_CACHE_LOCK:
+        hit = _REF_CACHE.get(ck)
+        if hit is not None:
+            _REF_CACHE.move_to_end(ck)
+            return hit
+    y = _load_ref_slice_uncached(key, t0, t1)
+    with _REF_CACHE_LOCK:
+        _REF_CACHE[ck] = y
+        while len(_REF_CACHE) > _REF_CACHE_MAX:
+            _REF_CACHE.popitem(last=False)
+    return y
 
 
 def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
