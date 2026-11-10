@@ -83,6 +83,14 @@ function renderSettings() {
   box.querySelectorAll("[data-set]").forEach((el) => {
     el.onclick = () => { setLearnLang(el.dataset.set); renderSettings(); renderLangChips(); };
   });
+  const tb = $("#set-tour");
+  if (tb) {
+    tb.innerHTML = `<button class="set-row" id="set-tour-btn">
+        <span class="set-n">앱 둘러보기</span><span class="set-sub">다시 보기</span>
+      </button>`;
+    const b = $("#set-tour-btn");
+    if (b) b.onclick = () => obShow();
+  }
 }
 const medalHTML = (on) => {
   const set = new Set(on || []);
@@ -205,6 +213,55 @@ async function mountPlayer(videoId) {
     });
   });
   setTimeout(sizeVideo, 200);
+}
+
+
+const OB = { i: 0, n: 5, lang: "en" };
+const OB_KEY = "lc_onboard_v1";
+
+function obRenderLangs() {
+  const box = $("#ob-langs");
+  if (!box) return;
+  box.innerHTML = LANG_LIST.map((l) => `<button class="ob-lang${l.code === OB.lang ? " on" : ""}" data-obl="${l.code}">${esc(l.name)}</button>`).join("");
+  box.querySelectorAll("[data-obl]").forEach((el) => {
+    el.onclick = () => { OB.lang = el.dataset.obl; setLearnLang(OB.lang); obRenderLangs(); obPaint(); };
+  });
+}
+
+function obPaint() {
+  $$("#ob-body .ob-step").forEach((s) => s.classList.toggle("is-on", +s.dataset.step === OB.i));
+  const box = $("#ob-dots");
+  if (box) box.innerHTML = Array.from({ length: OB.n }, (_, k) => `<i class="${k === OB.i ? "on" : ""}"></i>`).join("");
+  const cta = $("#ob-cta");
+  if (cta) cta.textContent = OB.i === OB.n - 1 ? "시작하기" : "다음";
+  const body = $("#ob-body");
+  if (body) body.scrollTop = 0;
+  const skip = $("#ob-skip");
+  if (skip) skip.hidden = OB.i === OB.n - 1;
+}
+
+function obShow() {
+  const box = $("#ob");
+  if (!box) return;
+  OB.i = 0;
+  OB.lang = learnLang();
+  box.hidden = false;
+  obRenderLangs();
+  obPaint();
+}
+
+function obClose() {
+  const box = $("#ob");
+  if (box) box.hidden = true;
+  try { localStorage.setItem(OB_KEY, "1"); } catch (e) {}
+  renderLangChips();
+  renderSettings();
+}
+
+function obNext() {
+  if (OB.i >= OB.n - 1) return obClose();
+  OB.i += 1;
+  obPaint();
 }
 
 /* ================= 홈 ================= */
@@ -2716,6 +2773,10 @@ function bind() {
 
   $("#btn-sync-start").onclick = startSyncFromAdd;
   $("#btn-save-blocks").onclick = saveBlocks;
+  const obCta = $("#ob-cta");
+  if (obCta) obCta.onclick = obNext;
+  const obSkip = $("#ob-skip");
+  if (obSkip) obSkip.onclick = obClose;
   const setTab = document.querySelector('.tab[data-tab="s-settings"]');
   if (setTab) setTab.addEventListener("click", () => setTimeout(renderSettings, 0));
   $("#sy-url").addEventListener("input", onUrlInput);
@@ -3551,4 +3612,11 @@ stopAudioBar = function () {
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
   else setTimeout(wire, 40);
+
+  try {
+    if (localStorage.getItem(OB_KEY) !== "1") {
+      const wait = document.getElementById("splash") ? 1700 : 500;
+      setTimeout(obShow, wait);
+    }
+  } catch (e) {}
 })();
