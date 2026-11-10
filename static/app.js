@@ -89,7 +89,7 @@ function renderSettings() {
         <span class="set-n">앱 둘러보기</span><span class="set-sub">다시 보기</span>
       </button></div>`;
     const b = $("#set-tour-btn");
-    if (b) b.onclick = () => obShow();
+    if (b) b.onclick = () => obShow(true);
   }
 }
 const medalHTML = (on) => {
@@ -216,7 +216,7 @@ async function mountPlayer(videoId) {
 }
 
 
-const OB = { i: 0, n: 5, lang: null };
+const OB = { i: 0, n: 5, lang: null, tour: false };
 const OB_KEY = "lc_onboard_v1";
 
 function obRenderLangs() {
@@ -239,19 +239,25 @@ function obPaint() {
   if (box) box.innerHTML = Array.from({ length: OB.n }, (_, k) => `<i class="${k === OB.i ? "on" : ""}"></i>`).join("");
   const cta = $("#ob-cta");
   const last = OB.i === OB.n - 1;
+  const pick = OB.n === 5;
   if (cta) {
-    cta.disabled = last && !OB.lang;
-    cta.textContent = !last ? "다음" : (OB.lang ? "시작하기" : "언어를 선택해 주세요");
+    cta.disabled = last && pick && !OB.lang;
+    cta.textContent = !last ? "다음"
+      : (pick ? (OB.lang ? "시작하기" : "언어를 선택해 주세요") : "시작하기");
   }
   const body = $("#ob-body");
   if (body) body.scrollTop = 0;
 }
 
-function obShow() {
+function obShow(tour) {
   const box = $("#ob");
   if (!box) return;
   OB.i = 0;
-  OB.lang = null;
+  OB.tour = !!tour;
+  OB.lang = tour ? learnLang() : null;
+  /* 설정에서 다시 볼 때 이미 언어를 골랐으면 언어 선택 단계는 건너뜀 */
+  OB.n = (tour && OB.lang) ? 4 : 5;
+  $$("#ob-body .ob-step").forEach((s) => { if (+s.dataset.step === 4) s.hidden = OB.n < 5; });
   box.hidden = false;
   obRenderLangs();
   obPaint();
@@ -267,7 +273,7 @@ function obClose() {
 
 function obNext() {
   if (OB.i >= OB.n - 1) {
-    if (!OB.lang) return;
+    if (OB.n === 5 && !OB.lang) return;
     return obClose();
   }
   OB.i += 1;
