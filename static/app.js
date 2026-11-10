@@ -76,18 +76,18 @@ function renderSettings() {
   const box = $("#set-langs");
   if (!box) return;
   const cur = learnLang();
-  box.innerHTML = LANG_LIST.map((l) => `<button class="set-row${l.code === cur ? " on" : ""}" data-set="${l.code}">
+  box.innerHTML = `<div class="set-group">` + LANG_LIST.map((l) => `<button class="set-row${l.code === cur ? " on" : ""}" data-set="${l.code}">
       <span class="set-n">${esc(l.name)}</span>
       ${l.code === cur ? '<span class="set-ck">사용 중</span>' : ""}
-    </button>`).join("");
+    </button>`).join("") + `</div>`;
   box.querySelectorAll("[data-set]").forEach((el) => {
     el.onclick = () => { setLearnLang(el.dataset.set); renderSettings(); renderLangChips(); };
   });
   const tb = $("#set-tour");
   if (tb) {
-    tb.innerHTML = `<button class="set-row" id="set-tour-btn">
+    tb.innerHTML = `<div class="set-group"><button class="set-row" id="set-tour-btn">
         <span class="set-n">앱 둘러보기</span><span class="set-sub">다시 보기</span>
-      </button>`;
+      </button></div>`;
     const b = $("#set-tour-btn");
     if (b) b.onclick = () => obShow();
   }
