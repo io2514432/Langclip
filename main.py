@@ -47,6 +47,7 @@ import script_md
 import synclib
 import verify
 from store import DATA, storage
+import logs
 
 # APP_MODE=public → 공개 서버. 쓰기(등록·삭제·싱크·음원) 라우트를 아예 등록하지 않는다.
 APP_MODE = os.getenv("APP_MODE", "admin").strip().lower()
@@ -159,8 +160,8 @@ def db() -> dict:
                 bad = DATA / f"videos.corrupt-{int(time.time())}.json"
                 bad.write_bytes(DB.read_bytes())
                 print(f"[Langclip] videos.json 파싱 실패({ex}) → {bad.name} 보존")
-            except Exception:
-                pass
+            except Exception as _e:
+                logs.log_err("srv:db", _e)
             raw = {}
     if "videos" in raw or "audios" in raw:
         raw.setdefault("videos", {})
@@ -503,8 +504,8 @@ def _prefetch_async(segs, lang: str = "en") -> None:
         return
     try:
         threading.Thread(target=prog.prefetch_words, args=(words, lang), daemon=True).start()
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:_prefetch_async", _e)
 
 # --------------------------------------------------------------- API
 LANGCLIP_BUILD = build.VERSION
@@ -515,7 +516,24 @@ def health():
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
             "script_md": True, "version": app.version, "build": LANGCLIP_BUILD,
-            "locked": bool(ADMIN_TOKEN) or PUBLIC, "mode": APP_MODE, "name": "Langclip"}
+            "locked": bool(ADMIN_TOKEN) or PUBLIC, "mode": APP_MODE, "name": "Langclip",
+            "last_errors": logs.recent()}
+
+
+@app.post("/api/client_log")
+async def client_log(request: Request):
+    """프런트 오류 수집. 실패해도 절대 500 을 내지 않는다."""
+    try:
+        p = await request.json()
+    except Exception as ex:
+        logs.log_err("api:client_log", ex, "bad json")
+        return {"ok": False}
+    if not isinstance(p, dict):
+        return {"ok": False}
+    where = str(p.get("where") or "?")[:60]
+    msg = str(p.get("msg") or "")[:400]
+    logs.log_err("web:" + where, None, msg)
+    return {"ok": True}
 
 
 # ---- 영상
@@ -645,8 +663,8 @@ def del_video(vid: str, request: Request):
             if a:
                 try:
                     storage.delete(a.get("key", ""))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logs.log_err("srv:del_video", _e)
                 audio_removed = aid
     save_db(d)
     purged = prog.purge_video(vid)
@@ -1048,8 +1066,8 @@ def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
 
     try:
         prog.record_attempt(vid, idx, res["total"], res["mode"])
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:score_segment", _e)
     res["memorized"] = prog.memorized(vid, len(v["segs"]))
     return {"vid": vid, "idx": idx, "text": seg.get("en") or seg.get("text", ""),
             "ko": seg.get("ko", ""), **res}
@@ -1158,8 +1176,8 @@ def yt_meta(url: str = ""):
             j = json.loads(r.read().decode("utf-8"))
         data.update({"ok": bool(j.get("title")), "title": j.get("title", "")[:120],
                      "author": j.get("author_name", "")[:80]})
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:yt_meta", _e)
     _YT_META[yt] = {"at": time.time(), "data": data}
     if len(_YT_META) > 500:
         for k in list(_YT_META)[:100]:

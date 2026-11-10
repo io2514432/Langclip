@@ -28,6 +28,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import logs
 
 DATA = Path(os.getenv("LANGCLIP_DATA") or (Path(__file__).resolve().parent / "data"))
 USERS = DATA / "users"
@@ -586,8 +587,8 @@ def _ko_load() -> None:
         return
     try:
         _KO.update(json.loads(KO_PATH.read_text(encoding="utf-8")))
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:_ko_load", _e)
 
 
 def _ko_store() -> None:
@@ -595,8 +596,8 @@ def _ko_store() -> None:
         KO_PATH.parent.mkdir(parents=True, exist_ok=True)
         keep = dict(list(_KO.items())[-4000:])
         KO_PATH.write_text(json.dumps(keep, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:_ko_store", _e)
 
 
 def _http_json(url: str, timeout: float = 4.0):
@@ -619,16 +620,16 @@ def _translate(text: str, maxlen: int = 80, sl: str = "en", tl: str = "ko") -> s
         out = "".join(x[0] for x in d[0] if x and x[0]).strip()
         if out and out.lower() != t.lower():
             return out
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:_translate", _e)
     try:
         d = _http_json("https://api.mymemory.translated.net/get?q=" + q + "&langpair=" + sl + "|" + tl)
         out = ((d or {}).get("responseData") or {}).get("translatedText") or ""
         out = out.strip()
         if out and out.lower() != t.lower() and "MYMEMORY" not in out.upper():
             return out
-    except Exception:
-        pass
+    except Exception as _e:
+        logs.log_err("srv:_translate", _e)
     return ""
 
 
@@ -682,8 +683,8 @@ def purge_video(vid: str) -> dict:
                     stat["attempts"] += max(0, int(c.execute(
                         "DELETE FROM attempts WHERE vid = ?", (vid,)).rowcount))
                     c.commit()
-            except Exception:
-                pass
+            except Exception as _e:
+                logs.log_err("srv:purge_video", _e)
         f = d / "notes.json"
         if f.exists():
             n = _load(f, {})
