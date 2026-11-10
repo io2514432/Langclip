@@ -90,6 +90,7 @@ const medalHTML = (on) => {
 };
 
 function show(id) {
+  document.body.classList.toggle("tab-home", id === "s-home");
   if (id !== "s-verify") document.body.classList.remove("vf-focus");
   document.body.classList.toggle("res-focus", id === "s-result");
   document.body.classList.toggle("study-focus", id === "s-study" || id === "s-deck");
@@ -245,26 +246,30 @@ function renderHome() {
   
   
 
+  const CK = '<svg class="wd-ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.6 10 17.4 19 6.8"/></svg>';
   $("#week").innerHTML = (st.week || []).map((d) => `
-    <div class="wday ${d.done ? "done" : ""} ${d.is_today ? "today" : ""} ${d.is_future ? "future" : ""}">
+    <div class="wday${d.done ? " done" : ""}${d.is_today && !d.done ? " today-open" : ""}${d.is_future ? " future" : ""}">
       <span class="wd-lab">${esc(d.label)}</span>
-      <span class="wd-dot">${d.done ? "•" : ""}</span>
+      <span class="wd-dot">${d.done ? CK : ""}</span>
     </div>`).join("");
 
+  const ft = $("#focus-title"), fm = $("#focus-meta");
   if (f) {
-    $("#focus-t").textContent = "오늘의 쇼츠";
-    $("#focus-s").textContent = `「${f.title}」 · 문장 ${f.segs}개`;
+    if (ft) ft.textContent = f.title || "오늘의 쇼츠";
+    if (fm) fm.textContent = `문장 ${f.segs}개`;
     const done = !!f.complete;
     $("#btn-start").disabled = false;
     $("#btn-start").textContent = done ? "다시 연습하기" : "학습 시작하기";
     const fi = $("#focus-img");
     if (fi) fi.src = `https://i.ytimg.com/vi/${esc(f.yt)}/hqdefault.jpg`;
+    const fc = $("#focus-card"); if (fc) fc.classList.remove("empty");
   } else {
-    $("#focus-t").textContent = "오늘의 쇼츠";
-    $("#focus-s").textContent = "등록된 영상이 없습니다";
+    if (ft) ft.textContent = "아직 등록된 영상이 없습니다";
+    if (fm) fm.textContent = "추가 탭에서 쇼츠를 등록해주세요";
     $("#btn-start").disabled = true;
     $("#btn-start").textContent = "시작하기";
     const fi0 = $("#focus-img"); if (fi0) fi0.removeAttribute("src");
+    const fc0 = $("#focus-card"); if (fc0) fc0.classList.add("empty");
   }
 
   const ns = S.notes.sentences || [];
@@ -2618,42 +2623,17 @@ async function reloadNotes() {
 /* ================= 추가(+) · 제목 자동 ================= */
 let titleTimer = 0;
 let titleAuto = "";
-function addLangBlock(code, text) {
-  const box = $("#sy-blocks");
-  if (!box) return;
-  const d = document.createElement("div");
-  const pref = code || learnLang();
-  const same = [...box.querySelectorAll(".lg-block")].map((b) => b.dataset.lang);
-  const pick = same.includes(pref) ? ((LANG_LIST.find((l) => !same.includes(l.code)) || { code: "en" }).code) : pref;
-  d.className = "lg-block";
-  d.dataset.lang = pick;
-  d.innerHTML = `<div class="lg-head">
-      <select class="lg-sel">${LANG_LIST.map((l) => `<option value="${l.code}"${l.code === pick ? " selected" : ""}>${esc(l.name)}</option>`).join("")}</select>
-      <button class="lg-del" type="button" aria-label="지우기">✕</button>
-    </div>
-    <textarea class="lg-ta" spellcheck="false" placeholder="Hola, ¿qué tal?&#10;한국어 줄과 같은 순서로 한 줄에 한 문장씩"></textarea>`;
-  box.appendChild(d);
-  if (text) d.querySelector(".lg-ta").value = text;
-  d.querySelector(".lg-sel").onchange = (e) => { d.dataset.lang = e.target.value; syncLearnOptions(); };
-  d.querySelector(".lg-del").onclick = () => { d.remove(); syncLearnOptions(); };
-  syncLearnOptions();
-}
-
-function syncLearnOptions() {
-  const sel = $("#sy-learn");
+function fillLangSelect() {
+  const sel = $("#sy-lang");
   if (!sel) return;
   const keep = sel.value;
-  const codes = [...$$("#sy-blocks .lg-block")].map((b) => b.dataset.lang);
-  sel.innerHTML = codes.map((c) => `<option value="${c}">${esc(LANG_NAME(c))}</option>`).join("");
-  if (codes.includes(keep)) sel.value = keep;
-  const w = $("#sy-learn-wrap");
-  if (w) w.hidden = codes.length < 2;
+  sel.innerHTML = LANG_LIST.map((l) => `<option value="${l.code}">${esc(l.name)}</option>`).join("");
+  sel.value = keep || learnLang();
 }
 
 function openAdd() {
   if (!S.admin) return toast("이 영상은 관리자가 등록합니다", 3000);
-  const box = $("#sy-blocks");
-  if (box && !box.children.length) addLangBlock(learnLang());
+  fillLangSelect();
   $("#sheet-add").hidden = false;
   if (!$("#sy-url").value.trim()) setTimeout(() => $("#sy-url").focus(), 80);
 }
@@ -2662,14 +2642,13 @@ async function saveBlocks() {
   const url = $("#sy-url").value.trim();
   const title = $("#sy-title").value.trim();
   const native = $("#sy-ko").value;
-  const blocks = [...$$("#sy-blocks .lg-block")]
-    .map((b) => ({ lang: b.dataset.lang, text: b.querySelector(".lg-ta").value.trim() }))
-    .filter((b) => b.text);
+  const sel = $("#sy-lang");
+  const lang = (sel && sel.value) || learnLang();
+  const text = ($("#sy-text") && $("#sy-text").value) || "";
+  const blocks = text.trim() ? [{ lang, text: text.trim() }] : [];
   if (!url) return toast("쇼츠 주소를 입력해주세요");
   if (!native.trim()) return toast("한국어 스크립트를 입력해주세요");
   if (!blocks.length) return toast("학습 언어 스크립트를 입력해주세요");
-  const sel = $("#sy-learn");
-  const lang = (sel && sel.value) || blocks[0].lang;
   const btn = $("#btn-save-blocks");
   if (btn) btn.disabled = true;
   try {
@@ -2677,7 +2656,7 @@ async function saveBlocks() {
     (r.warnings || []).slice(0, 2).forEach((w) => toast(w, 3200));
     $("#sheet-add").hidden = true;
     $("#sy-ko").value = "";
-    if ($("#sy-blocks")) $("#sy-blocks").innerHTML = "";
+    if ($("#sy-text")) $("#sy-text").value = "";
     if ($("#sy-url")) $("#sy-url").value = "";
     if ($("#sy-title")) $("#sy-title").value = "";
     await loadVideos();
@@ -2720,7 +2699,7 @@ function onUrlInput() {
 async function startSyncFromAdd() {
   const url = $("#sy-url").value.trim();
   const title = $("#sy-title").value.trim();
-  const first = $("#sy-blocks .lg-block .lg-ta");
+  const first = $("#sy-text");
   const text = first ? first.value : "";
   if (!url) return toast("쇼츠 주소를 입력해주세요");
   if (!text.trim()) return toast("학습 언어 스크립트를 입력해주세요");
@@ -2737,8 +2716,6 @@ function bind() {
 
   $("#btn-sync-start").onclick = startSyncFromAdd;
   $("#btn-save-blocks").onclick = saveBlocks;
-  const addL = $("#sy-add-lang");
-  if (addL) addL.onclick = () => addLangBlock();
   const setTab = document.querySelector('.tab[data-tab="s-settings"]');
   if (setTab) setTab.addEventListener("click", () => setTimeout(renderSettings, 0));
   $("#sy-url").addEventListener("input", onUrlInput);
@@ -3449,11 +3426,9 @@ function setStreak(days) {
   if (num) num.textContent = n + "일";
   if (badge) badge.classList.toggle("on", n > 0);
   const b = $("#streak-days");
-  if (b) b.textContent = "연속 학습 " + n + "일";
-  const sub = $("#streak-sub");
-  if (sub) {
-    if (n > 0) { sub.hidden = false; sub.textContent = n + "일째 연속 학습 중"; }
-    else { sub.hidden = true; sub.textContent = ""; }
+  if (b) {
+    b.textContent = n > 0 ? n + "일째 연속 학습 중" : "오늘의 추천 영상을 확인해보세요!";
+    b.classList.toggle("is-zero", n === 0);
   }
 }
 

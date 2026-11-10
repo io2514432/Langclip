@@ -115,7 +115,40 @@ def _day_of(ts: str) -> str:
 # ---------------------------------------------------------------- 검증 기록
 def _verifies() -> dict:
     d = _load(_p("verify.json"), {})
-    return d if isinstance(d, dict) else {}
+    if not isinstance(d, dict):
+        return {}
+    for rec in d.values():
+        if isinstance(rec, dict) and rec.get("stages"):
+            rec["stages"] = _norm_stages(rec["stages"])
+    return d
+
+
+_STAGE_ALIAS = {"inter": "intermediate", "intermediate": "intermediate",
+                "recall": "advanced", "advanced": "advanced", "beginner": "beginner"}
+
+
+def _norm_stages(st: dict) -> dict:
+    """예전 키(inter/recall)를 지금 키(intermediate/advanced)로 옮긴다."""
+    out: dict = {}
+    for k, v in (st or {}).items():
+        if not isinstance(v, dict):
+            continue
+        nk = _STAGE_ALIAS.get(k, k)
+        cur = out.get(nk)
+        if cur is None:
+            nv = dict(v)
+            nv["passed"] = bool(v.get("passed"))
+            out[nk] = nv
+            continue
+        cur["passed"] = bool(cur.get("passed")) or bool(v.get("passed"))
+        try:
+            if float(v.get("score") or 0) > float(cur.get("score") or 0):
+                keep_pass = cur["passed"]
+                cur.update(v)
+                cur["passed"] = keep_pass
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 def record_verify(vid: str, result: dict) -> dict:
