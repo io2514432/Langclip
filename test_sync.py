@@ -16,6 +16,8 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 os.environ.setdefault("ECHO_STORAGE", "local")
+# 테스트는 실제 학습 데이터를 건드리지 않는다
+os.environ["LANGCLIP_DATA"] = tempfile.mkdtemp(prefix="langclip-test-")
 
 import synclib
 import script_md

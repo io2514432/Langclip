@@ -29,7 +29,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-DATA = Path(__file__).resolve().parent / "data"
+DATA = Path(os.getenv("LANGCLIP_DATA") or (Path(__file__).resolve().parent / "data"))
 USERS = DATA / "users"
 
 MAX_ATTEMPTS = 8000

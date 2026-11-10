@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-DATA = BASE / "data"
+DATA = Path(os.getenv("LANGCLIP_DATA") or (BASE / "data"))
 MEDIA = DATA / "media"
 
 CHUNK = 512 * 1024          # 원격 Range 캐시 단위(바이트)
