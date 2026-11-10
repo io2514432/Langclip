@@ -7,7 +7,7 @@
 <title>Langclip — 문장별 셰도잉</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237BD8FF'/%3E%3Cstop offset='1' stop-color='%230EA5E9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M16 5.6c7.4 0 13.3 4.6 13.3 10.4S23.4 26.4 16 26.4c-1.3 0-2.6-.14-3.8-.41l-5.2 2.3 1.2-5c-2.8-1.9-4.6-4.6-4.6-7.7C3.6 9.9 8.6 5.6 16 5.6z' fill='url(%23g)'/%3E%3Ccircle cx='12.2' cy='16.2' r='1.8' fill='%23fff'/%3E%3Ccircle cx='19.8' cy='16.2' r='1.8' fill='%23fff'/%3E%3Cpath d='M13.7 19.9q2.3 2 4.6 0' fill='none' stroke='%23fff' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-<link rel="stylesheet" href="/style.css?v=8.12.0" />
+<link rel="stylesheet" href="/style.css?v=8.13.0" />
 </head>
 <body>
   <!-- ================= 스플래시 (첫 접속 1회) ================= -->
@@ -469,7 +469,6 @@
     <div class="ob-in">
       <div class="ob-top">
         <span class="ob-brand">Langclip</span>
-        <button class="ob-skip" id="ob-skip">건너뛰기</button>
       </div>
       <div class="ob-body" id="ob-body">
         <section class="ob-step is-on" data-step="0">
@@ -477,39 +476,46 @@
             <div class="ap-card">
               <div class="ap-vid">
                 <span class="ap-line w1"></span>
-                <span class="ap-line w2 is-on"></span>
+                <span class="ap-line w2"></span>
                 <span class="ap-line w3"></span>
               </div>
               <div class="ap-ko">그는 오리들 사이에서 자랐어요</div>
             </div>
           </div>
-          <h2 class="ob-t">영어 쇼츠로,<br />문장 하나씩</h2>
+          <h2 class="ob-t">외국어 쇼츠로,<br />문장 하나씩</h2>
           <p class="ob-d">짧은 쇼츠 한 편을 문장 단위로 끊어<br />듣고, 따라 말하고, 확인해요</p>
         </section>
 
         <section class="ob-step" data-step="1">
-          <div class="ob-art art-lang">
-            <div class="ob-langs" id="ob-langs"></div>
+          <div class="ob-art art-shadow">
+            <div class="as-phone">
+              <div class="as-fr">
+                <div class="as-top"><span>Mother, you are love</span><b>1/7</b></div>
+                <div class="as-sub">
+                  <span>The first word that a baby learns is mother.</span>
+                  <em>아기가 가장 먼저 배우는 단어는 엄마입니다.</em>
+                </div>
+                <div class="as-rail">
+                  <span><svg class="ic"><use href="#i-note"/></svg><em>대본</em></span>
+                  <span><svg class="ic"><use href="#i-check"/></svg><em>테스트</em></span>
+                  <span><svg class="ic"><use href="#i-quote"/></svg><em>자막</em></span>
+                  <span><svg class="ic"><use href="#i-wave"/></svg><em>반복</em></span>
+                  <span class="on"><svg class="ic"><use href="#i-mic"/></svg><em>쉐도잉</em></span>
+                </div>
+              </div>
+              <div class="as-shot"><span class="as-sh-t">원본 음성 · 내 목소리</span><div class="as-sh-w"><i style="height:38%"></i><i style="height:62%" class="p"></i><i style="height:84%"></i><i style="height:50%" class="p"></i><i style="height:92%"></i><i style="height:72%" class="p"></i><i style="height:44%"></i><i style="height:66%" class="p"></i><i style="height:30%"></i><i style="height:78%" class="p"></i><i style="height:54%"></i><i style="height:40%" class="p"></i></div><div class="as-sh-l"><span>원본</span><span>내 목소리</span></div></div>
+              <span class="as-tap"></span>
+            </div>
           </div>
-          <h2 class="ob-t">어떤 언어를<br />배울까요?</h2>
-          <p class="ob-d">고른 언어의 영상만 학습 탭에 모아 보여드려요<br />설정에서 언제든 바꿀 수 있어요</p>
+          <h2 class="ob-t">따라 말하면<br />네 가지로 알려드려요</h2>
+          <p class="ob-d">영상 오른쪽 <b>쉐도잉</b> 버튼을 누르고 따라 말해보세요<br />억양·속도·발음·첫소리 강세를 견줘 채점해요</p>
         </section>
 
         <section class="ob-step" data-step="2">
-          <div class="ob-art art-shadow">
-            <div class="as-wave"><i style="height:9px"></i><i style="height:17px"></i><i style="height:26px"></i><i style="height:14px"></i><i style="height:31px"></i><i style="height:22px"></i><i style="height:11px"></i><i style="height:19px"></i><i style="height:7px"></i></div>
-            <div class="as-mic"><svg class="ic"><use href="#i-mic"/></svg></div>
-            <div class="as-row"><span>억양</span><span>속도</span><span>발음</span><span>강세</span></div>
-          </div>
-          <h2 class="ob-t">따라 말하면<br />네 가지로 알려드려요</h2>
-          <p class="ob-d">억양·속도·발음·첫소리 강세를<br />원본 음성과 견줘 채점해요</p>
-        </section>
-
-        <section class="ob-step" data-step="3">
           <div class="ob-art art-test">
             <div class="at-rows">
-              <div class="at-row"><b>초급</b><em>어절 블록</em><span class="at-med b on"></span></div>
-              <div class="at-row"><b>중급</b><em>빈칸 채우기</em><span class="at-med s on"></span></div>
+              <div class="at-row"><b>초급</b><em>어절 블록</em><span class="at-med b"></span></div>
+              <div class="at-row"><b>중급</b><em>빈칸 채우기</em><span class="at-med s"></span></div>
               <div class="at-row"><b>고급</b><em>백지 영작</em><span class="at-med g"></span></div>
             </div>
           </div>
@@ -517,7 +523,7 @@
           <p class="ob-d">80점을 넘기면 그 난이도의<br />메달을 받아요</p>
         </section>
 
-        <section class="ob-step" data-step="4">
+        <section class="ob-step" data-step="3">
           <div class="ob-art art-note">
             <div class="an-card">
               <span class="an-tag">문장</span>
@@ -532,6 +538,12 @@
           </div>
           <h2 class="ob-t">어려운 문장은<br />모아서 복습해요</h2>
           <p class="ob-d">북마크한 문장과 단어를<br />잊을 때쯤 다시 꺼내드려요</p>
+        </section>
+
+        <section class="ob-step is-pick" data-step="4">
+          <h2 class="ob-t">어떤 언어를<br />배울까요?</h2>
+          <p class="ob-d">고른 언어의 영상만 학습 탭에 모아 보여드려요<br />설정에서 언제든 바꿀 수 있어요</p>
+          <div class="ob-langs" id="ob-langs"></div>
         </section>
       </div>
       <div class="ob-foot">
@@ -808,7 +820,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=8.12.0"></script>
+<script src="/app.js?v=8.13.0"></script>
 <script src="/sync.js?v=8.9.0"></script>
 </body>
 </html>

@@ -216,7 +216,7 @@ async function mountPlayer(videoId) {
 }
 
 
-const OB = { i: 0, n: 5, lang: "en" };
+const OB = { i: 0, n: 5, lang: null };
 const OB_KEY = "lc_onboard_v1";
 
 function obRenderLangs() {
@@ -224,7 +224,12 @@ function obRenderLangs() {
   if (!box) return;
   box.innerHTML = LANG_LIST.map((l) => `<button class="ob-lang${l.code === OB.lang ? " on" : ""}" data-obl="${l.code}">${esc(l.name)}</button>`).join("");
   box.querySelectorAll("[data-obl]").forEach((el) => {
-    el.onclick = () => { OB.lang = el.dataset.obl; setLearnLang(OB.lang); obRenderLangs(); obPaint(); };
+    el.onclick = () => {
+      OB.lang = el.dataset.obl;
+      setLearnLang(OB.lang);
+      obRenderLangs();
+      obPaint();
+    };
   });
 }
 
@@ -233,18 +238,20 @@ function obPaint() {
   const box = $("#ob-dots");
   if (box) box.innerHTML = Array.from({ length: OB.n }, (_, k) => `<i class="${k === OB.i ? "on" : ""}"></i>`).join("");
   const cta = $("#ob-cta");
-  if (cta) cta.textContent = OB.i === OB.n - 1 ? "시작하기" : "다음";
+  const last = OB.i === OB.n - 1;
+  if (cta) {
+    cta.disabled = last && !OB.lang;
+    cta.textContent = !last ? "다음" : (OB.lang ? "시작하기" : "언어를 선택해 주세요");
+  }
   const body = $("#ob-body");
   if (body) body.scrollTop = 0;
-  const skip = $("#ob-skip");
-  if (skip) skip.hidden = OB.i === OB.n - 1;
 }
 
 function obShow() {
   const box = $("#ob");
   if (!box) return;
   OB.i = 0;
-  OB.lang = learnLang();
+  OB.lang = null;
   box.hidden = false;
   obRenderLangs();
   obPaint();
@@ -259,7 +266,10 @@ function obClose() {
 }
 
 function obNext() {
-  if (OB.i >= OB.n - 1) return obClose();
+  if (OB.i >= OB.n - 1) {
+    if (!OB.lang) return;
+    return obClose();
+  }
   OB.i += 1;
   obPaint();
 }
@@ -2775,8 +2785,6 @@ function bind() {
   $("#btn-save-blocks").onclick = saveBlocks;
   const obCta = $("#ob-cta");
   if (obCta) obCta.onclick = obNext;
-  const obSkip = $("#ob-skip");
-  if (obSkip) obSkip.onclick = obClose;
   const setTab = document.querySelector('.tab[data-tab="s-settings"]');
   if (setTab) setTab.addEventListener("click", () => setTimeout(renderSettings, 0));
   $("#sy-url").addEventListener("input", onUrlInput);
