@@ -14,6 +14,8 @@
 """
 from __future__ import annotations
 
+import langs
+
 import contextvars
 import json
 import os
@@ -364,7 +366,7 @@ def word_note(word: str) -> dict | None:
 _CACHE_TTL = 60 * 60 * 24 * 30
 
 
-def _dict_lookup(word: str) -> dict | None:
+def _dict_lookup(word: str, lang: str = "en"):
     """dictionaryapi.dev (영영 정의). 실패하면 None — 뜻을 지어내지 않는다."""
     cache = _load(DATA / "wordcache.json", {})
     c = cache.get(word.lower())
@@ -398,14 +400,37 @@ def _dict_lookup(word: str) -> dict | None:
     return data
 
 
-def lookup(word: str) -> dict:
+
+def _wiktionary(word: str, lang: str) -> dict | None:
+    """영어 외 언어: 해당 언어 위키낱말사전 정의. 실패하면 None."""
+    try:
+        code = langs.ok(lang)
+        url = ("https://" + code + ".wiktionary.org/api/rest_v1/page/definition/"
+               + urllib.parse.quote(word.replace(" ", "_")))
+        raw = _http_json(url, timeout=4.0) or {}
+        blocks = raw.get(code) or []
+        defs = []
+        for b in blocks[:2]:
+            for d in (b.get("definitions") or [])[:3]:
+                txt = re.sub(r"<[^>]+>", "", d.get("definition") or "").strip()
+                if txt:
+                    defs.append({"pos": b.get("partOfSpeech", ""), "def": txt})
+        if not defs:
+            return None
+        return {"found": True, "phonetic": "", "definitions": defs[:3]}
+    except Exception:
+        return None
+
+def lookup(word: str, lang: str = "en") -> dict:
     mine = word_note(word)
-    d = _dict_lookup(word)
+    lang = langs.ok(lang)
+    d = _dict_lookup(word, lang) if lang == "en" else (_wiktionary(word, lang)
+                                                      or _dict_lookup(word, lang))
     defs = (d or {}).get("definitions", [])
-    ko, ko_src = _ko_of(word)
+    ko, ko_src = _ko_of(word, lang)
     ko_defs = []
     for item in defs[:2]:
-        t = _translate(item.get("def", ""), maxlen=120)
+        t = _translate(item.get("def", ""), maxlen=120, sl=lang)
         if t:
             ko_defs.append({"pos": item.get("pos", ""), "ko": t, "en": item.get("def", "")})
     return {"word": word, "saved": mine,
@@ -413,7 +438,8 @@ def lookup(word: str) -> dict:
             "definitions": defs,
             "ko": ko, "ko_defs": ko_defs, "ko_source": ko_src,
             "online": bool(d and d.get("found")),
-            "source": "dictionaryapi.dev" if (d and d.get("found")) else None}
+            "source": ("dictionaryapi.dev" if lang == "en" else lang + ".wiktionary.org")
+                      if (d and d.get("found")) else None}
 
 
 # ---------------------------------------------------------------- 한글 뜻
@@ -446,7 +472,7 @@ def _http_json(url: str, timeout: float = 4.0):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
-def _translate(text: str, maxlen: int = 80) -> str:
+def _translate(text: str, maxlen: int = 80, sl: str = "en", tl: str = "ko") -> str:
     """영어 -> 한국어 (구글 무료 엔드포인트 우선, 실패 시 MyMemory)."""
     t = (text or "").strip()
     if not t:
@@ -455,14 +481,14 @@ def _translate(text: str, maxlen: int = 80) -> str:
     q = urllib.parse.quote(t, safe="")
     try:
         d = _http_json("https://translate.googleapis.com/translate_a/single"
-                       "?client=gtx&sl=en&tl=ko&dt=t&q=" + q)
+                       "?client=gtx&sl=" + sl + "&tl=" + tl + "&dt=t&q=" + q)
         out = "".join(x[0] for x in d[0] if x and x[0]).strip()
         if out and out.lower() != t.lower():
             return out
     except Exception:
         pass
     try:
-        d = _http_json("https://api.mymemory.translated.net/get?q=" + q + "&langpair=en|ko")
+        d = _http_json("https://api.mymemory.translated.net/get?q=" + q + "&langpair=" + sl + "|" + tl)
         out = ((d or {}).get("responseData") or {}).get("translatedText") or ""
         out = out.strip()
         if out and out.lower() != t.lower() and "MYMEMORY" not in out.upper():
@@ -472,7 +498,7 @@ def _translate(text: str, maxlen: int = 80) -> str:
     return ""
 
 
-def _ko_cached(word: str) -> str:
+def _ko_cached(word: str, lang: str = "en") -> str:
     """이미 번역해 둔 한글 뜻만 꺼낸다(네트워크 없음)."""
     w = (word or "").strip().lower()
     if not w:
@@ -484,7 +510,7 @@ def _ko_cached(word: str) -> str:
         return ""
 
 
-def _ko_of(word: str) -> tuple[str, str | None]:
+def _ko_of(word: str, lang: str = "en") -> tuple[str, str | None]:
     """단어의 한글 뜻. 캐시 우선, 없으면 번역 후 저장."""
     w = (word or "").strip().lower()
     if not w:
@@ -719,7 +745,7 @@ def review_grade(cid: str, grade: int) -> dict:
     return {"id": cid, "due": due, "step": st["step"], "days": days, "minutes": mins}
 
 
-def prefetch_words(words) -> int:
+def prefetch_words(words, lang: str = "en") -> int:
     """등록 시점에 단어 뜻을 미리 받아 캐시에 채운다(사전 오프라인 대비)."""
     seen, hit = set(), 0
     for w in (words or []):

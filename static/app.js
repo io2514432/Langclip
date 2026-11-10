@@ -9,6 +9,7 @@ const $ = (s) => document.querySelector(s) || __D;
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const S = {
+  langFilter: "all",
   videos: [], cur: null, idx: 0,
   player: null, ready: false,
   sub: "both", repeat: false,
@@ -44,6 +45,45 @@ const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 const MEDALS = ["bronze", "silver", "gold"];
+const LANG_LIST = [
+  { code: "en", name: "English" }, { code: "es", name: "Español" },
+  { code: "fr", name: "Français" }, { code: "de", name: "Deutsch" },
+  { code: "it", name: "Italiano" }, { code: "pt", name: "Português" },
+  { code: "ja", name: "日本語" }, { code: "zh", name: "中文" },
+];
+const LANG_NAME = (c) => (LANG_LIST.find((l) => l.code === c) || {}).name || "English";
+const LANG_TTS = { en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE",
+  it: "it-IT", pt: "pt-BR", ja: "ja-JP", zh: "zh-CN" };
+const learnLang = () => { try { return localStorage.getItem("lc_lang") || "en"; } catch (e) { return "en"; } };
+const setLearnLang = (c) => { try { localStorage.setItem("lc_lang", c); } catch (e) {} };
+
+function renderLangChips() {
+  const box = $("#lang-chips");
+  if (!box) return;
+  const have = [...new Set((S.videos || []).map((v) => v.lang || "en"))];
+  if (have.length < 2) { box.innerHTML = ""; box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = [{ code: "all", name: "전체" }]
+    .concat(have.map((c) => ({ code: c, name: LANG_NAME(c) })))
+    .map((c) => `<button class="chip${S.langFilter === c.code ? " on" : ""}" data-langf="${c.code}">${esc(c.name)}</button>`)
+    .join("");
+  box.querySelectorAll("[data-langf]").forEach((el) => {
+    el.onclick = () => { S.langFilter = el.dataset.langf; renderVideos(); };
+  });
+}
+
+function renderSettings() {
+  const box = $("#set-langs");
+  if (!box) return;
+  const cur = learnLang();
+  box.innerHTML = LANG_LIST.map((l) => `<button class="set-row${l.code === cur ? " on" : ""}" data-set="${l.code}">
+      <span class="set-n">${esc(l.name)}</span>
+      ${l.code === cur ? '<span class="set-ck">사용 중</span>' : ""}
+    </button>`).join("");
+  box.querySelectorAll("[data-set]").forEach((el) => {
+    el.onclick = () => { setLearnLang(el.dataset.set); renderSettings(); renderLangChips(); };
+  });
+}
 const medalHTML = (on) => {
   const set = new Set(on || []);
   return `<span class="m-med">${MEDALS.map((k) => `<svg class="med ${k}${set.has(k) ? " on" : ""}"><use href="#i-medal"/></svg>`).join("")}</span>`;
@@ -499,7 +539,8 @@ function akSpeak(c) {
     if (!u) return;
     u.cancel();
     const sp = new SpeechSynthesisUtterance(text);
-    sp.lang = "en-US"; sp.rate = 0.92; sp.pitch = 1;
+    sp.lang = LANG_TTS[(S.cur && S.cur.lang) || "en"] || "en-US";
+    sp.rate = 0.92; sp.pitch = 1;
     u.speak(sp);
   } catch (e) {}
 }
@@ -589,8 +630,15 @@ function renderVideos() {
     box.innerHTML = `<div class="note-empty"><b>아직 영상이 없습니다</b><br />아래 <b>추가</b>에서 쇼츠 주소와 대본을 넣어주세요.</div>`;
     return;
   }
+  renderLangChips();
+  const list = (S.videos || []).filter((v) => S.langFilter === "all" || (v.lang || "en") === S.langFilter);
+  setCount("v-count", list.length);
+  if (!list.length) {
+    box.innerHTML = `<div class="note-empty"><b>${esc(LANG_NAME(S.langFilter))} 영상이 없습니다</b><br />다른 언어를 고르거나 위 칩에서 <b>전체</b>를 눌러보세요.</div>`;
+    return;
+  }
   box.innerHTML = "";
-  S.videos.forEach((v) => {
+  list.forEach((v) => {
     const el = document.createElement("div");
     el.className = "vrow-wrap";
     el.innerHTML = `
@@ -2570,10 +2618,75 @@ async function reloadNotes() {
 /* ================= 추가(+) · 제목 자동 ================= */
 let titleTimer = 0;
 let titleAuto = "";
+function addLangBlock(code, text) {
+  const box = $("#sy-blocks");
+  if (!box) return;
+  const d = document.createElement("div");
+  const pref = code || learnLang();
+  const same = [...box.querySelectorAll(".lg-block")].map((b) => b.dataset.lang);
+  const pick = same.includes(pref) ? ((LANG_LIST.find((l) => !same.includes(l.code)) || { code: "en" }).code) : pref;
+  d.className = "lg-block";
+  d.dataset.lang = pick;
+  d.innerHTML = `<div class="lg-head">
+      <select class="lg-sel">${LANG_LIST.map((l) => `<option value="${l.code}"${l.code === pick ? " selected" : ""}>${esc(l.name)}</option>`).join("")}</select>
+      <button class="lg-del" type="button" aria-label="지우기">✕</button>
+    </div>
+    <textarea class="lg-ta" spellcheck="false" placeholder="Hola, ¿qué tal?&#10;한국어 줄과 같은 순서로 한 줄에 한 문장씩"></textarea>`;
+  box.appendChild(d);
+  if (text) d.querySelector(".lg-ta").value = text;
+  d.querySelector(".lg-sel").onchange = (e) => { d.dataset.lang = e.target.value; syncLearnOptions(); };
+  d.querySelector(".lg-del").onclick = () => { d.remove(); syncLearnOptions(); };
+  syncLearnOptions();
+}
+
+function syncLearnOptions() {
+  const sel = $("#sy-learn");
+  if (!sel) return;
+  const keep = sel.value;
+  const codes = [...$$("#sy-blocks .lg-block")].map((b) => b.dataset.lang);
+  sel.innerHTML = codes.map((c) => `<option value="${c}">${esc(LANG_NAME(c))}</option>`).join("");
+  if (codes.includes(keep)) sel.value = keep;
+  const w = $("#sy-learn-wrap");
+  if (w) w.hidden = codes.length < 2;
+}
+
 function openAdd() {
   if (!S.admin) return toast("이 영상은 관리자가 등록합니다", 3000);
+  const box = $("#sy-blocks");
+  if (box && !box.children.length) addLangBlock(learnLang());
   $("#sheet-add").hidden = false;
   if (!$("#sy-url").value.trim()) setTimeout(() => $("#sy-url").focus(), 80);
+}
+
+async function saveBlocks() {
+  const url = $("#sy-url").value.trim();
+  const title = $("#sy-title").value.trim();
+  const native = $("#sy-ko").value;
+  const blocks = [...$$("#sy-blocks .lg-block")]
+    .map((b) => ({ lang: b.dataset.lang, text: b.querySelector(".lg-ta").value.trim() }))
+    .filter((b) => b.text);
+  if (!url) return toast("쇼츠 주소를 입력해주세요");
+  if (!native.trim()) return toast("한국어 스크립트를 입력해주세요");
+  if (!blocks.length) return toast("학습 언어 스크립트를 입력해주세요");
+  const sel = $("#sy-learn");
+  const lang = (sel && sel.value) || blocks[0].lang;
+  const btn = $("#btn-save-blocks");
+  if (btn) btn.disabled = true;
+  try {
+    const r = await jsonPost("/api/videos", { url, title, native, blocks, lang });
+    (r.warnings || []).slice(0, 2).forEach((w) => toast(w, 3200));
+    $("#sheet-add").hidden = true;
+    $("#sy-ko").value = "";
+    if ($("#sy-blocks")) $("#sy-blocks").innerHTML = "";
+    if ($("#sy-url")) $("#sy-url").value = "";
+    if ($("#sy-title")) $("#sy-title").value = "";
+    await loadVideos();
+    toast("영상을 추가했습니다", 1800);
+  } catch (e) {
+    toast("추가하지 못했습니다: " + e.message, 4000);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function fetchTitle() {
@@ -2607,9 +2720,10 @@ function onUrlInput() {
 async function startSyncFromAdd() {
   const url = $("#sy-url").value.trim();
   const title = $("#sy-title").value.trim();
-  const text = $("#sy-text").value;
+  const first = $("#sy-blocks .lg-block .lg-ta");
+  const text = first ? first.value : "";
   if (!url) return toast("쇼츠 주소를 입력해주세요");
-  if (!text.trim()) return toast("대본을 붙여넣어 주세요");
+  if (!text.trim()) return toast("학습 언어 스크립트를 입력해주세요");
   $("#sheet-add").hidden = true;
   if (!window.LangclipSync) return toast("싱크 모듈을 불러오지 못했습니다");
   await window.LangclipSync.start({ url, title, text });
@@ -2622,6 +2736,11 @@ function bind() {
   $$("[data-close]").forEach((el) => (el.onclick = () => { el.closest(".sheet-wrap").hidden = true; }));
 
   $("#btn-sync-start").onclick = startSyncFromAdd;
+  $("#btn-save-blocks").onclick = saveBlocks;
+  const addL = $("#sy-add-lang");
+  if (addL) addL.onclick = () => addLangBlock();
+  const setTab = document.querySelector('.tab[data-tab="s-settings"]');
+  if (setTab) setTab.addEventListener("click", () => setTimeout(renderSettings, 0));
   $("#sy-url").addEventListener("input", onUrlInput);
   $("#sy-url").addEventListener("blur", fetchTitle);
   $("#sy-url").addEventListener("paste", () => setTimeout(onUrlInput, 60));
@@ -2827,7 +2946,12 @@ const TQ_NAME = { beginner: "초급 · 어절 블록", inter: "중급 · 빈칸 
 const TQ_PASS = 80;
 
 function tqNorm(w) {
-  return String(w || "").toLowerCase().replace(/[.,!?;:"'\u2019\u201c\u201d()\[\]]/g, "").trim();
+  let s = String(w || "").toLowerCase()
+    .replace(/[.,!?;:"'\u2019\u201c\u201d\u00bf\u00a1()\[\]]/g, "").trim();
+  if (S.cur && (S.cur.lang || "en") !== "en") {
+    s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  return s;
 }
 function tqTokens(s) {
   const raw = String((s && (s.en || s.text)) || "").trim();

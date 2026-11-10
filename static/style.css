@@ -1998,3 +1998,33 @@ body.study-focus .screens{height:100%}
 @media (prefers-reduced-motion:reduce){
   .bg-phrase,.sp-sym,.splash-title,.splash-bar,.splash-bar i{animation:none}
 }
+
+/* ================= v8.10.0 · 다국어 학습 ================= */
+.lang-chips{display:flex;gap:6px;padding:12px 0 2px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.lang-chips[hidden]{display:none}
+.lang-chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;height:30px;padding:0 13px;border:0;border-radius:99px;background:#F1F5F9;
+  color:#64748B;font-family:inherit;font-size:11.5px;font-weight:750;letter-spacing:-.01em;cursor:pointer}
+.chip.on{background:#0085FF;color:#fff}
+.chip:active{opacity:.8}
+
+.set-desc{margin:2px 0 14px;font-size:11.5px;line-height:1.55;color:#94A3B8;letter-spacing:-.01em}
+.set-row{display:flex;align-items:center;justify-content:space-between;width:100%;padding:15px;
+  margin-bottom:7px;border:0;border-radius:13px;background:#F8FAFC;font-family:inherit;
+  font-size:13px;font-weight:750;color:#0F172A;cursor:pointer;letter-spacing:-.01em}
+.set-row.on{background:#EFF7FF;color:#0085FF}
+.set-ck{font-size:10.5px;font-weight:800;color:#0085FF}
+
+.lang-head{display:flex;align-items:center;justify-content:space-between;margin:14px 0 7px}
+.lang-head > span{font-size:12px;font-weight:800;color:#0F172A;letter-spacing:-.01em}
+.lang-add{border:0;background:none;font-family:inherit;font-size:11.5px;font-weight:800;
+  color:#0085FF;cursor:pointer;padding:2px 0}
+.lg-block{margin-bottom:9px;border-radius:13px;background:#F8FAFC;padding:11px 11px 9px}
+.lg-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.lg-sel{flex:1 1 auto;min-width:0;height:30px;border:0;border-radius:8px;background:#fff;
+  font-family:inherit;font-size:12px;font-weight:750;color:#0F172A;padding:0 8px;outline:none}
+.lg-del{flex:0 0 auto;width:26px;height:26px;border:0;border-radius:8px;background:none;
+  color:#B6C6D4;font-family:inherit;font-size:13px;cursor:pointer}
+.lg-ta{width:100%;min-height:96px;padding:9px 10px;border:0;border-radius:9px;background:#fff;
+  font-family:inherit;font-size:12px;line-height:1.6;color:#0F172A;resize:vertical;outline:none}
+.lg-ta::placeholder{color:#C3CDD8}

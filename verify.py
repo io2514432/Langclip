@@ -165,7 +165,18 @@ def word_diff(answer: str, said: str) -> dict:
             "extra": extra, "mark": mark, "blank": False}
 
 
-def check_recall(segs: list[dict], typed: dict) -> dict:
+_ACC = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n",
+        "Á": "a", "É": "e", "Í": "i", "Ó": "o", "Ú": "u", "Ü": "u", "Ñ": "n",
+        "¿": "", "¡": "", "à": "a", "è": "e", "ì": "i", "ò": "o", "ù": "u"}
+
+
+def strip_accents(text: str) -> str:
+    """악센트·부호를 무시하고 비교하기 위한 정규화."""
+    s = "".join(_ACC.get(ch, ch) for ch in (text or ""))
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def check_recall(segs: list[dict], typed: dict, lang: str = "en") -> dict:
     """백지 테스트 = 전체 100점 만점 채점. 0점 아래로는 내려가지 않는다."""
     rows = []
     totals = {"blank": 0, "miss": 0, "wrong": 0, "extra": 0, "punct": 0}
@@ -179,6 +190,12 @@ def check_recall(segs: list[dict], typed: dict) -> dict:
                          "mine": [], "ans": [], "punct": 0})
             continue
         d = word_diff(en, said)
+        if lang != "en" and (d["miss"] or d["wrong"] or d["extra"]):
+            d2 = word_diff(strip_accents(en), strip_accents(said))
+            if not (d2["miss"] or d2["wrong"] or d2["extra"]):
+                keep = d["mine"]
+                d = d2
+                d["mine"] = keep
         if d["blank"]:
             lost = D_MISS_SENT
             totals["blank"] += 1
@@ -208,8 +225,8 @@ def check_recall(segs: list[dict], typed: dict) -> dict:
     }
 
 
-def judge(segs: list[dict], typed) -> dict:
-    c = check_recall(segs, typed or {})
+def judge(segs: list[dict], typed, lang: str = "en") -> dict:
+    c = check_recall(segs, typed or {}, lang)
     return {
         "passed": bool(c["passed"]),
         "stages": {"recall": c},

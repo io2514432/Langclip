@@ -447,6 +447,8 @@ def video_public(v: dict, d: dict) -> dict:
             "segs": v["segs"], "n": len(v["segs"]),
             "audio": au, "has_audio": au is not None,
             "complete": prog.is_complete(v["id"]),
+            "lang": v.get("lang") or "en",
+            "langs": v.get("langs") or [v.get("lang") or "en"],
             "stage": st, "stage1": st["stage1"],
             "medals": prog.medals(v["id"]),
             "verify": prog.verify_of(v["id"])}
@@ -456,15 +458,16 @@ def video_public(v: dict, d: dict) -> dict:
 
 
 
-def _prefetch_async(segs) -> None:
+def _prefetch_async(segs, lang: str = "en") -> None:
     """등록 직후 단어 뜻을 백그라운드로 미리 받아 둔다."""
     words: list[str] = []
+    pat = re.compile(r"[^\W\d_]+(?:['\u2019\-][^\W\d_]+)*", re.UNICODE)
     for s in segs or []:
-        words += re.findall(r"[A-Za-z][A-Za-z'\-]*", (s.get("en") or s.get("text") or ""))
+        words += pat.findall(s.get("en") or s.get("text") or "")
     if not words:
         return
     try:
-        threading.Thread(target=prog.prefetch_words, args=(words,), daemon=True).start()
+        threading.Thread(target=prog.prefetch_words, args=(words, lang), daemon=True).start()
     except Exception:
         pass
 
@@ -500,6 +503,39 @@ def one_video(vid: str):
     return o
 
 
+
+def _lines(t: str) -> list:
+    return [x.strip() for x in (t or "").replace("\r\n", "\n").split("\n") if x.strip()]
+
+
+def _segs_from_blocks(native: str, blocks: list, learn: str) -> tuple:
+    """한국어 + 언어 블록을 줄 순서로 맞춰 세그먼트를 만든다."""
+    ko = _lines(native)
+    cols: dict = {}
+    for b in blocks or []:
+        code = str(b.get("lang") or "").strip().lower()
+        if not code or code == "ko":
+            continue
+        cols[code] = _lines(b.get("text") or "")
+    codes = [c for c in cols if cols[c]]
+    if not codes:
+        return [], "en", [], ["학습 언어 대본이 비어 있습니다"]
+    lang = learn if learn in codes else codes[0]
+    n = max([len(ko)] + [len(cols[c]) for c in codes])
+    warns = []
+    if ko and len(ko) != len(cols[lang]):
+        warns.append("한국어 " + str(len(ko)) + "줄 · 학습 언어 " + str(len(cols[lang])) + "줄로 줄 수가 다릅니다")
+    segs = []
+    for i in range(n):
+        main = cols[lang][i] if i < len(cols[lang]) else ""
+        more = {c: cols[c][i] for c in codes if c != lang and i < len(cols[c])}
+        if not main and not (ko[i] if i < len(ko) else ""):
+            continue
+        segs.append({"en": main, "ko": ko[i] if i < len(ko) else "",
+                     "text": main, "more": more})
+    return segs, lang, codes, warns
+
+
 @app.post("/api/videos")
 def add_video(payload: dict, request: Request):
     require_admin(request)
@@ -510,7 +546,19 @@ def add_video(payload: dict, request: Request):
     duration = float(payload.get("duration") or 0)
 
     warnings: list[str] = []
-    if md:
+    blocks = [b for b in (payload.get("blocks") or []) if isinstance(b, dict)]
+    native = (payload.get("native") or "").strip()
+    lang_code, codes = "en", ["en"]
+    if blocks:
+        segs, lang_code, codes, warnings = _segs_from_blocks(
+            native, blocks, str(payload.get("lang") or ""))
+        total = duration or max(6.0, 2.8 * len(segs))
+        step = total / max(1, len(segs))
+        for i, s in enumerate(segs):
+            s["i"] = i
+            s["start"] = round(i * step, 2)
+            s["end"] = round((i + 1) * step, 2)
+    elif md:
         sc = script_md.parse(md, duration)
         warnings = sc.warnings
         if not url:
@@ -530,15 +578,19 @@ def add_video(payload: dict, request: Request):
     vid_yt = yt_id(url)
 
     vid = "v" + os.urandom(4).hex()
+    if not blocks:
+        lang_code = str(payload.get("lang") or "en")
+        codes = sorted({lang_code} | {k for s in segs for k in (s.get("more") or {})})
     rec = {"id": vid, "yt": vid_yt,
            "title": title[:80] or f"YouTube {vid_yt}",
            "thumb": f"https://i.ytimg.com/vi/{vid_yt}/mqdefault.jpg",
+           "lang": lang_code, "langs": codes,
            "segs": segs, "audio_id": payload.get("audio_id"),
            "duration": round(float(duration or 0), 2)}
     d = db()
     d["videos"][vid] = rec
     save_db(d)
-    _prefetch_async(segs)
+    _prefetch_async(segs, rec.get("lang") or "en")
     return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
             "markdown": script_md.serialize(rec["title"], vid_yt, segs, rec["duration"])}
 
@@ -1009,8 +1061,8 @@ def note_word(payload: dict):
 
 
 @app.get("/api/words/{word}")
-def word_info(word: str):
-    return prog.lookup(word)
+def word_info(word: str, lang: str = "en"):
+    return prog.lookup(word, lang)
 
 
 
@@ -1173,7 +1225,7 @@ def verify_check(vid: str, payload: dict):
     """백지 테스트(전체 타이핑)를 채점한다. 통과하면 그 쇼츠는 학습 완료."""
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
-    res = verify.judge(v["segs"], payload.get("typed") or {})
+    res = verify.judge(v["segs"], payload.get("typed") or {}, v.get("lang") or "en")
     rec = prog.record_verify(vid, res)
     return {**res, **rec, "complete": prog.is_complete(vid),
             "completed": prog.completed_count()}
