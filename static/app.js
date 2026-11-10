@@ -2008,6 +2008,8 @@ function renderRecall() {
     el.oninput = () => { VF.typed[el.dataset.i] = el.value; fit(); updateVfCount(); };
     fit();
   });
+  const sub = $("#vf-submit");
+  if (sub) sub.onclick = submitRecall;   // 초급·중급(tqCheck)에서 넘어와도 되돌린다
   updateVfCount();
   const first = $("#vf-body .vf-in");
   if (first) first.focus();
@@ -3220,6 +3222,7 @@ function tqBindBody() {
 }
 
 function tqCheck() {
+  if (!TQ.on || !TQ.item) return;   // 고급 화면에서 남은 핸들러가 불려도 무시
   if (!TQ.on || TQ.phase !== "q") return;
   const seg = S.cur.segs[TQ.idx] || {};
   let ok = true;
