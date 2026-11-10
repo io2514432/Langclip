@@ -9,6 +9,8 @@ echo   python       : %PY%
 echo   admin server : http://127.0.0.1:8000
 echo   admin entry  : run admin_link.bat
 echo.
+rem data snapshot once per day (skipped if today already has one)
+"%PY%" backup_data.py --auto
 "%PY%" -m uvicorn main:app --host 127.0.0.1 --port 8000
 goto end
 

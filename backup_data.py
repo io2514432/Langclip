@@ -57,7 +57,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="data/ 스냅샷 백업")
     ap.add_argument("--keep", type=int, default=14, help="남길 백업 개수 (기본 14)")
     ap.add_argument("--no-media", action="store_true", help="data/media 제외")
+    ap.add_argument("--auto", action="store_true",
+                    help="오늘 백업이 이미 있으면 건너뛴다 (start.bat 용)")
     a = ap.parse_args()
+
+    if a.auto:
+        day = datetime.now().strftime("%Y%m%d")
+        if list(OUT.glob(f"data-{day}-*.zip")):
+            return 0                      # 오늘 백업이 이미 있으면 조용히 넘어간다
 
     files = collect(not a.no_media)
     if not files:
