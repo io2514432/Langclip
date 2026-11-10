@@ -1,7 +1,7 @@
 """Langclip — 학습 기록 / 북마크 / 게이미피케이션 (사용자별 분리)
 
 저장 위치
-  관리자(나)      data/attempts.json · notes.json · verify.json
+  관리자(나)      data/progress.db(채점이력) · notes.json · verify.json
   방문자(친구)    data/users/<uid>/attempts.json · notes.json · verify.json
 
 왜 이렇게 나누는가
@@ -18,6 +18,8 @@ import langs
 
 import contextvars
 import json
+import sqlite3
+from contextlib import closing
 import os
 import re
 import time
@@ -95,18 +97,95 @@ def _now() -> str:
 
 
 # ---------------------------------------------------------------- attempts
+ATTEMPTS_DB = "progress.db"
+
+
+def _db_path() -> Path:
+    return _p(ATTEMPTS_DB)
+
+
+def _conn_at(path: Path) -> sqlite3.Connection:
+    """attempts 테이블 하나만 쓰는 가벼운 SQLite 연결."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(str(path), timeout=5.0)
+    c.execute("PRAGMA busy_timeout=5000")
+    c.execute("""CREATE TABLE IF NOT EXISTS attempts(
+                   id    INTEGER PRIMARY KEY AUTOINCREMENT,
+                   ts    TEXT    NOT NULL,
+                   vid   TEXT    NOT NULL,
+                   idx   INTEGER NOT NULL,
+                   total REAL    NOT NULL,
+                   mode  TEXT    NOT NULL)""")
+    c.execute("CREATE INDEX IF NOT EXISTS ix_attempts_vid ON attempts(vid, idx)")
+    c.execute("CREATE INDEX IF NOT EXISTS ix_attempts_ts  ON attempts(ts)")
+    return c
+
+
+def _migrate_attempts(c: sqlite3.Connection) -> int:
+    """예전 attempts.json 이 남아 있으면 한 번만 옮기고 .migrated 로 보존한다."""
+    src = _p("attempts.json")
+    if not src.exists():
+        return 0
+    try:
+        rows = json.loads(src.read_text("utf-8"))
+    except Exception:
+        rows = []
+    moved = 0
+    if isinstance(rows, list) and rows and \
+            c.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 0:
+        def gen():
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                yield (str(r.get("ts", "")), str(r.get("vid", "")),
+                       int(r.get("idx", 0) or 0), float(r.get("total", 0) or 0),
+                       str(r.get("mode", "")))
+        c.executemany(
+            "INSERT INTO attempts(ts, vid, idx, total, mode) VALUES(?,?,?,?,?)", gen())
+        c.commit()
+        moved = int(c.total_changes)
+    try:
+        src.replace(src.with_suffix(".json.migrated"))
+    except OSError:
+        pass
+    return moved
+
+
 def record_attempt(vid: str, idx: int, total: float, mode: str) -> None:
-    f = _p("attempts.json")
-    rows = _load(f, [])
-    rows.append({"ts": _now(), "vid": vid, "idx": int(idx),
-                 "total": round(float(total), 1), "mode": mode})
-    if len(rows) > MAX_ATTEMPTS:
-        rows = rows[-MAX_ATTEMPTS:]
-    _save(f, rows)
+    with closing(_conn_at(_db_path())) as c:
+        _migrate_attempts(c)
+        cur = c.execute(
+            "INSERT INTO attempts(ts, vid, idx, total, mode) VALUES(?,?,?,?,?)",
+            (_now(), str(vid), int(idx), round(float(total), 1), str(mode)))
+        # 오래된 기록은 MAX_ATTEMPTS 개까지만 남긴다 (id 기준)
+        c.execute("DELETE FROM attempts WHERE id <= ?",
+                  (int(cur.lastrowid) - MAX_ATTEMPTS,))
+        c.commit()
 
 
-def attempts() -> list[dict]:
-    return _load(_p("attempts.json"), [])
+def attempts(day: str | None = None) -> list[dict]:
+    p = _db_path()
+    if not p.exists() and not _p("attempts.json").exists():
+        return []
+    with closing(_conn_at(p)) as c:
+        _migrate_attempts(c)
+        q = "SELECT ts, vid, idx, total, mode FROM attempts"
+        args: tuple = ()
+        if day:
+            q += " WHERE ts >= ?"
+            args = (day,)
+        q += " ORDER BY id"
+        return [{"ts": r[0], "vid": r[1], "idx": r[2], "total": r[3], "mode": r[4]}
+                for r in c.execute(q, args)]
+
+
+def count_attempts() -> int:
+    p = _db_path()
+    if not p.exists() and not _p("attempts.json").exists():
+        return 0
+    with closing(_conn_at(p)) as c:
+        _migrate_attempts(c)
+        return int(c.execute("SELECT COUNT(*) FROM attempts").fetchone()[0])
 
 
 def best_scores(vid: str | None = None) -> dict[int, float]:
@@ -303,7 +382,7 @@ def today_focus(videos: dict) -> dict | None:
     if not videos:
         return None
     today = _today().isoformat()
-    last_today = [r for r in attempts() if _day_of(r.get("ts", "")) == today]
+    last_today = attempts(today)
     picked = None
     if last_today:
         picked = videos.get(last_today[-1].get("vid"))
@@ -324,7 +403,7 @@ def today_focus(videos: dict) -> dict | None:
 def progress(videos: dict) -> dict:
     return {"focus": today_focus(videos), "streak": streak(),
             "completed": completed_count(),
-            "total_attempts": len(attempts())}
+            "total_attempts": count_attempts()}
 
 
 # ---------------------------------------------------------------- notes
@@ -596,14 +675,15 @@ def purge_video(vid: str) -> dict:
     """영상을 지울 때 그 영상에 묶인 학습기록을 모든 사용자 폴더에서 지운다. (정크 방지)"""
     stat = {"attempts": 0, "sentences": 0, "words": 0, "verify": 0}
     for d in _dirs():
-        f = d / "attempts.json"
+        f = d / ATTEMPTS_DB
         if f.exists():
-            rows = _load(f, [])
-            if isinstance(rows, list):
-                keep = [r for r in rows if not (isinstance(r, dict) and r.get("vid") == vid)]
-                if len(keep) != len(rows):
-                    stat["attempts"] += len(rows) - len(keep)
-                    _save(f, keep)
+            try:
+                with closing(_conn_at(f)) as c:
+                    stat["attempts"] += max(0, int(c.execute(
+                        "DELETE FROM attempts WHERE vid = ?", (vid,)).rowcount))
+                    c.commit()
+            except Exception:
+                pass
         f = d / "notes.json"
         if f.exists():
             n = _load(f, {})

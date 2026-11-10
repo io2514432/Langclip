@@ -66,6 +66,7 @@ node --check static/app.js
 `data/` 는 기기마다 다르고(학습기록·업로드 음원) 커밋하면 충돌만 난다.
 코드·문서·설정은 git 으로 관리하고, `data/` 는 각 기기에만 둔다.
 `python backup_data.py` 로 `data/` 스냅샷(zip)을 `backups/` 에 남긴다. 기본 14개 보관.
+학습기록(채점 이력)은 `data/progress.db` (SQLite) 에 쌓인다.
 
 ## 비밀
 

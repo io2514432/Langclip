@@ -139,48 +139,43 @@ def onset_feat(y, sr=SR):
 
 # ---------------------------------------------------------------- DTW
 def dtw(A, B, band_ratio=0.25):
+    """DTW 거리 — 누적합은 librosa(numba)가 계산한다.
+
+    비용 행렬은 예전 구현과 같은 '프레임별 제곱 유클리드 거리'를 그대로 쓰고,
+    대각선 밴드 밖은 큰 유한값(BIG)으로 막아 경로가 밴드를 벗어나지 못하게 한다.
+    (np.inf 를 쓰면 librosa 누적합에서 오염되므로 유한값을 쓴다.)
+
+    반환: (경로 길이로 나눈 평균 누적비용, [(i, j), ...])
+    """
     A, B = np.asarray(A, float), np.asarray(B, float)
     if A.ndim == 1:
         A = A[:, None]
     if B.ndim == 1:
         B = B[:, None]
-    Ta, Tb = A.shape[0], B.shape[0]
-    band = int(np.ceil(max(band_ratio * max(Ta, Tb), abs(Ta - Tb)))) + 1
-    INF = 1e18
-    C = np.full((Ta, Tb), INF)
-    for i in range(Ta):
-        c = i * (Tb - 1) / max(Ta - 1, 1)
-        lo, hi = max(0, int(c - band)), min(Tb, int(c + band) + 1)
-        C[i, lo:hi] = np.sum((A[i][None, :] - B[lo:hi, :]) ** 2, axis=1)
-    acc = np.full((Ta, Tb), INF)
-    back = np.zeros((Ta, Tb), np.int8)
-    acc[0, 0] = C[0, 0]
-    for i in range(Ta):
-        for j in range(Tb):
-            if (i == 0 and j == 0) or C[i, j] >= INF:
-                continue
-            best, arg = INF, -1
-            if i and acc[i - 1, j] < best:
-                best, arg = acc[i - 1, j], 0
-            if j and acc[i, j - 1] < best:
-                best, arg = acc[i, j - 1], 1
-            if i and j and acc[i - 1, j - 1] < best:
-                best, arg = acc[i - 1, j - 1], 2
-            if arg >= 0:
-                acc[i, j] = C[i, j] + best
-                back[i, j] = arg
-    if acc[Ta - 1, Tb - 1] >= INF:
+    Ta, Tb = int(A.shape[0]), int(B.shape[0])
+    if Ta < 1 or Tb < 1:
         return float("inf"), []
-    path, i, j = [], Ta - 1, Tb - 1
-    while True:
-        path.append((i, j))
-        if i == 0 and j == 0:
-            break
-        b = back[i, j]
-        i -= int(b in (0, 2))
-        j -= int(b in (1, 2))
-    path.reverse()
-    return float(acc[Ta - 1, Tb - 1]) / len(path), path
+
+    band = int(np.ceil(max(band_ratio * max(Ta, Tb), abs(Ta - Tb)))) + 1
+    BIG = 1e6
+
+    try:
+        from scipy.spatial.distance import cdist
+        C = cdist(A, B, "sqeuclidean")
+    except Exception:                     # scipy 가 없으면 브로드캐스트로 계산
+        C = ((A[:, None, :] - B[None, :, :]) ** 2).sum(-1)
+
+    ii = np.arange(Ta)[:, None]
+    diag = ii * (Tb - 1) / max(Ta - 1, 1)
+    C = np.where(np.abs(np.arange(Tb)[None, :] - diag) <= band, C, BIG)
+
+    D, wp = librosa.sequence.dtw(C=C, subseq=False, backtrack=True)
+    cost = float(D[-1, -1])
+    if not np.isfinite(cost) or cost >= BIG * 0.5:
+        return float("inf"), []
+
+    path = [(int(i), int(j)) for i, j in wp[::-1]]
+    return cost / len(path), path
 
 
 # ---------------------------------------------------------------- 4축 거리
