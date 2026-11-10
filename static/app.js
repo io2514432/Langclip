@@ -338,7 +338,6 @@ function renderDeck() {
   if (!d || !body) return;
   const v = dkVideo(d.vid);
   const th = dkThumb(v);
-  const tt = $("#dk-title"); if (tt) tt.textContent = dkTitle(v);
   body.innerHTML = `
     <div class="dk-hero">
       <span class="dk-th big">${th ? `<img src="${esc(th)}" alt="">` : `<i>${esc(dkTitle(v).slice(0, 1))}</i>`}</span>
@@ -389,6 +388,7 @@ async function delCard(id) {
 function startStudy(cards) {
   AK.q = (cards || []).slice();
   if (!AK.q.length) return toast("학습할 카드가 없습니다");
+  const sc0 = $("#s-study"); if (sc0) sc0.classList.remove("is-done");
   AK.i = 0; AK.flip = false; AK.hint = false;
   AK.n = AK.q.length; AK.good = 0; AK.again = 0;
   show("s-study");
@@ -409,6 +409,7 @@ function akRender() {
   const c = AK.q[AK.i];
   if (!c) return akFinish();
   AK.flip = false; AK.hint = false;
+  const sc1 = $("#s-study"); if (sc1) sc1.classList.remove("is-done");
   const v = dkVideo(c.vid);
   const isSent = c.kind === "sent";
   const done = Math.max(0, AK.i);
@@ -419,7 +420,7 @@ function akRender() {
   $("#ak-grades").hidden = true;
   const card = $("#ak-card");
   card.className = "ak-card";
-  const meta = `<div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>`;
+  const meta = "";
   const hintBtn = `<button class="ak-hint" id="ak-hint">힌트 보기</button>
     <div class="ak-hintbox" id="ak-hintbox" hidden></div>`;
   card.innerHTML = isSent
@@ -456,7 +457,7 @@ function akFlip() {
   const isSent = c.kind === "sent";
   const card = $("#ak-card");
   card.className = "ak-card back";
-  const meta = `<div class="ak-meta">${esc(dkTitle(v))}${c.idx >= 0 ? ` · 문장 #${c.idx + 1}` : ""}</div>`;
+  const meta = "";
   card.innerHTML = isSent
     ? `${meta}
       <div class="ak-en ans">${esc(c.answer || "")}</div>
@@ -545,17 +546,21 @@ function akFinish() {
   $("#ak-flip").hidden = true;
   $("#ak-grades").hidden = true;
   $("#ak-i").textContent = "완료";
-  $("#ak-bar").style.width = "100%";
+  const sc = $("#s-study"); if (sc) sc.classList.add("is-done");
   box.className = "ak-card done";
   box.innerHTML = `
-    <div class="ak-fin-t">오늘 복습 완료</div>
-    <div class="ak-fin-n">${AK.good + AK.again}<small>장</small></div>
-    <div class="ak-fin-rows">
-      <div><span>익힘</span><b>${AK.good}</b></div>
-      <div><span>다시 본 카드</span><b>${AK.again}</b></div>
+    <div class="ak-fin">
+      <div class="ak-fin-t">오늘 복습 완료</div>
+      <div class="ak-fin-n">${AK.good + AK.again}<small>장</small></div>
+      <div class="ak-fin-rows">
+        <div><span>익힘</span><b>${AK.good}</b></div>
+        <div><span>다시 본 카드</span><b>${AK.again}</b></div>
+      </div>
     </div>
-    <button class="ak-fin-cta" id="ak-fin-deck">덱으로 돌아가기</button>
-    <button class="ak-fin-x" id="ak-fin-home">홈으로 가기</button>`;
+    <div class="ak-fin-bar">
+      <button class="ak-fin-cta" id="ak-fin-deck">덱으로 돌아가기</button>
+      <button class="ak-fin-x" id="ak-fin-home">홈으로 가기</button>
+    </div>`;
   const d = $("#ak-fin-deck");
   if (d) d.onclick = () => { refreshReview(); show(DK.vid ? "s-deck" : "s-notes"); };
   const h = $("#ak-fin-home");
@@ -2867,6 +2872,7 @@ function tqOpenSheet() {
   $$("#sheet-test [data-best]").forEach((el) => {
     const v = rec[el.dataset.best];
     el.textContent = v ? v + "점" : "";
+    el.classList.toggle("ok", !!v && v >= TQ_PASS);
   });
   const box = $("#sheet-test");
   if (!box) return beginTest("recall");
@@ -2924,9 +2930,11 @@ function beginTest(mode) {
   const tc = $("#tcele"); if (tc) tc.hidden = true;
   $("#vf-title").textContent = TQ_NAME[mode];
   $("#vf-foot").hidden = false;
+  const g0 = $("#vfgauge"); if (g0) g0.hidden = false;
   if (!TQ.on) {
     $("#tq-bar").style.width = "0%";
     $("#vf-prog").textContent = "";
+    if (g0) g0.hidden = true;
     renderRecall();
   } else {
     renderTq();
@@ -2946,11 +2954,9 @@ function tqBeginnerHtml(seg, it) {
     ? `<span class="tq-tile gone">${esc(b.w)}</span>`
     : `<button class="tq-tile" data-t="${b.id}">${esc(b.w)}</button>`).join("");
   const done = Object.keys(it.ans).length;
-  return `<div class="tq-kicker">${TQ.idx + 1}번째 문장 · 빈칸 ${it.blanks.length}개</div>
-    <div class="tq-ko">${esc(seg.ko || "빈칸에 들어갈 단어를 고르세요")}</div>
+  return `<div class="tq-ko">${esc(seg.ko || "빈칸에 들어갈 단어를 고르세요")}</div>
     <div class="tq-en" id="tq-en">${parts}</div>
-    <div class="tq-bank" id="tq-bank">${bank}</div>
-    <div class="tq-cnt" id="tq-cnt">${done} / ${it.blanks.length} 채움</div>`;
+    <div class="tq-bank" id="tq-bank">${bank}</div>`;
 }
 
 function tqInterHtml(seg, it) {
@@ -2964,8 +2970,7 @@ function tqInterHtml(seg, it) {
     return `<input class="tq-bl" data-b="${j}" style="width:${w}em" placeholder="${ph}"
       autocapitalize="off" autocomplete="off" spellcheck="false">`;
   }).join(" ");
-  return `<div class="tq-kicker">${TQ.idx + 1}번째 문장 · 빈칸 ${it.blanks.length}개</div>
-    <div class="tq-ko">${esc(seg.ko || "빈칸을 채우세요")}</div>
+  return `<div class="tq-ko">${esc(seg.ko || "빈칸을 채우세요")}</div>
     <div class="tq-en" id="tq-en">${parts}</div>
     <div class="tq-tools"><button class="tq-tool" id="tq-hint">힌트 보기</button></div>`;
 }
@@ -2981,6 +2986,7 @@ function renderTq() {
   $("#vf-title").textContent = TQ_NAME[TQ.mode];
   $("#vf-prog").textContent = `${TQ.idx + 1}/${TQ.n}`;
   $("#tq-bar").style.width = (TQ.idx / TQ.n) * 100 + "%";
+  const gg = $("#vfgauge"); if (gg) gg.hidden = TQ.mode === "recall";
   body.innerHTML = TQ.mode === "beginner" ? tqBeginnerHtml(seg, TQ.item) : tqInterHtml(seg, TQ.item);
   tqBindBody();
   body.scrollTop = 0;
@@ -3081,9 +3087,15 @@ function showTqFeed(ok, seg) {
   feed.classList.toggle("no", !ok);
   const t = $("#vf-feed-t"), sx = $("#vf-feed-s"), next = $("#vf-next");
   if (t) t.textContent = ok ? "정답이에요!" : "아쉬워요";
-  if (sx) sx.innerHTML = ok
-    ? esc(seg.ko || "")
-    : `정답 · <b>${esc(seg.en || seg.text || "")}</b>`;
+  if (sx) {
+    let en = esc(seg.en || seg.text || "");
+    const it = TQ.item;
+    if (!ok && it && it.toks && it.blanks) {
+      const bset = new Set(it.blanks);
+      en = it.toks.map((t, j) => (bset.has(j) ? `<b class="ans">${esc(t)}</b>` : esc(t))).join(" ");
+    }
+    sx.innerHTML = ok ? esc(seg.ko || "") : `정답 · ${en}`;
+  }
   if (next) {
     next.textContent = TQ.idx + 1 >= TQ.n ? "결과 보기" : "다음 문제";
     next.onclick = () => tqNext();
@@ -3107,8 +3119,8 @@ async function tqResult() {
   TQ.phase = "done";
   $("#vf-foot").hidden = true;
   $("#vf-feed").hidden = true;
-  $("#vf-prog").textContent = `${n}/${n}`;
-  $("#tq-bar").style.width = "100%";
+  $("#vf-prog").textContent = "";
+  const gz = $("#vfgauge"); if (gz) gz.hidden = true;
   $("#vf-title").textContent = TQ_NAME[TQ.mode];
   const upTo = TQ.mode === "beginner" ? "inter" : TQ.mode === "inter" ? "recall" : "beginner";
   const upLab = TQ.mode === "beginner" ? "중급으로 도전" : TQ.mode === "inter" ? "고급으로 도전" : "초급부터 다시";
@@ -3127,7 +3139,7 @@ async function tqResult() {
       </div>`).join("")}
     </div>
     <div class="tq-acts">
-      ${pct >= 100 ? "" : '<button class="btn primary" id="tq-again">같은 난이도 다시</button>'}
+      ${pct >= 100 ? "" : '<button class="btn primary" id="tq-again">다시 풀기</button>'}
       <button class="btn ghost" id="tq-out">닫기</button>
     </div>`;
   const again = $("#tq-again"); if (again) again.onclick = () => beginTest(TQ.mode);
@@ -3139,8 +3151,12 @@ async function tqResult() {
     const r = await jsonPost(`/api/videos/${S.cur.id}/test/grade`, {
       mode: TQ.mode, score: pct, ok: okN,
     });
-    if (r && r.complete) {
-      if (S.cur) { S.cur.complete = true; S.cur.verify = r.record || S.cur.verify; }
+    if (r) {
+      if (S.cur) {
+        S.cur.complete = !!r.complete;
+        S.cur.verify = r.record || S.cur.verify;
+        S.cur.medals = r.medals || S.cur.medals;
+      }
       loadVideos().catch(() => {});
       loadHome().catch(() => {});
     }

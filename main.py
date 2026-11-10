@@ -1188,7 +1188,10 @@ def test_grade(vid: str, payload: dict):
         pct = max(0.0, min(100.0, float(payload.get("score") or 0)))
     except (TypeError, ValueError):
         pct = 0.0
-    mode = str(payload.get("mode") or "beginner")
+    MODE_ALIAS = {"beginner": "beginner", "inter": "intermediate",
+                  "intermediate": "intermediate",
+                  "recall": "advanced", "advanced": "advanced"}
+    mode = MODE_ALIAS.get(str(payload.get("mode") or "beginner"), "beginner")
     passed = pct >= verify.PASS_SCORE
     res = {
         "passed": passed,

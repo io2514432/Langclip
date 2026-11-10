@@ -362,7 +362,6 @@
       <section class="screen" id="s-deck">
         <div class="dk-top">
           <button class="vf-back" id="dk-back" aria-label="뒤로"><svg class="ic"><use href="#i-left"/></svg></button>
-          <div class="test-title" id="dk-title">덱</div>
         </div>
         <div class="scroll" id="dk-body"></div>
       </section>
@@ -394,7 +393,7 @@
           <div class="test-title" id="vf-title">테스트</div>
           <div class="test-prog" id="vf-prog"></div>
         </div>
-        <div class="tq-gauge"><i id="tq-bar"></i></div>
+        <div class="tq-gauge" id="vfgauge"><i id="tq-bar"></i></div>
         <div class="scroll vf-scroll" id="vf-body"></div>
         <div class="vf-feed" id="vf-feed" hidden>
           <div class="vf-feed-t" id="vf-feed-t"></div>
@@ -533,22 +532,27 @@ Sure. What size would you like?
       <div class="sheet">
         <div class="sheet-grip"></div>
         <h3>테스트 난이도</h3>
+        <p class="tm-sub">80점 이상 달성 시 학습이 완료돼요</p>
         <div class="tm-list">
           <button class="tm-row" data-mode="beginner">
-            <span class="tm-tx"><b>초급 · 어절 블록</b><em>빈칸에 들어갈 단어를 골라 채웁니다.</em></span>
+            <svg class="tm-lv" viewBox="0 0 24 16" aria-hidden="true"><rect class="b1" x="2" y="9" width="5" height="6" rx="1.6"/><rect class="b2" x="9.5" y="5" width="5" height="10" rx="1.6"/><rect class="b3" x="17" y="1" width="5" height="14" rx="1.6"/></svg>
+            <span class="tm-tx"><b>초급</b><em>어절 블록으로 빈칸 채우기</em></span>
             <span class="tm-best" data-best="beginner"></span>
+            <svg class="ic tm-chev"><use href="#i-right"/></svg>
           </button>
           <button class="tm-row" data-mode="inter">
-            <span class="tm-tx"><b>중급 · 빈칸 채우기</b><em>핵심 단어를 직접 입력합니다.</em></span>
+            <svg class="tm-lv" viewBox="0 0 24 16" aria-hidden="true"><rect class="b1" x="2" y="9" width="5" height="6" rx="1.6"/><rect class="b2" x="9.5" y="5" width="5" height="10" rx="1.6"/><rect class="b3" x="17" y="1" width="5" height="14" rx="1.6"/></svg>
+            <span class="tm-tx"><b>중급</b><em>빈칸에 단어 직접 입력</em></span>
             <span class="tm-best" data-best="inter"></span>
+            <svg class="ic tm-chev"><use href="#i-right"/></svg>
           </button>
           <button class="tm-row" data-mode="recall">
-            <span class="tm-tx"><b>고급 · 백지 테스트</b><em>한국어만 보고 문장 전체를 영작합니다.</em></span>
+            <svg class="tm-lv" viewBox="0 0 24 16" aria-hidden="true"><rect class="b1" x="2" y="9" width="5" height="6" rx="1.6"/><rect class="b2" x="9.5" y="5" width="5" height="10" rx="1.6"/><rect class="b3" x="17" y="1" width="5" height="14" rx="1.6"/></svg>
+            <span class="tm-tx"><b>고급</b><em>한국어만 보고 문장 전체 영작</em></span>
             <span class="tm-best" data-best="recall"></span>
+            <svg class="ic tm-chev"><use href="#i-right"/></svg>
           </button>
-        </div>
-        <p class="tm-note">80점 이상이면 학습 완료로 기록됩니다.</p>
-      </div>
+        </div>      </div>
     </div>
 
     <div class="sheet-wrap" id="sheet-goal" hidden>
@@ -705,7 +709,7 @@ Sure. What size would you like?
   </div>
 </div>
 
-<script src="/app.js?v=8.8.1"></script>
-<script src="/sync.js?v=8.8.1"></script>
+<script src="/app.js?v=8.9.0"></script>
+<script src="/sync.js?v=8.9.0"></script>
 </body>
 </html>
