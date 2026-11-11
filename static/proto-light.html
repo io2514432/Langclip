@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Langclip · 브라우저 채점 실험</title>
+<style>
+  :root { --bg:#0f1115; --fg:#e8eaed; --dim:#9aa0a6; --line:#242830; --ok:#4ade80; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font:15px/1.55 -apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif; }
+  h1 { font-size:19px; margin:0 0 6px; font-weight:600; }
+  .sub { color:var(--dim); font-size:13px; margin:0 0 18px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  button { flex:1 1 150px; padding:13px 14px; border-radius:10px; border:1px solid var(--line);
+           background:#171a20; color:var(--fg); font-size:14px; font-weight:500; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  .panel { border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .big { font-size:34px; font-weight:700; letter-spacing:-.5px; }
+  .lbl { color:var(--dim); font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+  pre { background:#0b0d11; border:1px solid var(--line); border-radius:10px; padding:12px;
+        font-size:12px; color:var(--dim); overflow:auto; max-height:260px; white-space:pre-wrap; }
+  .hint { color:var(--dim); font-size:12px; }
+</style>
+</head>
+<body>
+  <h1>브라우저 채점 실험</h1>
+  <p class="sub">기준 발음을 녹음한 뒤 따라 말해보세요. 음성은 <b>서버로 전송되지 않고</b> 전부 이 기기에서 계산됩니다.</p>
+
+  <div class="row">
+    <button id="recA">① 기준 발음 녹음 (3초)</button>
+    <button id="recB" disabled>② 내 발음 녹음 (3초)</button>
+  </div>
+
+  <div class="panel">
+    <div class="grid">
+      <div><div class="lbl">정확도</div><div class="big" id="sAcc">–</div></div>
+      <div><div class="lbl">리듬</div><div class="big" id="sRhy">–</div></div>
+    </div>
+    <div class="hint" id="verdict" style="margin-top:8px;">아직 채점 전입니다.</div>
+  </div>
+
+  <pre id="log">준비됨.</pre>
+
+<script>
+"use strict";
+const SR = 16000, WIN = 400, HOP = 320, NFFT = 512, NMEL = 24, FPS = SR / HOP;
+const logEl = document.getElementById("log");
+const lines = [];
+function log() {
+  lines.push(Array.prototype.join.call(arguments, " "));
+  logEl.textContent = lines.join("\n");
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* ---------- 1. 녹음 ---------- */
+async function record(sec) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+  });
+  const mr = new MediaRecorder(stream);
+  const chunks = [];
+  mr.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+  mr.start();
+  await new Promise(function (r) { setTimeout(r, sec * 1000); });
+  mr.stop();
+  await new Promise(function (r) { mr.onstop = r; });
+  stream.getTracks().forEach(function (t) { t.stop(); });
+  return new Blob(chunks, { type: mr.mimeType || "audio/webm" });
+}
+
+async function toPcm16k(blob) {
+  const buf = await blob.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const tmp = new AC();
+  const dec = await tmp.decodeAudioData(buf);
+  tmp.close();
+  const mono = new AC();
+  const src = mono.createBufferSource();
+  const mb = mono.createBuffer(1, dec.length, dec.sampleRate);
+  const ch0 = dec.getChannelData(0);
+  const ch1 = dec.numberOfChannels > 1 ? dec.getChannelData(1) : null;
+  const dst = mb.getChannelData(0);
+  for (let i = 0; i < dec.length; i++) dst[i] = ch1 ? (ch0[i] + ch1[i]) / 2 : ch0[i];
+  src.buffer = mb;
+  src.connect(mono.destination);
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(dec.duration * SR)), SR);
+  const src2 = off.createBufferSource();
+  src2.buffer = mb;
+  src2.connect(off.destination);
+  src2.start();
+  const out = await off.startRendering();
+  mono.close();
+  return out.getChannelData(0);
+}
+
+/* ---------- 2. 로그멜 ---------- */
+const hz2mel = function (f) { return 2595 * Math.log10(1 + f / 700); };
+const mel2hz = function (m) { return 700 * (Math.pow(10, m / 2595) - 1); };
+let BANK = null;
+function melBank() {
+  if (BANK) return BANK;
+  const lo = hz2mel(80), hi = hz2mel(7600), pts = [];
+  for (let i = 0; i < NMEL + 2; i++) pts.push(mel2hz(lo + (hi - lo) * i / (NMEL + 1)));
+  const binHz = SR / NFFT, out = [];
+  for (let m = 1; m <= NMEL; m++) {
+    const f0 = pts[m - 1], f1 = pts[m], f2 = pts[m + 1];
+    const w = new Float32Array(NFFT / 2 + 1);
+    for (let k = 0; k <= NFFT / 2; k++) {
+      const f = k * binHz;
+      if (f >= f0 && f <= f1) w[k] = (f - f0) / (f1 - f0);
+      else if (f > f1 && f <= f2) w[k] = (f2 - f) / (f2 - f1);
+    }
+    out.push(w);
+  }
+  BANK = out;
+  return out;
+}
+
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < half; k++) {
+        const ur = re[i + k], ui = im[i + k];
+        const vr = re[i + k + half] * cr - im[i + k + half] * ci;
+        const vi = re[i + k + half] * ci + im[i + k + half] * cr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi;
+        re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
+        const ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr; cr = ncr;
+      }
+    }
+  }
+}
+
+function trimSilence(pcm) {
+  const fr = Math.floor((pcm.length - WIN) / HOP) + 1;
+  if (fr < 3) return pcm;
+  const e = new Float32Array(fr);
+  for (let i = 0; i < fr; i++) {
+    let s = 0;
+    for (let k = 0; k < WIN; k++) { const v = pcm[i * HOP + k]; s += v * v; }
+    e[i] = Math.sqrt(s / WIN);
+  }
+  const mx = Math.max.apply(null, e);
+  if (mx < 1e-4) return pcm;
+  const th = mx * 0.08;
+  let a = 0, b = fr - 1;
+  while (a < fr && e[a] < th) a++;
+  while (b > a && e[b] < th) b--;
+  a = Math.max(0, a - 2);
+  b = Math.min(fr - 1, b + 2);
+  return pcm.slice(a * HOP, Math.min(pcm.length, b * HOP + WIN));
+}
+
+function logmel(pcm) {
+  const y = trimSilence(pcm);
+  const bank = melBank();
+  const fr = Math.floor((y.length - WIN) / HOP) + 1;
+  const win = new Float32Array(WIN);
+  for (let i = 0; i < WIN; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (WIN - 1));
+  const out = [];
+  const re = new Float32Array(NFFT), im = new Float32Array(NFFT);
+  for (let i = 0; i < fr; i++) {
+    re.fill(0); im.fill(0);
+    const base = i * HOP;
+    for (let k = 0; k < WIN; k++) re[k] = y[base + k] * win[k];
+    fft(re, im);
+    const row = new Float32Array(NMEL);
+    for (let m = 0; m < NMEL; m++) {
+      let s = 0;
+      const w = bank[m];
+      for (let k = 0; k <= NFFT / 2; k++) s += (re[k] * re[k] + im[k] * im[k]) * w[k];
+      row[m] = Math.log(s + 1e-10);
+    }
+    out.push(row);
+  }
+  const mu = new Float32Array(NMEL);
+  for (let i = 0; i < out.length; i++) for (let m = 0; m < NMEL; m++) mu[m] += out[i][m] / out.length;
+  for (let i = 0; i < out.length; i++) for (let m = 0; m < NMEL; m++) out[i][m] -= mu[m];
+  return { feats: out, frames: out.length, dur: y.length / SR };
+}
+
+/* ---------- 3. DTW ---------- */
+function dtwDist(A, B, bandRatio) {
+  bandRatio = bandRatio || 0.3;
+  const n = A.length, m = B.length, d = NMEL;
+  const band = Math.max(8, Math.floor(Math.max(n, m) * bandRatio));
+  let prev = new Float64Array(m + 1).fill(Infinity);
+  prev[0] = 0;
+  for (let i = 1; i <= n; i++) {
+    const cur = new Float64Array(m + 1).fill(Infinity);
+    const lo = Math.max(1, i - band), hi = Math.min(m, i + band);
+    for (let j = lo; j <= hi; j++) {
+      let c = 0;
+      const ai = A[i - 1], bj = B[j - 1];
+      for (let k = 0; k < d; k++) { const x = ai[k] - bj[k]; c += x * x; }
+      const mn = Math.min(prev[j], prev[j - 1], cur[j - 1]);
+      cur[j] = c + mn;
+    }
+    prev = cur;
+  }
+  return prev[m] / (Math.max(n, m) * d);
+}
+
+/* ---------- 4. 점수 ---------- */
+function mapScore(d, d0, k) { return 100 / (1 + Math.exp(k * (d - d0))); }
+
+function scoreOf(ref, take) {
+  const d = dtwDist(ref.feats, take.feats);
+  const ratio = take.dur / Math.max(0.001, ref.dur);
+  const rhy = 100 - Math.min(100, Math.abs(Math.log(Math.max(0.2, ratio))) * 90);
+  const acc = mapScore(d, 0.85, 5.2);
+  return { d: d, ratio: ratio, acc: acc, rhy: rhy };
+}
+
+/* ---------- 5. UI ---------- */
+let REF = null, TAKE = null;
+const bA = document.getElementById("recA");
+const bB = document.getElementById("recB");
+const sAcc = document.getElementById("sAcc");
+const sRhy = document.getElementById("sRhy");
+const verdict = document.getElementById("verdict");
+
+bA.onclick = async function () {
+  try {
+    log("① 녹음 중… 3초간 문장을 읽어주세요.");
+    bA.disabled = true; bA.textContent = "녹음 중…";
+    const blob = await record(3);
+    let t = performance.now();
+    const pcm = await toPcm16k(blob);
+    const tDec = performance.now() - t;
+    t = performance.now();
+    REF = logmel(pcm);
+    const tFeat = performance.now() - t;
+    log("기준: 프레임 " + REF.frames + " (" + NMEL + "차원), 길이 " + REF.dur.toFixed(2) + "s");
+    log("  디코딩 " + tDec.toFixed(0) + "ms / 특징 " + tFeat.toFixed(0) + "ms");
+    bA.textContent = "① 기준 다시 녹음";
+    bB.disabled = false;
+    verdict.textContent = "이제 ②를 눌러 같은 문장을 따라 말해보세요.";
+  } catch (e) {
+    log("오류: " + e.message);
+    bA.disabled = false;
+    bA.textContent = "① 기준 발음 녹음 (3초)";
+  }
+};
+
+bB.onclick = async function () {
+  if (!REF) return;
+  try {
+    log("② 녹음 중… 3초간 따라 말해주세요.");
+    bB.disabled = true; bB.textContent = "녹음 중…";
+    const blob = await record(3);
+    let t = performance.now();
+    const pcm = await toPcm16k(blob);
+    const tDec = performance.now() - t;
+    t = performance.now();
+    TAKE = logmel(pcm);
+    const tFeat = performance.now() - t;
+    t = performance.now();
+    const r = scoreOf(REF, TAKE);
+    const tDtw = performance.now() - t;
+
+    sAcc.textContent = r.acc.toFixed(0);
+    sRhy.textContent = r.rhy.toFixed(0);
+    verdict.textContent = r.acc >= 80 ? "아주 좋습니다." : r.acc >= 60 ? "거의 맞았습니다. 조금 더 또렷하게." : "다시 시도해보세요.";
+    log("내 발음: 프레임 " + TAKE.frames + ", 길이 " + TAKE.dur.toFixed(2) + "s");
+    log("  디코딩 " + tDec.toFixed(0) + "ms / 특징 " + tFeat.toFixed(0) + "ms / DTW " + tDtw.toFixed(1) + "ms");
+    log("  정규화 거리 d = " + r.d.toFixed(3) + ", 길이비 = " + r.ratio.toFixed(2));
+    log("  정확도 " + r.acc.toFixed(1) + " / 리듬 " + r.rhy.toFixed(1));
+    log("  총 연산 " + (tDec + tFeat + tDtw).toFixed(0) + "ms, 서버 전송 0바이트");
+    bB.textContent = "② 다시 녹음";
+    bB.disabled = false;
+  } catch (e) {
+    log("오류: " + e.message);
+    bB.disabled = false;
+    bB.textContent = "② 내 발음 녹음 (3초)";
+  }
+};
+</script>
+</body>
+</html>
