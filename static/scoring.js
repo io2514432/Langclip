@@ -409,7 +409,7 @@ function lightPreScore() {
     applyLocalScore(r);
   }).catch((e) => {
     if (window.LCUtil && LCUtil.logErr) LCUtil.logErr("light.score", e && e.message);
-    lightFail("채점하지 못했습니다");
+    lightFail("채점하지 못했습니다 · " + ((e && e.message) || "원인 불명"));
   });
 }
 
