@@ -478,7 +478,7 @@ def audio_public(v: dict, d: dict) -> dict | None:
 
 
 def video_public(v: dict, d: dict) -> dict:
-    au = audio_public(v, d)
+    au = _feats_audio(v, d)
     st = prog.stage_of(v["id"], len(v["segs"]))
     return {"id": v["id"], "yt": v["yt"], "title": v["title"],
             "segs": v["segs"], "n": len(v["segs"]),
@@ -651,6 +651,23 @@ def add_video(payload: dict, request: Request):
             "markdown": script_md.serialize(rec["title"], vid_yt, segs, rec["duration"])}
 
 
+def _feats_audio(v: dict, d: dict):
+    """참조 특징용 오디오 해석. audio_public 이 404 를 던져도 다른 경로로 재시도한다."""
+    try:
+        au = _feats_audio(v, d)
+        if au and au.get("key"):
+            return au
+    except Exception:
+        pass
+    a = (d.get("audios") or {}).get(v.get("audio_id") or "")
+    if a and a.get("key"):
+        return a
+    inline = v.get("audio")
+    if isinstance(inline, dict) and inline.get("key"):
+        return inline
+    return None
+
+
 @app.get("/api/videos/{vid}/feats")
 def video_feats(vid: str):
     """브라우저 채점용 참조 특징 (구간별 int8 로그멜). 공개/관리자 모드 공통."""
@@ -658,7 +675,7 @@ def video_feats(vid: str):
     v = d["videos"].get(vid) or get_video(vid)
     if not v:
         raise HTTPException(404, "video not found")
-    au = audio_public(v, d)
+    au = _feats_audio(v, d)
     if not au or not au.get("key") or not storage.exists(au["key"]):
         raise HTTPException(409, "no audio for this video")
     try:
@@ -1420,7 +1437,7 @@ app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
 def feats_alias(vid: str):
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
-    au = audio_public(v, d)
+    au = _feats_audio(v, d)
     if not au or not au.get("key") or not storage.exists(au["key"]):
         raise HTTPException(409, "no audio for this video")
     try:
