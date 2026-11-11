@@ -734,7 +734,7 @@ function renderVideos() {
               <span class="m-n">총 ${v.n}문장</span>
               ${S.admin ? medalHTML(v.medals) : ""}
             </span>
-            ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button>` : `<span class="m-sp"></span>`}
+            ${S.admin ? `<button class="v-audio" data-au="${esc(v.id)}">${v.has_audio ? "음원 교체" : "음원 추가"}</button><button class="v-audio" data-pick="${esc(v.id)}">${v.pick ? "오늘의 영상 ✓" : "오늘의 영상으로 설정"}</button>` : `<span class="m-sp"></span>`}
           </div>
         </div>
         <div class="vc-pct" hidden></div>
@@ -2447,6 +2447,30 @@ function tqCelebrate(pct, okN, n, best) {
   $("#tcele-x").onclick = () => { box.hidden = true; };
 }
 
+
+/* 오늘의 학습 지정 (관리자) — 문서 캡처 단계에서 처리해 카드 열기와 겹치지 않게 한다 */
+document.addEventListener("click", async (e) => {
+  const b = e.target && e.target.closest ? e.target.closest("[data-pick]") : null;
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = b.dataset.pick;
+  const cur = (S.videos || []).find((x) => x.id === id) || {};
+  const next = !cur.pick;
+  b.disabled = true;
+  try {
+    const r = await fetch("/api/videos/" + encodeURIComponent(id) + "/pick", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pick: next })
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    toast(next ? "오늘의 영상으로 설정했습니다" : "오늘의 영상에서 해제했습니다");
+    await loadVideos();
+    try { await loadHome(); } catch (e2) {}
+  } catch (err) {
+    LCUtil.logErr("pick", err);
+    toast("설정을 저장하지 못했습니다");
+  } finally { b.disabled = false; }
+}, true);
 /* ================= 시작 ================= */
 (async function boot() {
   try {

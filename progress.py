@@ -385,7 +385,11 @@ def today_focus(videos: dict) -> dict | None:
     today = _today().isoformat()
     last_today = attempts(today)
     picked = None
-    if last_today:
+    pinned = [v for v in videos.values() if v.get("pick")]
+    if pinned:
+        open_p = [v for v in pinned if not is_complete(v["id"])]
+        picked = (open_p or pinned)[0]
+    if picked is None and last_today:
         picked = videos.get(last_today[-1].get("vid"))
     if picked is None:
         open_v = [v for v in videos.values() if not is_complete(v["id"])]

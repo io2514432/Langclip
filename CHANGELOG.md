@@ -5,6 +5,7 @@
 
 | 버전 | 날짜 | 한 줄 요약 |
 |---|---|---|
+| v8.14.11 | 2026-11-11 | 학습 탭에서 관리자가 '오늘의 영상으로 설정' 지정 (pick 플래그, 미지정 시 기존 동작 유지) |
 | v8.14.10 | 2026-11-11 | ADMIN_TOKEN 설정 시 관리자 UI(추가·수정)가 숨겨지던 버그 수정 — /api/health 가 admin 여부를 반환 |
 | v8.14.9 | 2026-11-10 | 오류 관측성(app.log + /api/health last_errors + 프런트 logErr), 프런트 셀프테스트(node selftest.mjs) |
 | v8.14.8 | 2026-11-10 | app.js 2단계 분할(player.js·scoring.js), 서버 시작 시 하루 1회 자동 data 백업 |

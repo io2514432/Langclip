@@ -487,7 +487,7 @@ def video_public(v: dict, d: dict) -> dict:
             "langs": v.get("langs") or [v.get("lang") or "en"],
             "stage": st, "stage1": st["stage1"],
             "medals": prog.medals(v["id"]),
-            "verify": prog.verify_of(v["id"])}
+            "verify": prog.verify_of(v["id"]), "pick": bool(v.get("pick"))}
 
 
 
@@ -648,6 +648,23 @@ def add_video(payload: dict, request: Request):
     return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
             "markdown": script_md.serialize(rec["title"], vid_yt, segs, rec["duration"])}
 
+
+@app.patch("/api/videos/{vid}/pick")
+async def set_pick(vid: str, request: Request):
+    """오늘의 학습에 띄울 영상 지정/해제 (관리자 전용)."""
+    require_admin(request)
+    try:
+        body = await request.json()
+    except Exception as ex:
+        logs.log_err("api:set_pick", ex, "bad json")
+        body = {}
+    d = db()
+    v = d["videos"].get(vid)
+    if not v:
+        raise HTTPException(404, "video not found")
+    v["pick"] = bool(body.get("pick"))
+    save_db(d)
+    return {"ok": True, "pick": v["pick"]}
 
 @app.delete("/api/videos/{vid}")
 def del_video(vid: str, request: Request):
