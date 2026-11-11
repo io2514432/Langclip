@@ -2451,7 +2451,7 @@ function tqCelebrate(pct, okN, n, best) {
 (async function boot() {
   try {
     const h = await api("/api/health");
-    S.admin = !h.locked && h.mode !== "public";
+    S.admin = h.admin === true || (!h.locked && h.mode !== "public");
   } catch { S.admin = true; }
   const railNudge = $("#btn-nudge");
   if (railNudge) railNudge.hidden = !S.admin;

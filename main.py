@@ -512,11 +512,12 @@ LANGCLIP_BUILD = build.VERSION
 
 
 @app.get("/api/health")
-def health():
+def health(request: Request):
     return {"ok": True, "sr": SR, "storage": storage.name,
             "range": True, "linked_audio": True, "remote_open": True,
             "script_md": True, "version": app.version, "build": LANGCLIP_BUILD,
-            "locked": bool(ADMIN_TOKEN) or PUBLIC, "mode": APP_MODE, "name": "Langclip",
+            "locked": bool(ADMIN_TOKEN) or PUBLIC, "admin": is_admin(request),
+            "mode": APP_MODE, "name": "Langclip",
             "last_errors": logs.recent()}
 
 
