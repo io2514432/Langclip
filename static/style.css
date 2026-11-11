@@ -2268,3 +2268,20 @@ body.tab-home #head-streak{display:none!important}
 .set-group .set-row.on{background:#F7FBFF}
 .set-group .set-row:hover,.set-group .set-row:active{background:#F8FAFC}
 .set-tour{margin-top:10px}
+
+
+/* ===== v8.14.15 · 채점 팝업 그림자/그라데이션 제거 ===== */
+#wave, #wave *, #countdown, #countdown * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+#wave, #wave * { background-image: none !important; }
+#wave .wv-cv { background: #0B1524 !important; }
+#countdown, #countdown * { background-image: none !important; }
+#countdown .cd-box { background: #CBD3D8 !important; }
+#countdown .cd-wedge { display: none !important; }
+#countdown .cd-ring { border-color: #9AA6AE !important; }
+#countdown .cd-cross { background: #9AA6AE !important; }
+#countdown .cd-num { color: #12222E !important; }
+.countdown.tick .cd-box { animation: none !important; }
