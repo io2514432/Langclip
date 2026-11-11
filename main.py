@@ -1413,3 +1413,19 @@ def admin_login(request: Request):
 
 
 app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
+
+
+# ---- 브라우저 채점 참조 특징 (별칭 경로: 공개 모드에서도 항상 등록된다)
+@app.get("/api/feats/{vid}")
+def feats_alias(vid: str):
+    d = db()
+    v = d["videos"].get(vid) or get_video(vid)
+    au = audio_public(v, d)
+    if not au or not au.get("key") or not storage.exists(au["key"]):
+        raise HTTPException(409, "no audio for this video")
+    try:
+        return feats.get_or_build(vid, au["key"], v.get("segs") or [], storage,
+                                 audio_id=str(v.get("audio_id") or vid), feats_dir=FEATS)
+    except Exception as ex:
+        logs.log_err("api:feats", ex)
+        raise HTTPException(500, "feature build failed")
