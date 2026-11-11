@@ -191,6 +191,12 @@ function logmel(pcm) {
   const mu = new Float32Array(NMEL);
   for (let i = 0; i < out.length; i++) for (let m = 0; m < NMEL; m++) mu[m] += out[i][m] / out.length;
   for (let i = 0; i < out.length; i++) for (let m = 0; m < NMEL; m++) out[i][m] -= mu[m];
+  for (let i = 0; i < out.length; i++) {
+    let s2 = 0;
+    for (let m = 0; m < NMEL; m++) s2 += out[i][m] * out[i][m];
+    const inv = 1 / Math.sqrt(s2 + 1e-12);
+    for (let m = 0; m < NMEL; m++) out[i][m] *= inv;
+  }
   return { feats: out, frames: out.length, dur: y.length / SR };
 }
 
@@ -205,15 +211,16 @@ function dtwDist(A, B, bandRatio) {
     const cur = new Float64Array(m + 1).fill(Infinity);
     const lo = Math.max(1, i - band), hi = Math.min(m, i + band);
     for (let j = lo; j <= hi; j++) {
-      let c = 0;
+      let c = 1;
       const ai = A[i - 1], bj = B[j - 1];
-      for (let k = 0; k < d; k++) { const x = ai[k] - bj[k]; c += x * x; }
+      for (let k = 0; k < d; k++) c -= ai[k] * bj[k];
+      if (c < 0) c = 0;
       const mn = Math.min(prev[j], prev[j - 1], cur[j - 1]);
       cur[j] = c + mn;
     }
     prev = cur;
   }
-  return prev[m] / (Math.max(n, m) * d);
+  return prev[m] / Math.max(n, m);
 }
 
 /* ---------- 4. 점수 ---------- */
@@ -223,7 +230,7 @@ function scoreOf(ref, take) {
   const d = dtwDist(ref.feats, take.feats);
   const ratio = take.dur / Math.max(0.001, ref.dur);
   const rhy = 100 - Math.min(100, Math.abs(Math.log(Math.max(0.2, ratio))) * 90);
-  const acc = mapScore(d, 0.85, 5.2);
+  const acc = Math.max(0, Math.min(100, 100 * (1 - d / 0.55)));
   return { d: d, ratio: ratio, acc: acc, rhy: rhy };
 }
 
