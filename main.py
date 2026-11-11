@@ -653,21 +653,21 @@ def add_video(payload: dict, request: Request):
 
 @app.get("/api/videos/{vid}/feats")
 def video_feats(vid: str):
-    """브라우저 채점용 참조 특징 (구간별 int8 로그멜)."""
+    """브라우저 채점용 참조 특징 (구간별 int8 로그멜). 공개/관리자 모드 공통."""
     d = db()
-    v = d["videos"].get(vid)
+    v = d["videos"].get(vid) or get_video(vid)
     if not v:
         raise HTTPException(404, "video not found")
-    aid = v.get("audio_id")
-    a = d["audios"].get(aid) if aid else None
-    if not a or not storage.exists(a["key"]):
+    au = audio_public(v, d)
+    if not au or not au.get("key") or not storage.exists(au["key"]):
         raise HTTPException(409, "no audio for this video")
     try:
-        return feats.get_or_build(vid, a["key"], v.get("segs") or [], storage,
-                                 audio_id=str(a.get("id") or aid), feats_dir=FEATS)
+        return feats.get_or_build(vid, au["key"], v.get("segs") or [], storage,
+                                 audio_id=str(v.get("audio_id") or vid), feats_dir=FEATS)
     except Exception as ex:
         logs.log_err("api:feats", ex)
         raise HTTPException(500, "feature build failed")
+
 
 @app.patch("/api/videos/{vid}/pick")
 async def set_pick(vid: str, request: Request):
