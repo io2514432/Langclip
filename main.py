@@ -47,6 +47,7 @@ import script_md
 import synclib
 import verify
 from store import DATA, storage
+import feats
 import logs
 
 # APP_MODE=public → 공개 서버. 쓰기(등록·삭제·싱크·음원) 라우트를 아예 등록하지 않는다.
@@ -508,6 +509,7 @@ def _prefetch_async(segs, lang: str = "en") -> None:
         logs.log_err("srv:_prefetch_async", _e)
 
 # --------------------------------------------------------------- API
+FEATS = DATA / "feats"
 LANGCLIP_BUILD = build.VERSION
 
 
@@ -648,6 +650,24 @@ def add_video(payload: dict, request: Request):
     return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
             "markdown": script_md.serialize(rec["title"], vid_yt, segs, rec["duration"])}
 
+
+@app.get("/api/videos/{vid}/feats")
+def video_feats(vid: str):
+    """브라우저 채점용 참조 특징 (구간별 int8 로그멜)."""
+    d = db()
+    v = d["videos"].get(vid)
+    if not v:
+        raise HTTPException(404, "video not found")
+    aid = v.get("audio_id")
+    a = d["audios"].get(aid) if aid else None
+    if not a or not storage.exists(a["key"]):
+        raise HTTPException(409, "no audio for this video")
+    try:
+        return feats.get_or_build(vid, a["key"], v.get("segs") or [], storage,
+                                 audio_id=str(a.get("id") or aid), feats_dir=FEATS)
+    except Exception as ex:
+        logs.log_err("api:feats", ex)
+        raise HTTPException(500, "feature build failed")
 
 @app.patch("/api/videos/{vid}/pick")
 async def set_pick(vid: str, request: Request):
