@@ -1,4 +1,4 @@
-/* Langclip · 브라우저 채점 엔진 (v8.14.19)
+/* Langclip · 브라우저 채점 엔진 (v8.14.21)
    서버 /api/videos/{vid}/feats 가 내려주는 int8 로그멜과 로컬 녹음을 DTW 로 비교한다.
    파라미터(SR/WIN/HOP/NFFT/NMEL)는 feats.py 와 반드시 같아야 한다. 한쪽만 바꾸면 점수가 어긋난다. */
 (function (global) {
@@ -6,7 +6,7 @@
 
   var SR = 16000, WIN = 400, HOP = 320, NFFT = 512, NMEL = 24;
   var ALPHAS = [0.88, 0.90, 0.92, 0.95, 0.98, 1.0, 1.02, 1.05, 1.08, 1.10, 1.12];
-  var VERSION = "8.14.19";
+  var VERSION = "8.14.21";
 
   /* ---------------- 기반 유틸 ---------------- */
   var hz2mel = function (f) { return 2595 * Math.log10(1 + f / 700); };

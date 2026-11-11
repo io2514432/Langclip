@@ -660,3 +660,18 @@ function renderVerifyResult() {
   $("#vf-close").onclick = () => { clearInterval(window.__vrStop); exitVerify(false); };
 }
 
+
+/* 음원 없는 영상은 섀도잉 버튼을 숨긴다 (v8.14.21) */
+function syncShadowBtn() {
+  var b = $("#btn-shadow");
+  if (!b) return;
+  var ok = !!(S.cur && S.cur.has_audio !== false);
+  b.style.display = ok ? "" : "none";
+  if (!ok && SH.phase !== "idle") { try { cancelShadow(); } catch (e) {} }
+}
+(function () {
+  var raw = window.show;
+  if (typeof raw === "function") {
+    window.show = function (n) { raw(n); try { syncShadowBtn(); } catch (e) {} };
+  }
+})();
