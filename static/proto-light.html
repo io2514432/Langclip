@@ -29,7 +29,7 @@
 </head>
 <body>
   <h1>브라우저 채점 실험 v2</h1>
-  <p class="sub">기준 발음을 녹음한 뒤 따라 말해보세요. 스펙트럼(VTLN) · 억양 · 리듬을 함께 봅니다. 음성은 서버로 전송되지 않습니다.</p>
+  <p class="sub">기준 발음을 녹음한 뒤 따라 말해보세요. <b>관대 모드</b> — 대략 비슷하면 높은 점수를 줍니다. 스펙트럼(VTLN) · 억양 · 리듬을 함께 봅니다. 음성은 서버로 전송되지 않습니다.</p>
 
   <div class="row">
     <button id="recA">① 기준 발음 녹음 (3초)</button>
@@ -322,18 +322,20 @@ function evaluate(ref, take) {
   const dR = dRhythm(ref, take);
   const ratio = take.dur / Math.max(0.001, ref.dur);
 
-  const sSpec = logistic(best.d, 0.30, 9.0);
-  const sF0 = dF === null ? null : logistic(dF, 1.05, 1.5);
-  const sRhy = CLAMP(100 - Math.abs(Math.log(Math.max(0.2, ratio))) * 90);
-  const sRhythmShape = logistic(dR, 0.055, 45);
+  // 관대 모드: 대략 비슷하면 높은 점수. 상수는 여기 한 곳에서 조정
+  const sSpec = logistic(best.d, 0.55, 6.0);
+  const sF0 = dF === null ? null : logistic(dF, 2.4, 0.8);
+  const sRhy = CLAMP(100 - Math.abs(Math.log(Math.max(0.2, ratio))) * 55);
+  const sRhythmShape = logistic(dR, 0.12, 20);
 
-  const rhy = Math.round((sRhy * 0.5 + sRhythmShape * 0.5));
-  const parts = [{ s: sSpec, w: 0.55 }];
-  if (sF0 !== null) parts.push({ s: sF0, w: 0.25 });
-  parts.push({ s: rhy, w: sF0 === null ? 0.45 : 0.20 });
+  const rhy = Math.round(sRhy * 0.4 + sRhythmShape * 0.6);
+  const parts = [{ s: sSpec, w: 0.45 }];
+  if (sF0 !== null) parts.push({ s: sF0, w: 0.20 });
+  parts.push({ s: rhy, w: sF0 === null ? 0.55 : 0.35 });
   let wsum = 0, acc = 0;
   for (let i = 0; i < parts.length; i++) { acc += parts[i].s * parts[i].w; wsum += parts[i].w; }
   acc = acc / wsum;
+  acc = 100 - (100 - acc) * 0.85;   // 감점 15% 완화
 
   return {
     acc: acc, sSpec: sSpec, sF0: sF0, rhy: rhy,
