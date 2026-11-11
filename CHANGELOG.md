@@ -80,6 +80,11 @@
 
 ---
 
+## 8.14.12
+- 브라우저 채점 엔진 `static/light.js` 추가 (VTLN 로그멜 + DTW, 서버 응답 전 로컬 점수 표시)
+- `GET /api/videos/{vid}/feats` 참조 특징 API + `feats.py` 캐시
+- 로컬/서버 점수 대조 기록 `localStorage[lc.score.diff]` (최근 200건)
+
 ## v8.14.3 · 2026-11-10
 
 ### 쉐도잉 하이라이트

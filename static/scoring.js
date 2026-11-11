@@ -394,7 +394,27 @@ function onTakeStop() {
     waveState("다시", "done");
     return;
   }
+  lightPreScore();
   submitScore();
+}
+
+/* 브라우저 채점: 서버 응답을 기다리지 않고 로컬 점수를 먼저 띄운다 (v8.14.12) */
+function lightPreScore() {
+  if (!window.LCLight || !S.takeBlob || !S.cur || S.takeBlob.size < 1000) return;
+  const vid = S.cur.id, idx = S.idx;
+  const t0 = performance.now();
+  LCLight.score(vid, idx, S.takeBlob).then((r) => {
+    if (!r) return;
+    r.ms = Math.round(performance.now() - t0);
+    if (window.LCScoreDiff) LCScoreDiff.push({ vid: vid, idx: idx, local: Math.round(r.score), d: r.d, alpha: r.alpha, ms: r.ms });
+    if (SH.phase !== "scoring") return;          // 이미 서버 결과가 도착함
+    const sc = $("#wv-score");
+    if (sc && !sc.textContent) {
+      sc.textContent = Math.round(r.score) + "점";
+      sc.className = "wv-score " + (r.score >= 70 ? "good" : "low");
+    }
+    drawWave();
+  }).catch((e) => { if (window.LCUtil && LCUtil.logErr) LCUtil.logErr("light.score", e && e.message); });
 }
 
 async function submitScore() {
@@ -407,6 +427,7 @@ async function submitScore() {
     SH.__retry = 0;
     showScoring(false);
     S.lastResult = r;
+    if (window.LCScoreDiff) LCScoreDiff.server(r.total);
     SH.phase = "done";
     SH.score = Math.round(r.total);
     stageEvent("shadow", S.idx).then(() => paintGoals());
