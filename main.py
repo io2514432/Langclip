@@ -1061,7 +1061,7 @@ def video_bands(v: dict):
 
 
 @app.post("/api/videos/{vid}/segments/{idx}/score")
-def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
+def score_segment(vid: str, idx: int, take: UploadFile = File(...), local_total: str = Form("")):
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     if not (0 <= idx < len(v["segs"])):
@@ -1101,6 +1101,15 @@ def score_segment(vid: str, idx: int, take: UploadFile = File(...)):
     else:
         res = timing_score(take_y, seg_dur)
         res["ref_dur"] = round(seg_dur, 2)
+
+    try:
+        _lt = float(local_total or 0)
+    except Exception:
+        _lt = 0.0
+    if 0 < _lt <= 100:          # 브라우저 채점 결과를 기록의 기준으로 삼는다
+        res["total"] = round(_lt, 1)
+        res["mode"] = "light"
+        res["local"] = True
 
     try:
         prog.record_attempt(vid, idx, res["total"], res["mode"])

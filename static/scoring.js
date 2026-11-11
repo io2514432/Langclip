@@ -397,30 +397,29 @@ function onTakeStop() {
   lightPreScore();
 }
 
-/* 브라우저 채점이 기본 경로. 실패/지연이면 서버 채점으로 자동 폴백한다 (v8.14.13) */
-const LIGHT_WAIT_MS = 2500;
-
+/* 로컬 채점 단일 경로 — 서버 채점으로 되돌아가지 않는다 (v8.14.14) */
 function lightPreScore() {
-  if (!window.LCLight || !S.takeBlob || !S.cur || S.takeBlob.size < 1000) return submitScoreServer();
+  if (!window.LCLight) return lightFail("채점 모듈을 불러오지 못했습니다");
+  if (!S.cur) return lightFail("영상 정보가 없습니다");
+  if (!S.takeBlob || S.takeBlob.size < 1000) return lightFail("녹음이 너무 짧습니다");
   const vid = S.cur.id, idx = S.idx, t0 = performance.now();
-  let done = false;
-  const to = setTimeout(() => {
-    if (done) return;
-    done = true;
-    submitScoreServer();                 // 로컬이 느리면 서버 결과라도 빨리 보여준다
-  }, LIGHT_WAIT_MS);
   LCLight.score(vid, idx, S.takeBlob).then((r) => {
-    if (done) return;
-    done = true; clearTimeout(to);
-    if (!r) return submitScoreServer();
+    if (!r) return lightFail("이 문장의 비교 데이터가 없습니다");
     r.ms = Math.round(performance.now() - t0);
     applyLocalScore(r);
   }).catch((e) => {
-    if (done) return;
-    done = true; clearTimeout(to);
     if (window.LCUtil && LCUtil.logErr) LCUtil.logErr("light.score", e && e.message);
-    submitScoreServer();
+    lightFail("채점하지 못했습니다");
   });
+}
+
+/* 실패: 점수 없이 다시 녹음할 수 있게 안내한다 (서버 채점 대체 없음) */
+function lightFail(msg) {
+  showScoring(false);
+  if (SH.abort) return;
+  SH.skipListen = true;                 // 다시 누르면 듣기 생략하고 바로 카운트다운
+  closeWave();
+  toast(msg + " — 다시 눌러 한 번 더 녹음해 주세요", 4200);
 }
 
 /* 로컬 점수로 결과 화면을 직접 그린다 (서버 대기 없음) */
@@ -433,7 +432,7 @@ function applyLocalScore(r) {
     text: seg.en || seg.text || "",
     ko: seg.ko || "",
     mode: "light",
-    pitch: null,                          // 억양 축은 아직 없음 → UI 자동 숨김
+    pitch: null,
     rhythm: Math.round(r.sLen),
     timbre: Math.round(r.sSpec),
     attack: null,
@@ -455,57 +454,17 @@ function applyLocalScore(r) {
   stageEvent("shadow", S.idx).then(() => paintGoals()).catch(() => {});
   loadHome();
   LCScoreDiff.push({ vid: S.cur.id, idx: S.idx, local: total, d: r.d, alpha: r.alpha, ms: r.ms });
-  uploadTake(S.cur.id, S.idx, S.takeBlob, SH.takeExt);   // 진도 기록용 (화면엔 반영 안 함)
+  uploadTake(S.cur.id, S.idx, S.takeBlob, SH.takeExt, total);   // 진도 기록용
 }
 
-/* 서버로 녹음만 보내 기록을 남긴다. 결과는 대조 로그로만 쓴다. */
-function uploadTake(vid, idx, blob, ext) {
+/* 녹음+로컬 점수를 서버에 보내 기록만 남긴다 (화면엔 반영 안 함) */
+function uploadTake(vid, idx, blob, ext, total) {
   if (!vid || !blob) return;
   const fd = new FormData();
   fd.append("take", blob, "take" + (ext || ".webm"));
+  fd.append("local_total", String(Math.max(0, Math.min(100, Math.round(total || 0)))));
   api(`/api/videos/${vid}/segments/${idx}/score`, { method: "POST", body: fd })
-    .then((r) => { if (window.LCScoreDiff) LCScoreDiff.server(r.total); })
     .catch(() => {});
-}
-
-async function submitScoreServer() {
-  if (SH.abort) return;
-  const fd = new FormData();
-  fd.append("take", S.takeBlob, `take${SH.takeExt || ".webm"}`);
-  showScoring(true, 120000);
-  try {
-    const r = await api(`/api/videos/${S.cur.id}/segments/${S.idx}/score`, { method: "POST", body: fd });
-    SH.__retry = 0;
-    showScoring(false);
-    S.lastResult = r;
-    if (window.LCScoreDiff) LCScoreDiff.server(r.total);
-    SH.phase = "done";
-    SH.score = Math.round(r.total);
-    stageEvent("shadow", S.idx).then(() => paintGoals());
-    SH.playT = SH.dur;
-    waveState("완료", "done");
-    const sc = $("#wv-score");
-    sc.textContent = `${SH.score}점`;
-    sc.className = "wv-score " + (r.total >= 70 ? "good" : "low");
-    drawWave();
-
-    renderResult(r);
-    show("s-result");
-    loadHome();
-  } catch (e) {
-    showScoring(false);
-    if (!SH.__retry) {
-      SH.__retry = 1;
-      waveState("다시 채점", "score");
-      toast("채점 응답이 늦어 한 번 더 시도합니다", 2400);
-      return submitScoreServer();
-    }
-    SH.__retry = 0;
-    SH.phase = "done";
-    waveState("오류 · 다시 눌러 재시도", "done");
-    toast("채점에 실패했습니다: " + e.message, 5200);
-    closeWave();
-  }
 }
 
 /* ---------------- 학습 완료 검증 (3단계) ---------------- */
