@@ -1318,8 +1318,8 @@ function renderResult(r) {
     const off = v === null || v === undefined;
     el.style.display = off ? "none" : "flex";
     if (off) return;
-    el.querySelector("i").style.width = Math.max(0, Math.min(100, v)) + "%";
-    el.querySelector(".ax-val").textContent = Math.round(v);
+    el.querySelector("i").style.width = Math.max(0, Math.min(100, v * 2)) + "%";
+    el.querySelector(".ax-val").textContent = Math.round(v) + "/50";
     el.classList.toggle("low", v < 55);
   });
 

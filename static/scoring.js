@@ -433,10 +433,10 @@ function applyLocalScore(r) {
     ko: seg.ko || "",
     mode: "light",
     pitch: null,
-    rhythm: Math.round(r.sLen),
-    timbre: Math.round(r.sSpec),
+    rhythm: Math.round(r.flu),
+    timbre: Math.round(r.pron),
     attack: null,
-    light: { d: +r.d.toFixed(3), alpha: r.alpha, ms: r.ms, ratio: +r.ratio.toFixed(2) },
+    light: { d: +r.d.toFixed(3), alpha: r.alpha, ms: r.ms, pron: +r.pron.toFixed(1), flu: +r.flu.toFixed(1) },
   };
   S.lastResult = res;
   SH.phase = "done";

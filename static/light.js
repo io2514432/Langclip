@@ -1,4 +1,4 @@
-/* Langclip · 브라우저 채점 엔진 (v8.14.16)
+/* Langclip · 브라우저 채점 엔진 (v8.14.17)
    서버 /api/videos/{vid}/feats 가 내려주는 int8 로그멜과 로컬 녹음을 DTW 로 비교한다.
    파라미터(SR/WIN/HOP/NFFT/NMEL)는 feats.py 와 반드시 같아야 한다. 한쪽만 바꾸면 점수가 어긋난다. */
 (function (global) {
@@ -6,7 +6,7 @@
 
   var SR = 16000, WIN = 400, HOP = 320, NFFT = 512, NMEL = 24;
   var ALPHAS = [0.88, 0.90, 0.92, 0.95, 0.98, 1.0, 1.02, 1.05, 1.08, 1.10, 1.12];
-  var VERSION = "8.14.16";
+  var VERSION = "8.14.17";
 
   /* ---------------- 기반 유틸 ---------------- */
   var hz2mel = function (f) { return 2595 * Math.log10(1 + f / 700); };
@@ -161,27 +161,43 @@
     });
   }
 
-  /* ---------------- 점수 곡선 (관대 모드) ---------------- */
-  var CLAMP = function (v) { return Math.max(0, Math.min(100, v)); };
+  /* ---------------- 점수: 두 축 × 50점 = 100점 ---------------- */
+  var PT_PRON = 50, PT_FLUENT = 50, D0_SPEC = 0.55, K_SPEC = 6.0;
+
   function logistic(d, d0, k) { return 100 / (1 + Math.exp(k * (d - d0))); }
 
-  var D0_SPEC = 0.55, K_SPEC = 6.0;   // 스펙트럼 관대도
-  var W_SPEC = 0.75, W_LEN = 0.25;    // 축 가중치 (길이 축 = 전체 길이 비율)
-  var SOFT = 0.85;                    // 감점 완화 계수
+  /* 축1 발음 정확도 (0~50): 스펙트럼 코사인 거리 → 로지스틱 */
+  function pronScore(d) { return logistic(d, D0_SPEC, K_SPEC) / 2; }
 
-  function scoreFrames(refFrames, takeSpec, takeDur, refDur) {
+  /* 축2 유창성 (0~50): 끊김(0.1초 이상 공백) 개수 + 총 무음 시간으로 감점 */
+  function fluencyScore(rms) {
+    var n = rms.length;
+    if (n < 8) return 0;
+    var mx = 0, i;
+    for (i = 0; i < n; i++) if (rms[i] > mx) mx = rms[i];
+    if (mx < 1e-4) return 0;
+    var th = mx * 0.14, first = -1, last = -1;
+    for (i = 0; i < n; i++) if (rms[i] > th) { if (first < 0) first = i; last = i; }
+    if (first < 0 || last - first < 4) return 0;
+    var gaps = 0, silent = 0, run = 0, k;
+    for (k = first; k <= last; k++) {
+      if (rms[k] <= th) run++;
+      else { if (run >= 5) { gaps++; silent += run; } run = 0; }
+    }
+    if (run >= 5) { gaps++; silent += run; }
+    var penalty = gaps * 9 + (silent / 50) * 18;
+    return Math.max(0, PT_FLUENT - penalty);
+  }
+
+  function scoreFrames(refFrames, takeSpec, takeRms) {
     var best = { d: Infinity, alpha: 1 }, i, B, d;
     for (i = 0; i < ALPHAS.length; i++) {
       B = melFeats(takeSpec, ALPHAS[i]);
       d = dSpec(refFrames, B);
       if (d < best.d) { best.d = d; best.alpha = ALPHAS[i]; }
     }
-    var ratio = takeDur / Math.max(0.001, refDur);
-    var sSpec = logistic(best.d, D0_SPEC, K_SPEC);
-    var sLen = CLAMP(100 - Math.abs(Math.log(Math.max(0.2, ratio))) * 55);
-    var acc = (sSpec * W_SPEC + sLen * W_LEN) / (W_SPEC + W_LEN);
-    acc = 100 - (100 - acc) * SOFT;
-    return { score: CLAMP(acc), d: best.d, alpha: best.alpha, ratio: ratio, sSpec: sSpec, sLen: sLen };
+    var sPron = pronScore(best.d), sFlu = fluencyScore(takeRms);
+    return { score: sPron + sFlu, pron: sPron, flu: sFlu, d: best.d, alpha: best.alpha };
   }
 
   /* ---------------- PCM 준비 ---------------- */
@@ -257,7 +273,7 @@
       return pcmOf(blob).then(function (pcm) {
         var a = analyze(pcm);
         if (a.frames < 4) return null;
-        var r = scoreFrames(ref.frames, a.spec, a.dur, ref.dur);
+        var r = scoreFrames(ref.frames, a.spec, a.rms);
         r.vid = vid; r.idx = idx;
         return r;
       });
