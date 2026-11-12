@@ -2264,3 +2264,40 @@ body.tab-home #head-streak{display:none!important}
 
 /* v8.14.16 · 채점 실패 안내 팝업만 그림자·그라데이션 제거 */
 .toast{box-shadow:none !important;text-shadow:none !important;background-image:none !important}
+
+/* ================= 결과 화면 정리 (v8.14.30) ================= */
+/* ① 상단 점수 — 원형 게이지가 유일한 점수 표시. 파형 유사도 카드는 삭제됨 */
+#s-result .ring{
+  background:radial-gradient(circle at 50% 50%,#FFFFFF 58%,transparent 59%),
+             conic-gradient(from -90deg,var(--brand) calc(var(--p)*1%),#E8F3FB 0);
+}
+#s-result .grade{color:var(--brand)}
+#s-result .ring-in b{font-variant-numeric:tabular-nums}
+
+/* ② 문장 영역 — 영어 원문이 가장 먼저 눈에 들어오게 */
+#s-result .res-en{
+  font-family:inherit;
+  font-size:16px;font-weight:600;line-height:1.55;letter-spacing:-.01em;
+  color:var(--ink);margin-top:2px;
+}
+#s-result .res-ko{
+  font-family:inherit;
+  font-size:12.5px;font-weight:450;line-height:1.6;color:#4E708C;margin-top:6px;
+}
+
+/* ② 다시 듣기 — 우측 0.0s 타이머 제거 */
+#s-result .mix-t{display:none}
+#s-result .mix-row{gap:10px}
+
+/* ③ 액션 버튼 — 세로 높이 확장 + 닫기는 텍스트(고스트) 버튼 */
+#s-result .actions{gap:4px;margin-top:10px}
+#s-result .actions .btn{
+  padding:17px 16px;height:auto;min-height:52px;
+  font-size:15px;font-weight:750;letter-spacing:-.01em;
+}
+#s-result .btn.primary{border-radius:14px}
+#s-result #btn-result-close{
+  background:none;border:0;box-shadow:none;color:var(--ink-3);
+  font-size:14px;font-weight:650;min-height:48px;padding:14px 16px;
+}
+#s-result #btn-result-close:active{background:none;transform:none;opacity:.6}

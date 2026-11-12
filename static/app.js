@@ -1301,7 +1301,6 @@ async function saveTake() {
 
 function renderResult(r) {
   const total = Math.round(r.total);
-  $("#axis-card").style.display = "";
   $("#listen-card").style.display = "";
 
   $("#total").textContent = total;
@@ -1310,17 +1309,6 @@ function renderResult(r) {
   $("#res-ko").textContent = r.ko || "";
   const s = S.cur ? S.cur.segs[S.idx] : null;
   $("#res-time").textContent = s ? `${fmt(s.start)}–${fmt(s.end)}s` : "";
-
-  const vals = { sim: r.sim ?? null };
-  $$(".axis").forEach((el) => {
-    const v = vals[el.dataset.k];
-    const off = v === null || v === undefined;
-    el.style.display = off ? "none" : "flex";
-    if (off) return;
-    el.querySelector("i").style.width = Math.max(0, Math.min(100, v * 2)) + "%";
-    el.querySelector(".ax-val").textContent = Math.round(v) + "/100";
-    el.classList.toggle("low", v < 60);
-  });
 
   const note = $("#mode-note");
   note.classList.remove("show");
