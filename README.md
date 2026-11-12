@@ -40,7 +40,7 @@ Python 3.11 이상. **ffmpeg 는 필수다** — 모든 녹음 채점이 ffmpeg 
 
 ```
 main.py          FastAPI 앱 (모든 라우트)
-engine.py        librosa 4축 채점
+feats.py         서버 참조 특징 생성·캐시
 verify.py        3단계 검증 판정
 progress.py      학습기록·연속학습·XP (사용자별 분리)
 store.py         로컬/S3 스토리지

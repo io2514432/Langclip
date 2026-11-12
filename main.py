@@ -41,7 +41,6 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import build
-import engine
 import progress as prog
 import script_md
 import synclib
@@ -59,7 +58,7 @@ COOKIE = "langclip_uid"
 STATIC = Path(__file__).resolve().parent / "static"
 DB = DATA / "videos.json"
 
-SR = engine.SR
+SR = feats.SR          # 16000 Hz (feats.py 의 SR 과 동일)
 MAX_UPLOAD = 60 * 1024 * 1024
 AUDIO_EXT = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".webm", ".flac"}
 MIME = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
@@ -227,9 +226,28 @@ def probe_duration(data: bytes, suffix: str) -> float:
             return 0.0
 
 
+def _trim_take(y, sr=None) -> np.ndarray:
+    """engine.preprocess 대체 — 피크 정규화 후 무음 30dB 트리밍."""
+    sr = SR if sr is None else sr
+    y = np.asarray(y, dtype=np.float32)
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    if peak < 1e-4:
+        raise ValueError("무음 또는 너무 조용한 입력입니다")
+    y = (y / peak).astype(np.float32)
+    y, _ = librosa.effects.trim(y, top_db=30, frame_length=1024, hop_length=160)
+    if y.size < int(0.2 * sr):
+        raise ValueError("0.2초 미만의 너무 짧은 입력입니다")
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    return (y / peak).astype(np.float32) if peak > 0 else y.astype(np.float32)
+
+
 def timing_score(y: np.ndarray, seg_dur: float) -> dict:
-    p = engine.preprocess(y)
-    dur = len(p) / SR
+    try:
+        dur = len(_trim_take(y)) / SR
+    except Exception:
+        dur = len(np.asarray(y, dtype=np.float32)) / SR
     ratio = dur / max(seg_dur, 0.1)
     v = 100.0 * math.exp(-abs(math.log(max(ratio, 1e-6))) / 0.35)
     v = float(max(0.0, min(100.0, v)))
@@ -1052,87 +1070,32 @@ def serve_media(key: str, request: Request):
 
 
 # ---- 채점
-_BAND_CACHE: dict = {}
-
-
-def video_bands(v: dict):
-    """영상 문장쌍 거리 분포 -> 축별 문턱. 영상/음원이 바뀌면 다시 계산한다."""
-    d = db()
-    au = v.get("audio_id")
-    if not au or au not in d["audios"]:
-        return None
-    key = (v["id"], au, len(v.get("segs") or []))
-    if key in _BAND_CACHE:
-        return _BAND_CACHE[key]
-    off = float(d["audios"][au].get("offset", 0.0))
-    slices = []
-    for s in v.get("segs", [])[:9]:
-        try:
-            y = load_ref_slice(d["audios"][au]["key"], s["start"] - off, s["end"] - off)
-            if len(y) >= int(0.8 * SR):
-                slices.append(y)
-        except Exception:
-            continue
-    bands = None
-    if len(slices) >= 3:
-        pool = [(slices[i], slices[j]) for i in range(len(slices))
-                for j in range(i + 1, len(slices))]
-        bands = engine.calibrate(pool)
-    _BAND_CACHE[key] = bands
-    return bands
-
-
 @app.post("/api/videos/{vid}/segments/{idx}/score")
-def score_segment(vid: str, idx: int, take: UploadFile = File(...), local_total: str = Form("")):
+def score_segment(vid: str, idx: int, take: UploadFile | None = File(None),
+                  local_total: str = Form("")):
+    """브라우저 채점 결과를 진도 기록으로만 남긴다 (서버 채점 없음 · v8.14.27).
+
+    점수는 브라우저(static/light.js 의 LCLight)가 결정한다. 서버는 local_total 을
+    그대로 기록하므로 디코딩·DTW 를 수행하지 않는다. 녹음 파일(take)은 선택이며
+    와도 읽지 않고 버린다.
+    """
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     if not (0 <= idx < len(v["segs"])):
         raise HTTPException(404, "문장을 찾을 수 없습니다")
     seg = v["segs"][idx]
-    take.file.seek(0)
-    data = take.file.read()
-    if not data:
-        raise HTTPException(422, "빈 녹음입니다")
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "녹음이 너무 큽니다")
-    take_y = to_wav16k(data, os.path.splitext(take.filename or ".webm")[1] or ".webm")
-    seg_dur = max(0.3, float(seg["end"]) - float(seg["start"]))
-
-    silent = engine.is_silent(take_y)
-    au = None if silent else audio_public(v, d)
-    if silent:
-        res = {"total": 0.0, "mode": "silent", "silent": True,
-               "pitch": 0, "rhythm": 0, "timbre": 0, "attack": 0,
-               "note": "녹음이 거의 무음입니다", "raw": {},
-               "ref_dur": round(seg_dur, 2)}
-    elif au and au["url"]:
-        a = d["audios"][v["audio_id"]]
-        off = float(a.get("offset", 0.0))
-        try:
-            ref_y = load_ref_slice(a["key"], seg["start"] - off, seg["end"] - off)
-            if len(ref_y) < int(0.25 * SR):
-                raise ValueError("구간이 너무 짧습니다")
-            res = engine.score(ref_y, take_y, bands=video_bands(v))
-            res["mode"] = "acoustic"
-            res["ref_dur"] = round(len(ref_y) / SR, 2)
-            res["ref_src"] = {"storage": storage.name, "read": "open+range"}
-        except Exception as ex:
-            res = timing_score(take_y, seg_dur)
-            res["note"] = f"구간 음향 채점 불가({ex}) → 타이밍 채점"
-            res["ref_dur"] = round(seg_dur, 2)
-    else:
-        res = timing_score(take_y, seg_dur)
-        res["ref_dur"] = round(seg_dur, 2)
-
+    raw = str(local_total or "").strip()
+    if not raw:
+        raise HTTPException(422, "local_total(브라우저 점수)이 필요합니다")
     try:
-        _lt = float(local_total or 0)
+        total = float(raw)
     except Exception:
-        _lt = 0.0
-    if 0 < _lt <= 100:          # 브라우저 채점 결과를 기록의 기준으로 삼는다
-        res["total"] = round(_lt, 1)
-        res["mode"] = "light"
-        res["local"] = True
-
+        raise HTTPException(422, "local_total 형식이 올바르지 않습니다")
+    if not (0 <= total <= 100):
+        raise HTTPException(422, "local_total 은 0~100 이어야 합니다")
+    seg_dur = max(0.3, float(seg["end"]) - float(seg["start"]))
+    res = {"total": round(total, 1), "mode": "light", "local": True,
+           "ref_dur": round(seg_dur, 2)}
     try:
         prog.record_attempt(vid, idx, res["total"], res["mode"])
     except Exception as _e:

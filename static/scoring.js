@@ -461,7 +461,7 @@ function applyLocalScore(r) {
 function uploadTake(vid, idx, blob, ext, total) {
   if (!vid || !blob) return;
   const fd = new FormData();
-  fd.append("take", blob, "take" + (ext || ".webm"));
+  // 점수만 전송 — 녹음 파일은 올리지 않는다 (v8.14.27)
   fd.append("local_total", String(Math.max(0, Math.min(100, Math.round(total || 0)))));
   api(`/api/videos/${vid}/segments/${idx}/score`, { method: "POST", body: fd })
     .catch(() => {});
