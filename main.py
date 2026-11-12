@@ -672,9 +672,9 @@ def _feats_audio(v: dict, d: dict):
 def video_feats(vid: str):
     """브라우저 채점용 참조 특징 (구간별 int8 로그멜). 공개/관리자 모드 공통."""
     d = db()
-    v = d["videos"].get(vid) or get_video(vid)
+    v = d["videos"].get(vid)
     if not v:
-        raise HTTPException(404, "video not found")
+        raise HTTPException(409, "video not found in db")
     au = _feats_audio(v, d)
     if not au or not au.get("key") or not storage.exists(au["key"]):
         raise HTTPException(409, "no audio for this video")
@@ -1446,3 +1446,41 @@ def feats_alias(vid: str):
     except Exception as ex:
         logs.log_err("api:feats", ex)
         raise HTTPException(500, "feature build failed")
+
+
+# ---- 진단: 브라우저 채점이 왜 실패하는지 한 번에 보여준다
+@app.get("/api/diag/feats/{vid}")
+def diag_feats(vid: str):
+    d = db()
+    v = d["videos"].get(vid)
+    out = {"vid": vid, "found": bool(v), "data_dir": str(DATA)}
+    try:
+        mp = DATA / "media" / "audios"
+        out["media_files"] = sorted(x.name for x in mp.glob("*"))[:12] if mp.exists() else []
+        fp = DATA / "feats"
+        out["feats_cache"] = sorted(x.name for x in fp.glob("*.json"))[:12] if fp.exists() else []
+    except Exception as ex:
+        out["fs_err"] = str(ex)
+    if not v:
+        out["db_ids"] = list(d["videos"])[:10]
+        return out
+    aid = v.get("audio_id")
+    audios = d.get("audios") or {}
+    a = audios.get(aid) if aid else None
+    out.update({
+        "audio_id": aid,
+        "audios_count": len(audios),
+        "audios_ids": list(audios)[:10],
+        "audio_record": a,
+        "inline_audio": v.get("audio"),
+        "segs": len(v.get("segs") or []),
+        "has_audio_flag": (video_public(v, d) or {}).get("has_audio"),
+    })
+    key = (a or {}).get("key") or ((v.get("audio") or {}) if isinstance(v.get("audio"), dict) else {}).get("key")
+    out["resolved_key"] = key
+    if key:
+        try:
+            out["exists"] = bool(storage.exists(key))
+        except Exception as ex:
+            out["exists_err"] = str(ex)
+    return out
