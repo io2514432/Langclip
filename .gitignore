@@ -27,3 +27,5 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+# --- 임시 진단 파일 (_f.json, _v3.json, _proto.js 등)
+_*
