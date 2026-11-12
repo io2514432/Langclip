@@ -654,7 +654,7 @@ def add_video(payload: dict, request: Request):
 def _feats_audio(v: dict, d: dict):
     """참조 특징용 오디오 해석. audio_public 이 404 를 던져도 다른 경로로 재시도한다."""
     try:
-        au = _feats_audio(v, d)
+        au = audio_public(v, d)
         if au and au.get("key"):
             return au
     except Exception:
@@ -1429,9 +1429,6 @@ def admin_login(request: Request):
     return resp
 
 
-app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
-
-
 # ---- 브라우저 채점 참조 특징 (별칭 경로: 공개 모드에서도 항상 등록된다)
 @app.get("/api/feats/{vid}")
 def feats_alias(vid: str):
@@ -1484,3 +1481,9 @@ def diag_feats(vid: str):
         except Exception as ex:
             out["exists_err"] = str(ex)
     return out
+
+
+# ---- 정적 파일 마운트 (반드시 마지막) ----
+#   '/' 마운트는 모든 경로를 먼저 삼킨다. 이 줄 뒤에 @app.get 을 추가하면
+#   라우트는 등록되지만 절대 도달하지 못한다(404). 새 API 는 이 줄 위에 둘 것.
+app.mount("/", StaticFiles(directory=str(STATIC), html=True), name="static")
