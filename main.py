@@ -478,7 +478,12 @@ def audio_public(v: dict, d: dict) -> dict | None:
 
 
 def video_public(v: dict, d: dict) -> dict:
-    au = _feats_audio(v, d)
+    # 재생·파형용이므로 url 이 있는 audio_public 을 써야 한다.
+    # _feats_audio 는 내부 레코드(key)를 돌려주므로 url 이 없어
+    # 브라우저가 원본 오디오를 못 받고 가짜 파형으로 떨어진다.
+    au = audio_public(v, d)
+    if au and not au.get("url"):
+        au = None   # 파일이 없으면 재생·채점 불가 → 오디오 없음으로 취급
     st = prog.stage_of(v["id"], len(v["segs"]))
     return {"id": v["id"], "yt": v["yt"], "title": v["title"],
             "segs": v["segs"], "n": len(v["segs"]),
