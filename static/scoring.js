@@ -397,18 +397,107 @@ function onTakeStop() {
   lightPreScore();
 }
 
+/* ================= 진폭 파형 채점 (v8.14.29) ================= */
+/* 원본 구간과 내 녹음의 "진폭 포락선"만 비교한다. 음소·내용은 보지 않으므로
+   말이 달라도 리듬(강약 배치)이 비슷하면 점수가 나온다. */
+
+const ENV_N = 64;          // 포락선 샘플 수
+const ENV_D0 = 0.30;       // 점수 곡선: 100 * exp(-d / ENV_D0)
+
+function envOfPcm(ch, n) {
+  const out = new Float32Array(n);
+  if (!ch || !ch.length) return out;
+  const step = ch.length / n;
+  let peak = 0;
+  for (let i = 0; i < n; i++) {
+    const s = Math.floor(i * step);
+    const e = Math.min(ch.length, Math.max(s + 1, Math.floor((i + 1) * step)));
+    let m = 0;
+    for (let k = s; k < e; k++) { const v = Math.abs(ch[k]); if (v > m) m = v; }
+    out[i] = m;
+    if (m > peak) peak = m;
+  }
+  if (peak > 0) for (let i = 0; i < n; i++) out[i] = out[i] / peak;
+  return out;
+}
+
+/* 앞뒤 무음을 잘라낸 뒤 n개로 다시 샘플링 (길이 차이는 정규화 → 템포 무관) */
+function envTrimResample(a, n) {
+  const N = a.length;
+  let mx = 0;
+  for (let i = 0; i < N; i++) if (a[i] > mx) mx = a[i];
+  if (mx <= 1e-4) return new Float32Array(n);
+  const th = mx * 0.12;
+  let s = 0, e = N - 1;
+  while (s < N && a[s] < th) s++;
+  while (e > s && a[e] < th) e--;
+  if (e - s < 2) { s = 0; e = N - 1; }
+  const out = new Float32Array(n);
+  const span = e - s;
+  for (let i = 0; i < n; i++) {
+    const p = s + (i / (n - 1)) * span;
+    const i0 = Math.max(s, Math.min(e, Math.floor(p)));
+    const i1 = Math.max(s, Math.min(e, i0 + 1));
+    const t = p - i0;
+    out[i] = a[i0] * (1 - t) + a[i1] * t;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) if (out[i] > peak) peak = out[i];
+  if (peak > 0) for (let i = 0; i < n; i++) out[i] = out[i] / peak;
+  return out;
+}
+
+/* 두 포락선의 평균 절대차 (0 = 완전 동일) */
+function envDistance(a, b) {
+  const n = Math.min(a.length, b.length);
+  if (!n) return 1;
+  let s = 0;
+  for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]);
+  return s / n;
+}
+
+/* 무음 비율 기반 진단값 (점수 미반영) */
+function envFluency(a) {
+  const n = a.length;
+  if (!n) return 0;
+  let s = 0;
+  for (let i = 0; i < n; i++) if (a[i] < 0.14) s++;
+  return Math.max(0, Math.round(100 * (1 - s / n)));
+}
+
+async function envScore(seg) {
+  const au = S.cur && S.cur.audio;
+  if (!au || !au.url) throw new Error("원본 오디오가 없습니다");
+  const buf = await ensureDecoded(au.url);
+  const off = Number(au.offset || 0);
+  const refRaw = peaksFromBuffer(buf, Math.max(0, seg.start - off), Math.max(0.1, seg.end - off), ENV_N * 2);
+  const ctx = SH.actx || (SH.actx = new (window.AudioContext || window.webkitAudioContext)());
+  const dec = await ctx.decodeAudioData(await S.takeBlob.arrayBuffer());
+  const takeRaw = envOfPcm(dec.getChannelData(0), ENV_N * 2);
+  const refE = envTrimResample(refRaw, ENV_N);
+  const takeE = envTrimResample(takeRaw, ENV_N);
+  const d = envDistance(refE, takeE);
+  const score = Math.max(0, Math.min(100, 100 * Math.exp(-d / ENV_D0)));
+  return {
+    score: score,
+    sim: score,
+    flu: envFluency(takeE),
+    d: d,
+    alpha: 1,
+    env: { ref: Array.from(refE), take: Array.from(takeE) },
+  };
+}
+
 /* 로컬 채점 단일 경로 — 서버 채점으로 되돌아가지 않는다 (v8.14.14) */
 function lightPreScore() {
-  if (!window.LCLight) return lightFail("채점 모듈을 불러오지 못했습니다");
-  if (!S.cur) return lightFail("영상 정보가 없습니다");
+  if (!S.cur || !S.cur.segs[S.idx]) return lightFail("영상 정보가 없습니다");
   if (!S.takeBlob || S.takeBlob.size < 1000) return lightFail("녹음이 너무 짧습니다");
-  const vid = S.cur.id, idx = S.idx, t0 = performance.now();
-  LCLight.score(vid, idx, S.takeBlob).then((r) => {
-    if (!r) return lightFail("이 문장의 비교 데이터가 없습니다");
+  const t0 = performance.now();
+  envScore(S.cur.segs[S.idx]).then((r) => {
     r.ms = Math.round(performance.now() - t0);
     applyLocalScore(r);
   }).catch((e) => {
-    if (window.LCUtil && LCUtil.logErr) LCUtil.logErr("light.score", e && e.message);
+    if (window.LCUtil && LCUtil.logErr) LCUtil.logErr("env.score", e && e.message);
     lightFail("채점하지 못했습니다 · " + ((e && e.message) || "원인 불명"));
   });
 }
@@ -437,7 +526,7 @@ function applyLocalScore(r) {
     rhythm: Math.round(r.flu),      // 진단용(점수 미반영)
     timbre: null,
     attack: null,
-    light: { d: +r.d.toFixed(3), alpha: r.alpha, ms: r.ms, sim: +r.sim.toFixed(1), flu: +r.flu.toFixed(1) },
+    light: { d: +Number(r.d || 0).toFixed(3), alpha: r.alpha || 1, ms: r.ms, sim: +r.sim.toFixed(1), flu: +r.flu.toFixed(1) },
   };
   S.lastResult = res;
   SH.phase = "done";

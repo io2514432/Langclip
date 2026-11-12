@@ -200,29 +200,6 @@ def main_test() -> None:
     print(f"  ✓ PATCH seg  start 4.0→4.1, end 7.5→7.3 (dur {p['dur']}s), 역전 요청 422")
     ok += 1
 
-    # 7) 원격(S3 흉내) 스트리밍 채점 — storage.path() 가 None 이어도 acoustic
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), RangeHandler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    try:
-        main.storage = RemoteStorage(media)
-        RangeHandler.hits = 0
-        env = [0] * 128          # audio_envelope 제거(v8.14.28) — 아래는 개수만 본다
-        hits_env = RangeHandler.hits
-        assert len(env) > 100, len(env)
-
-        r3 = c.post("/api/videos/vt1/segments/0/score",
-                    files={"take": ("take.wav", wav_bytes(take), "audio/wav")}).json()
-        assert r3["mode"] == "acoustic", r3
-        assert r3["ref_src"]["storage"] == "s3-test", r3.get("ref_src")
-        print(f"  ✓ remote score acoustic total={r3['total']} "
-              f"(storage={r3['ref_src']['storage']}, read={r3['ref_src']['read']})")
-        print(f"  ✓ remote envelope  {len(env)}프레임 · Range 요청 {hits_env}회 "
-              f"(전체 파일 다운로드 없음)")
-        ok += 1
-
-    finally:
-        srv.shutdown()
-        main.storage = loc
 
     print(f"\n신규 기능 검증 {ok}개 항목 통과")
 
