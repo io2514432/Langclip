@@ -1311,16 +1311,15 @@ function renderResult(r) {
   const s = S.cur ? S.cur.segs[S.idx] : null;
   $("#res-time").textContent = s ? `${fmt(s.start)}–${fmt(s.end)}s` : "";
 
-  const acoustic = r.mode === "acoustic";
-  const vals = { pitch: r.pitch ?? null, rhythm: r.rhythm ?? null, timbre: r.timbre ?? null, attack: r.attack ?? null };
+  const vals = { sim: r.sim ?? null };
   $$(".axis").forEach((el) => {
     const v = vals[el.dataset.k];
     const off = v === null || v === undefined;
     el.style.display = off ? "none" : "flex";
     if (off) return;
     el.querySelector("i").style.width = Math.max(0, Math.min(100, v * 2)) + "%";
-    el.querySelector(".ax-val").textContent = Math.round(v) + "/50";
-    el.classList.toggle("low", v < 55);
+    el.querySelector(".ax-val").textContent = Math.round(v) + "/100";
+    el.classList.toggle("low", v < 60);
   });
 
   const note = $("#mode-note");
@@ -1329,12 +1328,6 @@ function renderResult(r) {
 
   $("#grade").textContent = "";
   $("#verdict").textContent = "";
-  const coachEl = $("#coach");
-  if (coachEl) {
-    try { coachEl.innerHTML = coaching(r, acoustic) || ""; } catch (e) { coachEl.innerHTML = ""; }
-    coachEl.hidden = !coachEl.innerHTML.trim();
-  }
-
   MIX.peaks = {};
   $("#mix-hint").textContent = "";
   initMixUI();
@@ -1348,31 +1341,11 @@ function renderResult(r) {
 
 function gradeOf(t) {
   if (t >= 90) return { label: "PERFECT", color: "#0EA5E9", verdict: "복제 수준입니다. 원본과 거의 구별되지 않아요." };
-  if (t >= 78) return { label: "GREAT", color: "#0EA5E9", verdict: "아주 좋아요. 억양의 흐름을 잘 잡았습니다." };
+  if (t >= 78) return { label: "GREAT", color: "#0EA5E9", verdict: "아주 좋아요. 원본과 거의 같은 파형입니다." };
   if (t >= 62) return { label: "GOOD", color: "#38BDF8", verdict: "방향은 맞습니다. 한두 가지만 다듬으면 크게 오릅니다." };
-  if (t >= 45) return { label: "FAIR", color: "#F59E0B", verdict: "핵심이 조금 어긋났어요. 아래 코칭을 참고하세요." };
+  if (t >= 45) return { label: "FAIR", color: "#F59E0B", verdict: "핵심이 조금 어긋났어요. 원본을 한 번 더 듣고 따라 해보세요." };
   if (t >= 25) return { label: "WEAK", color: "#FB923C", verdict: "원본과 많이 다릅니다. 한 번 더 듣고 시도해보세요." };
   return { label: "MISS", color: "#F87171", verdict: "거의 다른 소리입니다. 문장을 짧게 끊어서 따라해보세요." };
-}
-
-function coaching(r, acoustic) {
-  const tips = [];
-  if (acoustic) {
-    const p = [
-      ["피치", r.pitch ?? 0, "높낮이가 어긋났습니다. 원본의 멜로디를 손으로 그리듯 따라 해보세요."],
-      ["리듬", r.rhythm ?? 0, "속도가 다릅니다. 원본 문장 길이에 맞춰 끝을 맞추는 연습을 해보세요."],
-      ["음색", r.timbre ?? 0, "음색이 다릅니다. 입 모양과 공명 위치를 원본 화자와 같게 만들어보세요."],
-      ["어택", r.attack ?? 0, "소리의 시작이 다릅니다. 첫 음을 더 또렷하게 터뜨려보세요."],
-    ];
-    p.sort((a, b) => a[1] - b[1]).slice(0, 2).forEach(([k, v, m]) => { if (v < 85) tips.push([k, m]); });
-  } else {
-    const raw = r.raw || {};
-    if ((raw.ratio ?? 1) > 1.25) tips.push(["길이", "원본보다 길게 말했습니다. 한 호흡에 이어 말해보세요."]);
-    else if ((raw.ratio ?? 1) < 0.8) tips.push(["길이", "원본보다 짧습니다. 문장 끝까지 소리를 유지해보세요."]);
-    else tips.push(["길이", "속도는 잘 맞았습니다. 파형의 봉우리 위치를 비교해보세요."]);
-  }
-  if (!tips.length) tips.push(["완료", "모든 항목이 훌륭합니다. 반복 횟수를 늘려 완전히 익혀보세요."]);
-  return `<h4>코칭</h4><ul>${tips.map(([k, m]) => `<li><b>${k}</b> · ${m}</li>`).join("")}</ul>`;
 }
 
 /* ---- 다시 듣기: 파형 3줄 ---- */

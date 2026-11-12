@@ -433,10 +433,11 @@ function applyLocalScore(r) {
     ko: seg.ko || "",
     mode: "light",
     pitch: null,
-    rhythm: Math.round(r.flu),
-    timbre: Math.round(r.pron),
+    sim: Math.round(r.sim),
+    rhythm: Math.round(r.flu),      // 진단용(점수 미반영)
+    timbre: null,
     attack: null,
-    light: { d: +r.d.toFixed(3), alpha: r.alpha, ms: r.ms, pron: +r.pron.toFixed(1), flu: +r.flu.toFixed(1) },
+    light: { d: +r.d.toFixed(3), alpha: r.alpha, ms: r.ms, sim: +r.sim.toFixed(1), flu: +r.flu.toFixed(1) },
   };
   S.lastResult = res;
   SH.phase = "done";

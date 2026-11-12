@@ -6,7 +6,7 @@
 
   var SR = 16000, WIN = 400, HOP = 320, NFFT = 512, NMEL = 24;
   var ALPHAS = [0.88, 0.90, 0.92, 0.95, 0.98, 1.0, 1.02, 1.05, 1.08, 1.10, 1.12];
-  var VERSION = "8.14.23";
+  var VERSION = "8.14.28";
 
   /* ---------------- 기반 유틸 ---------------- */
   var hz2mel = function (f) { return 2595 * Math.log10(1 + f / 700); };
@@ -161,13 +161,15 @@
     });
   }
 
-  /* ---------------- 점수: 두 축 × 50점 = 100점 ---------------- */
-  var PT_PRON = 50, PT_FLUENT = 50, D0_SPEC = 0.55, K_SPEC = 6.0;
+  /* ---------------- 점수: 단일 축(원본과의 파형 유사도) = 100점 ---------------- */
+  /* D0·K 는 실측 두 점에서 다시 잡았다: 같은 문장 d≈0.135, 다른 문장 d≈0.510.
+     D0 를 올리면 관대해지고, K 를 올리면 곡선이 급해진다. */
+  var PT_SIM = 100, D0_SPEC = 0.40, K_SPEC = 9.0;
 
   function logistic(d, d0, k) { return 100 / (1 + Math.exp(k * (d - d0))); }
 
-  /* 축1 발음 정확도 (0~50): 스펙트럼 코사인 거리 → 로지스틱 */
-  function pronScore(d) { return logistic(d, D0_SPEC, K_SPEC) / 2; }
+  /* 유일한 축 — 원본과의 파형 유사도 (0~100): 스펙트럼 DTW 거리 → 로지스틱 */
+  function simScore(d) { return logistic(d, D0_SPEC, K_SPEC); }
 
   /* 축2 유창성 (0~50): 끊김(0.1초 이상 공백) 개수 + 총 무음 시간으로 감점 */
   function fluencyScore(rms) {
@@ -196,8 +198,9 @@
       d = dSpec(refFrames, B);
       if (d < best.d) { best.d = d; best.alpha = ALPHAS[i]; }
     }
-    var sPron = pronScore(best.d), sFlu = fluencyScore(takeRms);
-    return { score: sPron + sFlu, pron: sPron, flu: sFlu, d: best.d, alpha: best.alpha };
+    var sSim = simScore(best.d);
+    var sFlu = fluencyScore(takeRms);          // 진단용 — 점수에는 반영하지 않는다
+    return { score: sSim, sim: sSim, flu: sFlu, d: best.d, alpha: best.alpha };
   }
 
   /* ---------------- PCM 준비 ---------------- */

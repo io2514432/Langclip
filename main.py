@@ -16,9 +16,7 @@ v3.2 핵심
 """
 from __future__ import annotations
 
-import io
 import json
-from collections import OrderedDict
 import math
 import secrets
 import os
@@ -33,7 +31,6 @@ from pathlib import Path
 
 import librosa
 import numpy as np
-import soundfile as sf
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,9 +62,6 @@ MIME = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
         ".aac": "audio/aac", ".ogg": "audio/ogg", ".opus": "audio/ogg",
         ".webm": "audio/webm", ".flac": "audio/flac"}
 
-CAL_HOP = 0.02
-CAL_SMOOTH = 0.12
-CAL_MIN_OVERLAP = 2.0
 
 app = FastAPI(title="Langclip Shadowing API", version=build.VERSION)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -193,24 +187,6 @@ def get_audio(aid: str) -> dict:
 
 
 # --------------------------------------------------------------- audio util
-def to_wav16k(src: bytes, suffix: str) -> np.ndarray:
-    suffix = suffix if suffix.startswith(".") else "." + suffix
-    with tempfile.TemporaryDirectory() as t:
-        raw, out = os.path.join(t, "in" + suffix), os.path.join(t, "out.wav")
-        open(raw, "wb").write(src)
-        p = subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-i", raw,
-             "-ac", "1", "-ar", str(SR), "-f", "wav", out],
-            capture_output=True,
-        )
-        if p.returncode != 0:
-            raise HTTPException(400, f"오디오 변환 실패: {p.stderr.decode()[:240]}")
-        y, _ = sf.read(out, dtype="float32")
-    if y.ndim > 1:
-        y = y.mean(axis=1)
-    return y.astype(np.float32)
-
-
 def probe_duration(data: bytes, suffix: str) -> float:
     with tempfile.TemporaryDirectory() as t:
         raw = os.path.join(t, "in" + suffix)
@@ -263,84 +239,6 @@ def _to_mono(y) -> np.ndarray:
         y = y.mean(axis=1)
     return y.astype(np.float32)
 
-
-def _load_ref_slice_uncached(key: str, t0: float, t1: float) -> np.ndarray:
-    """저장소(로컬/원격)에서 [t0, t1) 구간만 16kHz 모노로 디코드."""
-    t0 = max(0.0, float(t0))
-    t1 = max(t0 + 0.05, float(t1))
-    dur = t1 - t0
-    try:
-        with storage.open(key) as f:
-            with sf.SoundFile(f) as snd:
-                sr = snd.samplerate
-                start = int(round(t0 * sr))
-                if start >= snd.frames:
-                    return np.zeros(0, dtype=np.float32)
-                snd.seek(start)
-                n = max(1, int(round(dur * sr)))
-                y = snd.read(n, dtype="float32", always_2d=False)
-        y = _to_mono(y) if y is not None else np.zeros(0, np.float32)
-        if y.size and sr != SR:
-            y = librosa.resample(y, orig_sr=sr, target_sr=SR).astype(np.float32)
-        return y
-    except Exception:
-        pass                                   # 형식 미지원 → ffmpeg 폴백
-
-    uri = storage.uri(key)
-    p = subprocess.run(
-        ["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{t0:.3f}", "-t", f"{dur:.3f}",
-         "-i", uri, "-ac", "1", "-ar", str(SR), "-f", "wav", "-"],
-        capture_output=True,
-    )
-    if p.returncode != 0 or len(p.stdout) < 64:
-        msg = p.stderr.decode()[:160].strip() or "구간 디코드에 실패했습니다"
-        raise ValueError(msg)
-    with sf.SoundFile(io.BytesIO(p.stdout)) as snd:
-        y = snd.read(dtype="float32", always_2d=False)
-    return _to_mono(y)
-
-
-_REF_CACHE: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
-_REF_CACHE_MAX = 32
-_REF_CACHE_LOCK = threading.Lock()
-
-
-def load_ref_slice(key: str, t0: float, t1: float) -> np.ndarray:
-    """같은 구간을 다시 채점할 때 디코드를 재사용한다 (LRU 32개)."""
-    t0 = round(max(0.0, float(t0)), 3)
-    t1 = round(max(t0 + 0.05, float(t1)), 3)
-    ck = (str(key), t0, t1)
-    with _REF_CACHE_LOCK:
-        hit = _REF_CACHE.get(ck)
-        if hit is not None:
-            _REF_CACHE.move_to_end(ck)
-            return hit
-    y = _load_ref_slice_uncached(key, t0, t1)
-    with _REF_CACHE_LOCK:
-        _REF_CACHE[ck] = y
-        while len(_REF_CACHE) > _REF_CACHE_MAX:
-            _REF_CACHE.popitem(last=False)
-    return y
-
-
-def audio_envelope(key: str, hop: float = CAL_HOP) -> np.ndarray:
-    parts: list[np.ndarray] = []
-    with storage.open(key) as f:
-        with sf.SoundFile(f) as snd:
-            sr = snd.samplerate
-            win = max(1, int(round(sr * hop)))
-            block = max(win, (int(round(sr * 8.0)) // win) * win)
-            while True:
-                blk = snd.read(block, dtype="float32", always_2d=False)
-                if blk is None or len(blk) < win:
-                    break
-                b = _to_mono(blk)
-                m = (b.size // win) * win
-                fr = b[:m].astype(np.float64).reshape(-1, win)
-                parts.append(np.sqrt((fr ** 2).mean(axis=1) + 1e-12))
-    if not parts:
-        raise ValueError("오디오가 비어 있습니다")
-    return np.log(np.concatenate(parts) + 1e-6)
 
 
 def _smooth(x: np.ndarray, k: int) -> np.ndarray:
