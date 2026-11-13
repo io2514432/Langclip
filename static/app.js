@@ -1032,7 +1032,7 @@ function bindStudyTimer() {
 }
 
 /* ================= 자막 싱크 미세조정 (관리자) ================= */
-/* mode: end(끝 조정 → 다음 문장이 따라옴) / start(시작 조정 → 앞 문장이 따라옴) / seg(구간 통째로) */
+/* mode: end(넘김 조정 → 다음 문장이 따라옴) / speak(문장끝 조정 - 이 문장만) / start(시작 조정 → 앞 문장이 따라옴) / seg(구간 통째로) */
 const NUDGE = { mode: "end", all: false, timer: 0, saving: false, now: 0 };
 
 function nudgeLabel() {
@@ -1041,7 +1041,8 @@ function nudgeLabel() {
   const s = S.cur.segs[S.idx];
   if (!s) { el.textContent = ""; return; }
   const live = NUDGE.now ? ` · 지금 ${NUDGE.now.toFixed(1)}s` : "";
-  el.textContent = `${S.idx + 1}번 ${s.start.toFixed(2)}–${s.end.toFixed(2)}s${live}`;
+  const sp = (s.speak_end != null && s.speak_end !== s.end) ? ` · 문장끝 ${s.speak_end.toFixed(2)}s` : "";
+  el.textContent = `${S.idx + 1}번 ${s.start.toFixed(2)}–${s.end.toFixed(2)}s${sp}${live}`;
 }
 
 function nudgeMode(m) {
@@ -1083,6 +1084,7 @@ function nudgeBy(d) {
     segs.forEach((s) => {
       s.start = r2(Math.max(0, s.start + dd));
       s.end = r2(Math.max(s.start + MIN, s.end + dd));
+      if (s.speak_end != null) s.speak_end = r2(Math.min(s.end, Math.max(s.start, s.speak_end + dd)));
     });
   } else if (NUDGE.mode === "end") {
     const s = segs[i], nx = segs[i + 1];
@@ -1092,6 +1094,7 @@ function nudgeBy(d) {
       // 뒤 문장은 앞 문장 끝에 따라온다 (늘어나면 밀리고, 줄어들면 당긴다)
       nx.start = en;
       if (nx.end < nx.start + MIN) nx.end = r2(nx.start + MIN);
+      if (nx.speak_end != null && nx.speak_end > nx.end) nx.speak_end = r2(nx.end);
       const nn = segs[i + 2];
       if (nn && nn.start < nx.end) nn.start = nx.end;
     }
@@ -1104,7 +1107,13 @@ function nudgeBy(d) {
       if (pv.start + MIN > st) st = r2(pv.start + MIN);
       s.start = st;
       pv.end = st;           // 앞 문장의 끝은 뒤 문장 시작에 바짝 붙는다
+      if (pv.speak_end != null && pv.speak_end > pv.end) pv.speak_end = r2(pv.end);
     }
+    if (s.speak_end != null && s.speak_end < s.start) s.speak_end = r2(s.start);
+  } else if (NUDGE.mode === "speak") {
+    const s = segs[i];
+    const se0 = (s.speak_end != null) ? s.speak_end : s.end;
+    s.speak_end = r2(Math.min(s.end, Math.max(s.start, se0 + d)));
   } else {
     const s = segs[i], pv = segs[i - 1], nx = segs[i + 1];
     let st = r2(s.start + d);
@@ -1113,7 +1122,9 @@ function nudgeBy(d) {
     if (pv && st < pv.end) st = pv.end;
     if (en < st + MIN) en = r2(st + MIN);
     s.start = st; s.end = en;
+    if (s.speak_end != null) s.speak_end = r2(Math.min(s.end, Math.max(s.start, s.speak_end + d)));
     if (nx && nx.start < s.end) nx.start = s.end;
+    if (nx && nx.speak_end != null && nx.speak_end > nx.end) nx.speak_end = r2(nx.end);
   }
 
   S.seg = segs[i];
@@ -1130,7 +1141,7 @@ async function nudgeSave() {
     const r = await api(`/api/videos/${S.cur.id}/segs`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ segs: S.cur.segs.map((s) => ({ start: s.start, end: s.end })) }),
+      body: JSON.stringify({ segs: S.cur.segs.map((s) => ({ start: s.start, end: s.end, speak_end: s.speak_end })) }),
     });
     S.cur.segs = r.segs;
     S.cur.n = r.n;

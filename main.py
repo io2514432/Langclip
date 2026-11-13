@@ -566,8 +566,6 @@ def add_video(payload: dict, request: Request):
            "duration": round(float(duration or 0), 2)}
     d = db()
     d["videos"][vid] = rec
-    if rec.get("audio_id"):
-        compute_speak_ends(rec, d)
     save_db(d)
     _prefetch_async(segs, rec.get("lang") or "en")
     return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
@@ -589,41 +587,6 @@ def _feats_audio(v: dict, d: dict):
     if isinstance(inline, dict) and inline.get("key"):
         return inline
     return None
-
-
-def compute_speak_ends(v: dict, d: dict) -> None:
-    """segs 각 문장의 실제 발화 끝(speak_end) 추정 - 반복/쉐도잉용 구간.
-    자막 싱크용 end(=다음 문장 시작)는 그대로 둔다. 꼬리 무음이 0.4초 이상일 때만 절삭한다."""
-    try:
-        au = _feats_audio(v, d)
-        if not au or not au.get("key") or not storage.exists(au["key"]):
-            return
-        y, _ = librosa.load(storage.path(au["key"]), sr=SR, mono=True)
-        y = _to_mono(y)
-        off = float(au.get("offset") or 0.0)
-        hop = max(1, int(0.03 * SR))
-        for s in (v.get("segs") or []):
-            try:
-                st, en = float(s["start"]), float(s["end"])
-                if en <= st + 0.2:
-                    continue
-                a = max(0, int((st - off) * SR))
-                b = min(y.size, int((en - off) * SR))
-                if b - a < hop * 3:
-                    continue
-                fr = np.abs(y[a:b])[:(b - a) // hop * hop].reshape(-1, hop).max(axis=1)
-                peak = float(fr.max())
-                if peak < 1e-4:
-                    continue
-                last = int(np.max(np.nonzero(fr >= peak * 0.12)))
-                t_end = st + (last + 1) * hop / SR
-                if t_end - st < 0.3 or en - t_end < 0.4:
-                    continue
-                s["speak_end"] = round(min(en - 0.05, t_end + 0.2), 2)
-            except Exception:
-                continue
-    except Exception as ex:
-        logs.log_err("srv:speak_end", ex)
 
 
 @app.get("/api/videos/{vid}/feats")
@@ -688,14 +651,14 @@ def del_video(vid: str, request: Request):
 @app.patch("/api/videos/{vid}/segments/{idx}")
 def patch_segment(vid: str, idx: int, payload: dict, request: Request):
     require_admin(request)
-    """문장 start/end/text 수정 — ±0.1s 미세조정 UI가 이 엔드포인트를 쓴다."""
+    """문장 start/end/speak_end/text 수정 — 싱크 미세조정 UI가 이 엔드포인트를 쓴다."""
     d = db()
     v = d["videos"].get(vid) or get_video(vid)
     if not (0 <= idx < len(v["segs"])):
         raise HTTPException(404, "문장을 찾을 수 없습니다")
     s = v["segs"][idx]
     prev = {"start": s["start"], "end": s["end"], "text": s.get("text", "")}
-    for k in ("start", "end"):
+    for k in ("start", "end", "speak_end"):
         if payload.get(k) is not None:
             s[k] = round(max(0.0, float(payload[k])), 3)
     if payload.get("text") is not None:
@@ -708,6 +671,9 @@ def patch_segment(vid: str, idx: int, payload: dict, request: Request):
         s["ko"] = str(payload["ko"])[:300]
     if s["end"] <= s["start"]:
         raise HTTPException(422, "종료 시간은 시작보다 뒤여야 합니다")
+    # 문장끝(speak_end)은 [start, end] 안에 있어야 한다 - 넘김점(end)과 같아지는 것은 허용
+    if s.get("speak_end") is not None:
+        s["speak_end"] = round(min(max(s["speak_end"], s["start"]), s["end"]), 3)
     d["videos"][vid] = v
     save_db(d)
     return {"ok": True, "seg": s, "prev": prev, "dur": round(s["end"] - s["start"], 3)}
@@ -726,7 +692,7 @@ def get_script(vid: str):
 
 @app.patch("/api/videos/{vid}/segs")
 def patch_segs(vid: str, payload: dict, request: Request):
-    """문장(자막)을 직접 수정한다. 영어/한국어/시작·종료 시간만 바꾼다."""
+    """문장(자막)을 직접 수정한다. 영어/한국어/시작·종료/문장끝(speak_end) 시간을 바꾼다."""
     require_admin(request)
     items = payload.get("segs")
     if not isinstance(items, list) or not items:
@@ -742,13 +708,17 @@ def patch_segs(vid: str, payload: dict, request: Request):
         try:
             st = round(float(it.get("start", base.get("start", 0.0))), 3)
             en_t = round(float(it.get("end", base.get("end", 0.0))), 3)
+            sp = it.get("speak_end", base.get("speak_end"))
+            if sp is not None:
+                sp = round(float(sp), 3)
+                sp = min(max(sp, st), en_t)
         except (TypeError, ValueError):
             raise HTTPException(422, f"{i + 1}번 문장의 시간 형식이 올바르지 않습니다")
         if st < 0 or en_t <= st:
             raise HTTPException(422, f"{i + 1}번 문장의 종료 시간이 시작보다 뒤여야 합니다")
         if not en:
             raise HTTPException(422, f"{i + 1}번 문장의 영어가 비어 있습니다")
-        out.append({**base, "en": en, "ko": ko, "start": st, "end": en_t})
+        out.append({**base, "en": en, "ko": ko, "start": st, "end": en_t, **({"speak_end": sp} if sp is not None else {})})
     out.sort(key=lambda x: x["start"])
     v["segs"] = out
     if "n" in v:
@@ -899,8 +869,6 @@ def link_audio(vid: str, payload: dict, request: Request):
     else:
         v["audio_id"] = None
     d["videos"][vid] = v
-    if v.get("audio_id"):
-        compute_speak_ends(v, d)
     save_db(d)
     return {"ok": True, "video": vid, "audio_id": v.get("audio_id"),
             "offset": d["audios"].get(aid, {}).get("offset") if aid else None}
