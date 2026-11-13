@@ -566,6 +566,8 @@ def add_video(payload: dict, request: Request):
            "duration": round(float(duration or 0), 2)}
     d = db()
     d["videos"][vid] = rec
+    if rec.get("audio_id"):
+        compute_speak_ends(rec, d)
     save_db(d)
     _prefetch_async(segs, rec.get("lang") or "en")
     return {"ok": True, "video": rec, "segs": segs, "warnings": warnings,
@@ -587,6 +589,41 @@ def _feats_audio(v: dict, d: dict):
     if isinstance(inline, dict) and inline.get("key"):
         return inline
     return None
+
+
+def compute_speak_ends(v: dict, d: dict) -> None:
+    """segs 각 문장의 실제 발화 끝(speak_end) 추정 - 반복/쉐도잉용 구간.
+    자막 싱크용 end(=다음 문장 시작)는 그대로 둔다. 꼬리 무음이 0.4초 이상일 때만 절삭한다."""
+    try:
+        au = _feats_audio(v, d)
+        if not au or not au.get("key") or not storage.exists(au["key"]):
+            return
+        y, _ = librosa.load(storage.path(au["key"]), sr=SR, mono=True)
+        y = _to_mono(y)
+        off = float(au.get("offset") or 0.0)
+        hop = max(1, int(0.03 * SR))
+        for s in (v.get("segs") or []):
+            try:
+                st, en = float(s["start"]), float(s["end"])
+                if en <= st + 0.2:
+                    continue
+                a = max(0, int((st - off) * SR))
+                b = min(y.size, int((en - off) * SR))
+                if b - a < hop * 3:
+                    continue
+                fr = np.abs(y[a:b])[:(b - a) // hop * hop].reshape(-1, hop).max(axis=1)
+                peak = float(fr.max())
+                if peak < 1e-4:
+                    continue
+                last = int(np.max(np.nonzero(fr >= peak * 0.12)))
+                t_end = st + (last + 1) * hop / SR
+                if t_end - st < 0.3 or en - t_end < 0.4:
+                    continue
+                s["speak_end"] = round(min(en - 0.05, t_end + 0.2), 2)
+            except Exception:
+                continue
+    except Exception as ex:
+        logs.log_err("srv:speak_end", ex)
 
 
 @app.get("/api/videos/{vid}/feats")
@@ -862,6 +899,8 @@ def link_audio(vid: str, payload: dict, request: Request):
     else:
         v["audio_id"] = None
     d["videos"][vid] = v
+    if v.get("audio_id"):
+        compute_speak_ends(v, d)
     save_db(d)
     return {"ok": True, "video": vid, "audio_id": v.get("audio_id"),
             "offset": d["audios"].get(aid, {}).get("offset") if aid else None}

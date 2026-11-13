@@ -115,13 +115,13 @@ function onTick() {
 
   // 오늘 학습(Stage 1): 문장 끝을 지나친 순간 = 그 문장을 끝까지 들은 것
   // (문장 전환으로 S.seg 가 바뀌기 전에 판정해야 한다)
-  if (playing && S.seg && t >= S.seg.end - 0.12) markListen(S.idx);
+  if (playing && S.seg && t >= (S.seg.speak_end || S.seg.end) - 0.12) markListen(S.idx);
   if (S.cur.segs.length && dur > 0 && (t >= dur - 0.6 || state === 0)) {
     markListen(S.cur.segs.length - 1);
   }
 
   if (S.repeat && S.seg) {
-    if (t >= S.seg.end - 0.04) { try { S.player.seekTo(S.seg.start, true); } catch {} }
+    if (t >= (S.seg.speak_end || S.seg.end) - 0.04) { try { S.player.seekTo(S.seg.start, true); } catch {} }
   } else {
     const i = S.cur.segs.findIndex((x) => t >= x.start - 0.06 && t < x.end);
     if (i >= 0 && i !== S.idx) selectSeg(i, true);
@@ -155,11 +155,9 @@ function renderSeg() {
   ko.textContent = s.ko || "";
   ko.style.display = s.ko ? "" : "none";
   $$("#sub-en .w").forEach((w) => {
-    const band = w.classList.contains("phr");
-    w.onclick = (e) => {
-      if (band && e.target !== w) return;
-      openWord(w.dataset.w, w.dataset.ctx, w.dataset.ko || "");
-    };
+    // 숙어(.phr) 내부 단어는 클릭을 받지 않고 숙어 스팬으로 위임 - 어디를 눌러도 숙어 전체가 열린다
+    if (!w.classList.contains("phr") && w.closest(".phr")) return;
+    w.onclick = () => openWord(w.dataset.w, w.dataset.ctx, w.dataset.ko || "");
   });
   fitSub();
 
@@ -234,7 +232,7 @@ function togglePlay() {
   let t = 0;
   try { t = S.player.getCurrentTime() || 0; } catch (e) {}
   const seg = S.seg;
-  if (seg && t > seg.start + 0.06 && t < seg.end - 0.03) {
+  if (seg && t > seg.start + 0.06 && t < (seg.speak_end || seg.end) - 0.03) {
     try { S.player.playVideo(); } catch (e) {}
     setPlayBtn(true);
     return;

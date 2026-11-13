@@ -224,7 +224,7 @@ async function startShadow() {
 
   const seg = S.seg;
   const au = S.cur.audio;
-  SH.dur = Math.max(0.6, seg.end - seg.start);
+  SH.dur = Math.max(0.6, (seg.speak_end || seg.end) - seg.start);
   SH.user = [];
   SH.playT = 0;
   SH.score = null;
@@ -470,7 +470,7 @@ async function envScore(seg) {
   if (!au || !au.url) throw new Error("원본 오디오가 없습니다");
   const buf = await ensureDecoded(au.url);
   const off = Number(au.offset || 0);
-  const refRaw = peaksFromBuffer(buf, Math.max(0, seg.start - off), Math.max(0.1, seg.end - off), ENV_N * 2);
+  const refRaw = peaksFromBuffer(buf, Math.max(0, seg.start - off), Math.max(0.1, (seg.speak_end || seg.end) - off), ENV_N * 2);
   const ctx = SH.actx || (SH.actx = new (window.AudioContext || window.webkitAudioContext)());
   const dec = await ctx.decodeAudioData(await S.takeBlob.arrayBuffer());
   const takeRaw = envOfPcm(dec.getChannelData(0), ENV_N * 2);
@@ -673,7 +673,7 @@ function playResultSeg(i) {
   window.__vrStop = setInterval(() => {
     let t = 0;
     try { t = S.player.getCurrentTime() || 0; } catch { return; }
-    if (t >= (s.end || s.start + 1)) { try { S.player.pauseVideo(); } catch {} clearInterval(window.__vrStop); }
+    if (t >= (s.speak_end || s.end || s.start + 1)) { try { S.player.pauseVideo(); } catch {} clearInterval(window.__vrStop); }
   }, 120);
 }
 
