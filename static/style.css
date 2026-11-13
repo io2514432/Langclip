@@ -1185,13 +1185,9 @@ body.vf-focus .screens{height:100%}
   display:flex;align-items:center;justify-content:center;overflow:hidden}
 .bg-phrase{position:absolute;color:#000;white-space:nowrap;user-select:none;pointer-events:none;
   letter-spacing:-.01em;font-weight:500}
-.sp-fr{top:11%;right:10%;font-size:15px;font-weight:400;opacity:.14}
 .sp-ko{top:18%;left:10%;font-size:19px;opacity:.26}
 .sp-en{top:25%;right:12%;font-size:17px;opacity:.20}
-.sp-ja{top:32%;left:8%;font-size:14px;font-weight:400;opacity:.15}
-.sp-zh{bottom:29%;right:12%;font-size:18px;opacity:.24}
 .sp-es{bottom:20%;left:10%;font-size:16px;font-weight:400;opacity:.18}
-.sp-de{bottom:11%;right:18%;font-size:15px;font-weight:400;opacity:.12}
 .splash-brand{display:flex;flex-direction:column;align-items:center;z-index:10}
 .sp-sym{width:150px;height:auto;display:block;margin-bottom:20px;   /* 그림자·그라데이션 없이 심볼만 */
   animation:sp-pop .62s cubic-bezier(.2,.8,.2,1) both}
@@ -1953,13 +1949,9 @@ body.study-focus .screens{height:100%}
 /* ---- 스플래시 : 등장 연출 + 모바일 안전 배치 ---- */
 .splash-in{overflow:hidden}
 .bg-phrase{animation:spPhrase .9s cubic-bezier(.22,.8,.28,1) both}
-.splash-in .sp-fr{animation-delay:.10s}
 .splash-in .sp-ko{animation-delay:.18s}
 .splash-in .sp-en{animation-delay:.26s}
-.splash-in .sp-ja{animation-delay:.34s}
-.splash-in .sp-zh{animation-delay:.42s}
 .splash-in .sp-es{animation-delay:.50s}
-.splash-in .sp-de{animation-delay:.58s}
 @keyframes spPhrase{from{opacity:0;transform:translateY(10px) scale(.97)}}
 .sp-sym{animation:spSym .82s cubic-bezier(.2,.9,.25,1) both}
 @keyframes spSym{0%{opacity:0;transform:scale(.82)}60%{opacity:1;transform:scale(1.03)}
@@ -1970,13 +1962,9 @@ body.study-focus .screens{height:100%}
 @keyframes spBarIn{from{opacity:0}}
 .splash-bar i{animation:spBarRun 1.5s cubic-bezier(.4,0,.2,1) .5s infinite}
 @keyframes spBarRun{0%{left:-38%}100%{left:100%}}
-.sp-fr{top:8%}
 .sp-ko{top:14%}
 .sp-en{top:20%}
-.sp-ja{top:26%}
-.sp-zh{bottom:26%}
 .sp-es{bottom:20%}
-.sp-de{bottom:14%}
 @media (max-height:720px){
   .sp-sym{width:112px;margin-bottom:14px}
   .splash-title{font-size:40px}
@@ -1984,7 +1972,6 @@ body.study-focus .screens{height:100%}
   .sp-zh{bottom:25%}.sp-es{bottom:19%}.sp-de{bottom:13%}
 }
 @media (max-height:600px){
-  .sp-ja,.sp-de{display:none}
   .sp-sym{width:96px;margin-bottom:12px}
   .splash-title{font-size:34px}
 }

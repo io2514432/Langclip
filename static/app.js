@@ -48,13 +48,9 @@ const ic = (id, cls = "ic") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 const MEDALS = ["bronze", "silver", "gold"];
 const LANG_LIST = [
   { code: "en", name: "English" }, { code: "es", name: "Español" },
-  { code: "fr", name: "Français" }, { code: "de", name: "Deutsch" },
-  { code: "it", name: "Italiano" }, { code: "pt", name: "Português" },
-  { code: "ja", name: "日本語" }, { code: "zh", name: "中文" },
 ];
 const LANG_NAME = (c) => (LANG_LIST.find((l) => l.code === c) || {}).name || "English";
-const LANG_TTS = { en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE",
-  it: "it-IT", pt: "pt-BR", ja: "ja-JP", zh: "zh-CN" };
+const LANG_TTS = { en: "en-US", es: "es-ES" };
 const learnLang = () => { try { return localStorage.getItem("lc_lang") || "en"; } catch (e) { return "en"; } };
 const setLearnLang = (c) => { try { localStorage.setItem("lc_lang", c); } catch (e) {} };
 
